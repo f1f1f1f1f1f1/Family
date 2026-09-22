@@ -36,6 +36,8 @@ export interface BeaconSettings {
   defaultGroceryList: string;
   groceryListIds: string[];
   shoppingEntity: string;
+  hideLocalGroceryList: boolean;
+  hideLocalTaskList: boolean;
   musicDefaultPlayer: string;
   photoDirectory: string;
   photoInterval: number;
@@ -96,6 +98,8 @@ function buildDefaults(): BeaconSettings {
     defaultGroceryList: '',
     groceryListIds: [],
     shoppingEntity: '',
+    hideLocalGroceryList: false,
+    hideLocalTaskList: false,
     musicDefaultPlayer: '',
     photoDirectory: config.photo_directory,
     photoInterval: config.photo_interval,

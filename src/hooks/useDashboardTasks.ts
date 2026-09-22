@@ -11,7 +11,7 @@ export interface DashboardTodoItem {
   userId?: string;
 }
 
-export function useDashboardTasks(connected: boolean, groceryListIds: string[] = []) {
+export function useDashboardTasks(connected: boolean, groceryListIds: string[] = [], hideLocalTasks: boolean = false) {
   const localTasks = useLocalTasks();
   const { users, listByUser, completions } = useTaskmate(connected);
   const [haItems, setHaItems] = useState<Omit<DashboardTodoItem, 'userId'>[]>([]);
@@ -67,15 +67,17 @@ export function useDashboardTasks(connected: boolean, groceryListIds: string[] =
   }, [connected, groceryListIds]);
 
   const items: DashboardTodoItem[] = useMemo(() => {
-    const local: DashboardTodoItem[] = localTasks
-      .getTasksForList('beacon-todo')
-      .filter(t => t.status === 'needs_action' || (t.completedAt ? isToday(t.completedAt) : false))
-      .map(t => ({
-        uid: t.id,
-        summary: t.summary,
-        status: t.status,
-        listId: 'beacon-todo',
-      }));
+    const local: DashboardTodoItem[] = hideLocalTasks
+      ? []
+      : localTasks
+        .getTasksForList('beacon-todo')
+        .filter(t => t.status === 'needs_action' || (t.completedAt ? isToday(t.completedAt) : false))
+        .map(t => ({
+          uid: t.id,
+          summary: t.summary,
+          status: t.status,
+          listId: 'beacon-todo',
+        }));
 
     const fromHa: DashboardTodoItem[] = [];
     for (const i of haItems) {
@@ -100,11 +102,11 @@ export function useDashboardTasks(connected: boolean, groceryListIds: string[] =
       seen.add(key);
       return true;
     });
-  }, [localTasks, haItems, listByUser, completions]);
+  }, [localTasks, haItems, listByUser, completions, hideLocalTasks]);
 
   const toggleItem = useCallback(async (uid: string, currentStatus: string, listId?: string) => {
     // Check if it's a local item
-    const localItem = localTasks.getTasksForList('beacon-todo').find(t => t.id === uid);
+    const localItem = hideLocalTasks ? undefined : localTasks.getTasksForList('beacon-todo').find(t => t.id === uid);
     if (localItem) {
       localTasks.toggleTask(uid);
       return;
@@ -128,7 +130,7 @@ export function useDashboardTasks(connected: boolean, groceryListIds: string[] =
     } catch (err) {
       console.warn('Failed to toggle todo item:', err);
     }
-  }, [localTasks, haItems]);
+  }, [localTasks, haItems, hideLocalTasks]);
 
   return { items, toggleItem, users };
 }
