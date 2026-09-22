@@ -37,9 +37,11 @@ interface GroceryViewProps {
   mode?: ListViewMode;
   /** Explicit list of HA todo entity IDs that are grocery/shopping lists */
   groceryListIds?: string[];
+  /** When true, excludes Beacon's built-in local list (beacon-shopping / beacon-todo) from selection */
+  hideLocalList?: boolean;
 }
 
-export function GroceryView({ defaultListId, mode = 'grocery', groceryListIds = [] }: GroceryViewProps) {
+export function GroceryView({ defaultListId, mode = 'grocery', groceryListIds = [], hideLocalList = false }: GroceryViewProps) {
   const [haLists, setHaLists] = useState<GroceryList[]>([]);
   const [selectedListId, setSelectedListId] = useState<string>(defaultListId || '');
   const [haItems, setHaItems] = useState<TodoItem[]>([]);
@@ -55,7 +57,12 @@ export function GroceryView({ defaultListId, mode = 'grocery', groceryListIds = 
   // Merge HA lists + local lists, then filter by mode
   const allLists = useMemo<UnifiedList[]>(() => {
     const ha: UnifiedList[] = haLists.map(l => ({ id: l.id, name: l.name, source: 'ha' }));
-    const local: UnifiedList[] = localTasks.lists.map(l => ({ id: l.id, name: l.name, source: 'local' }));
+    // When hideLocalList is set, drop every local-sourced list entirely —
+    // including any custom ones the user may have created, not just the
+    // built-in beacon-shopping / beacon-todo defaults.
+    const local: UnifiedList[] = hideLocalList
+      ? []
+      : localTasks.lists.map(l => ({ id: l.id, name: l.name, source: 'local' }));
     const merged = [...local, ...ha];
 
     // Determine if an HA list is a grocery list:
@@ -80,7 +87,7 @@ export function GroceryView({ defaultListId, mode = 'grocery', groceryListIds = 
     return merged.filter(l =>
       l.id === 'beacon-todo' || (l.source === 'ha' && !isGroceryHA(l.id, l.name))
     );
-  }, [haLists, localTasks.lists, mode, defaultListId, groceryListIds]);
+  }, [haLists, localTasks.lists, mode, defaultListId, groceryListIds, hideLocalList]);
 
   const selectedList = allLists.find(l => l.id === selectedListId);
   const isLocal = selectedList?.source === 'local';

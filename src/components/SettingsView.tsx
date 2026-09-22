@@ -1437,6 +1437,34 @@ export function SettingsView({
             ))}
           </select>
         </div>
+        <div className="settings-row">
+          <div>
+            <div className="settings-row-label">Hide Local Shopping List</div>
+            <div className="settings-row-sublabel">
+              Remove Beacon's built-in "Shopping List" from the list selector, showing only connected HA lists
+            </div>
+          </div>
+          <Toggle
+            checked={settings.hideLocalGroceryList}
+            onChange={(v) => onUpdateSettings({ hideLocalGroceryList: v })}
+          />
+        </div>
+      </div>
+
+      <div className="settings-group">
+        <div className="settings-group-title">Tasks</div>
+        <div className="settings-row">
+          <div>
+            <div className="settings-row-label">Hide Local Task List</div>
+            <div className="settings-row-sublabel">
+              Remove Beacon's built-in "To-Do" list from the list selector, showing only connected HA lists
+            </div>
+          </div>
+          <Toggle
+            checked={settings.hideLocalTaskList}
+            onChange={(v) => onUpdateSettings({ hideLocalTaskList: v })}
+          />
+        </div>
       </div>
 
       <div className="settings-group">
