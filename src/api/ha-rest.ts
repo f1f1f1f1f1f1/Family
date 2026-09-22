@@ -40,6 +40,16 @@ function getBaseUrl() {
   return _baseUrl;
 }
 
+/**
+ * Public accessor for the resolved API base URL (ingress path in add-on
+ * mode, configured ha_url/origin in standalone mode). Used by modules that
+ * need to build direct URLs (e.g. signed media URLs for <img src>) rather
+ * than go through haFetch.
+ */
+export function getHaBaseUrl(): string {
+  return getBaseUrl();
+}
+
 function getHaToken() {
   if (_haToken === null) _haToken = getConfig().ha_token;
   return _haToken;

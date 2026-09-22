@@ -1,7 +1,8 @@
 import { Photo } from '../types/photos';
 import { getConfig } from '../config';
+import { haFetch, hasToken, getHaBaseUrl } from './ha-rest';
 
-const { ha_url: HA_URL, ha_token: HA_TOKEN, photo_directory: PHOTOS_PATH } = getConfig();
+const { photo_directory: PHOTOS_PATH } = getConfig();
 
 /**
  * Shuffles an array in place using Fisher-Yates.
@@ -15,84 +16,102 @@ function shuffle<T>(arr: T[]): T[] {
 }
 
 /**
- * Fetches photos from HA media browser API.
+ * Converts a plain filesystem-style path (e.g. "/media/beacon/photos", as
+ * configured via the `photo_directory` add-on option) into the
+ * `media-source://` content id HA's browse_media/resolve_media APIs
+ * actually expect. Leaves already-qualified media-source ids untouched.
  */
-async function fetchHAMediaPhotos(): Promise<Photo[]> {
-  if (!HA_TOKEN) return [];
+function toMediaContentId(path: string): string {
+  if (!path) return 'media-source://media_source/local';
+  if (path.startsWith('media-source://')) return path;
+
+  const trimmed = path.replace(/^\/+|\/+$/g, ''); // strip leading/trailing slashes
+  const withoutMediaPrefix = trimmed.replace(/^media\/?/, ''); // "media/beacon/photos" -> "beacon/photos"
+
+  return withoutMediaPrefix
+    ? `media-source://media_source/local/${withoutMediaPrefix}`
+    : 'media-source://media_source/local';
+}
+
+/**
+ * Resolves a browsable media_content_id to a playable/signed URL suitable
+ * for an <img src>. browse_media only returns metadata — the actual
+ * (possibly auth-signed) URL comes from resolve_media.
+ */
+async function resolveImageUrl(mediaContentId: string): Promise<string | null> {
+  try {
+    const resolved = await haFetch(
+      `/api/media_source/resolve_media?media_content_id=${encodeURIComponent(mediaContentId)}`,
+    ) as { url?: string } | null;
+
+    if (!resolved?.url) return null;
+
+    // resolve_media normally returns a relative, signed path
+    // (e.g. "/api/media_source/local/...?authSig=..."); absolute URLs are
+    // passed through as-is.
+    return /^https?:\/\//.test(resolved.url)
+      ? resolved.url
+      : `${getHaBaseUrl()}${resolved.url}`;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Browses a media_content_id and resolves every image child to a
+ * displayable URL.
+ */
+async function fetchPhotosFrom(
+  mediaContentId: string,
+  source: 'ha_media' | 'local',
+): Promise<Photo[]> {
+  if (!hasToken()) return [];
 
   try {
-    const baseUrl = HA_URL.replace(/\/$/, '');
-    const response = await fetch(
-      `${baseUrl}/api/media_source/browse_media`,
-      {
-        headers: {
-          Authorization: `Bearer ${HA_TOKEN}`,
-          'Content-Type': 'application/json',
-        },
-      },
+    const data = await haFetch(
+      `/api/media_source/browse_media?media_content_id=${encodeURIComponent(mediaContentId)}`,
+    ) as {
+      children?: Array<{
+        media_content_id: string;
+        title: string;
+        media_content_type: string;
+      }>;
+    };
+
+    const children = data?.children || [];
+    const imageChildren = children.filter((item) => item.media_content_type?.startsWith('image'));
+
+    const resolved = await Promise.all(
+      imageChildren.map(async (item) => ({
+        url: await resolveImageUrl(item.media_content_id),
+        caption: item.title as string | undefined,
+        source,
+      })),
     );
 
-    if (!response.ok) return [];
-
-    const data = await response.json();
-    const children: Array<{
-      media_content_id: string;
-      title: string;
-      media_content_type: string;
-      thumbnail?: string;
-    }> = data.children || [];
-
-    return children
-      .filter((item) => item.media_content_type?.startsWith('image'))
-      .map((item) => ({
-        url: `${baseUrl}/api/media_source/local/${item.media_content_id}`,
-        caption: item.title,
-        source: 'ha_media' as const,
-      }));
+    const photos: Photo[] = [];
+    for (const item of resolved) {
+      if (item.url) photos.push({ url: item.url, caption: item.caption, source: item.source });
+    }
+    return photos;
   } catch {
-    console.warn('Beacon: Failed to fetch HA media photos');
+    console.warn(`Beacon: Failed to fetch photos from ${mediaContentId}`);
     return [];
   }
 }
 
 /**
- * Fetches photos from a local directory served by HA.
+ * Fetches photos from HA media browser API (root of local media).
  */
-async function fetchLocalPhotos(): Promise<Photo[]> {
-  if (!HA_TOKEN) return [];
+function fetchHAMediaPhotos(): Promise<Photo[]> {
+  return fetchPhotosFrom('media-source://media_source/local', 'ha_media');
+}
 
-  try {
-    const baseUrl = HA_URL.replace(/\/$/, '');
-    const response = await fetch(
-      `${baseUrl}/api/media_source/browse_media?media_content_id=${encodeURIComponent(PHOTOS_PATH)}`,
-      {
-        headers: {
-          Authorization: `Bearer ${HA_TOKEN}`,
-          'Content-Type': 'application/json',
-        },
-      },
-    );
-
-    if (!response.ok) return [];
-
-    const data = await response.json();
-    const children: Array<{
-      media_content_id: string;
-      title: string;
-      media_content_type: string;
-    }> = data.children || [];
-
-    return children
-      .filter((item) => item.media_content_type?.startsWith('image'))
-      .map((item) => ({
-        url: `${baseUrl}/api/media_source/local/${item.media_content_id}`,
-        caption: item.title,
-        source: 'local' as const,
-      }));
-  } catch {
-    console.warn('Beacon: Failed to fetch local photos');
-    return [];
-  }
+/**
+ * Fetches photos from the configured local photo directory.
+ */
+function fetchLocalPhotos(): Promise<Photo[]> {
+  return fetchPhotosFrom(toMediaContentId(PHOTOS_PATH), 'local');
 }
 
 /**
