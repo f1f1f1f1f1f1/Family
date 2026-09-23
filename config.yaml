@@ -2,7 +2,7 @@ name: Beacon
 version: "1.36.01"
 slug: beacon
 description: "Family command center for wall-mounted displays"
-url: "https://github.com/asachs01/beacon"
+url: "https://github.com/f1f1f1f1f1f1/Family"
 arch:
   - amd64
   - aarch64
