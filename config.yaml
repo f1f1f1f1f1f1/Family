@@ -1,6 +1,6 @@
-name: Beacon
+name: Family
 version: "1.45.1"
-slug: beacon
+slug: family
 description: "Family command center for wall-mounted displays"
 url: "https://github.com/f1f1f1f1f1f1/Family"
 arch:
