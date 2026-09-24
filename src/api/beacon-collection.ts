@@ -1,0 +1,176 @@
+/**
+ * Client for the server-side atomic collection API (/beacon-collection/*).
+ *
+ * Unlike beacon-store.ts's whole-blob loadData/saveData, additions,
+ * updates and deletes here are performed BY THE SERVER against its own
+ * on-disk copy, serialized per collection — so two devices editing
+ * concurrently can no longer silently clobber each other's changes the
+ * way a client-side fetch-modify-save-the-whole-array pattern could.
+ *
+ * In standalone/dev mode (no add-on server), falls back to the same
+ * read-modify-write pattern against localStorage directly — there's only
+ * one "device" in that context, so the race this API exists to prevent
+ * doesn't apply there.
+ */
+
+import { isAddOn } from '../utils/ha-env';
+
+interface HasId {
+  id?: string;
+}
+
+function getIngressBasePath(): string {
+  return window.location.pathname.replace(/\/$/, '');
+}
+
+function readLocal<T>(name: string): T[] {
+  try {
+    const raw = localStorage.getItem(name);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) return parsed as T[];
+    }
+  } catch {
+    /* ignore */
+  }
+  return [];
+}
+
+function writeLocal<T>(name: string, items: T[]): void {
+  try {
+    localStorage.setItem(name, JSON.stringify(items));
+  } catch {
+    /* localStorage unavailable */
+  }
+}
+
+function generateId(): string {
+  return `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+/**
+ * Fetch the full collection. In add-on mode, reads from the server
+ * (the authoritative copy); the result is cached to localStorage so
+ * getCollectionSync() has something to show on the next initial render.
+ */
+export async function getCollection<T>(name: string): Promise<T[]> {
+  if (isAddOn()) {
+    try {
+      const base = getIngressBasePath();
+      const res = await fetch(`${base}/beacon-collection/${name}`);
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data)) {
+          writeLocal(name, data);
+          return data as T[];
+        }
+      }
+    } catch {
+      /* fall through to localStorage */
+    }
+  }
+  return readLocal<T>(name);
+}
+
+/** Synchronous, localStorage-only read for instant initial render. */
+export function getCollectionSync<T>(name: string): T[] {
+  return readLocal<T>(name);
+}
+
+/**
+ * Add one item. In add-on mode the server assigns the id and performs
+ * the write; the local cache is updated to match afterward so sync reads
+ * stay reasonably current.
+ */
+export async function addToCollection<T extends HasId>(
+  name: string,
+  item: Omit<T, 'id'>,
+): Promise<T> {
+  if (isAddOn()) {
+    try {
+      const base = getIngressBasePath();
+      const res = await fetch(`${base}/beacon-collection/${name}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(item),
+      });
+      if (res.ok) {
+        const created = (await res.json()) as T;
+        const cached = readLocal<T>(name);
+        cached.push(created);
+        writeLocal(name, cached);
+        return created;
+      }
+    } catch {
+      /* fall through to optimistic local add */
+    }
+  }
+  const items = readLocal<T>(name);
+  const created = { ...item, id: generateId() } as T;
+  items.push(created);
+  writeLocal(name, items);
+  return created;
+}
+
+/** Merge-patch one item by id. Returns the updated item, or null if not found. */
+export async function updateInCollection<T extends HasId>(
+  name: string,
+  id: string,
+  patch: Partial<T>,
+): Promise<T | null> {
+  if (isAddOn()) {
+    try {
+      const base = getIngressBasePath();
+      const res = await fetch(`${base}/beacon-collection/${name}/${encodeURIComponent(id)}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(patch),
+      });
+      if (res.status === 404) return null;
+      if (res.ok) {
+        const updated = (await res.json()) as T;
+        const cached = readLocal<T>(name);
+        const idx = cached.findIndex((it) => it.id === id);
+        if (idx !== -1) cached[idx] = updated;
+        else cached.push(updated);
+        writeLocal(name, cached);
+        return updated;
+      }
+    } catch {
+      /* fall through to optimistic local update */
+    }
+  }
+  const items = readLocal<T>(name);
+  const idx = items.findIndex((it) => it.id === id);
+  if (idx === -1) return null;
+  items[idx] = { ...items[idx], ...patch, id } as T;
+  writeLocal(name, items);
+  return items[idx];
+}
+
+/** Remove one item by id. Returns whether an item was actually removed. */
+export async function removeFromCollection(name: string, id: string): Promise<boolean> {
+  if (isAddOn()) {
+    try {
+      const base = getIngressBasePath();
+      const res = await fetch(`${base}/beacon-collection/${name}/${encodeURIComponent(id)}`, {
+        method: 'DELETE',
+      });
+      if (res.ok) {
+        const result = (await res.json()) as { ok?: boolean };
+        if (result.ok) {
+          const cached = readLocal<HasId>(name).filter((it) => it.id !== id);
+          writeLocal(name, cached);
+        }
+        return !!result.ok;
+      }
+    } catch {
+      /* fall through to optimistic local remove */
+    }
+  }
+  const items = readLocal<HasId>(name);
+  const filtered = items.filter((it) => it.id !== id);
+  const removed = filtered.length !== items.length;
+  if (removed) writeLocal(name, filtered);
+  return removed;
+}
