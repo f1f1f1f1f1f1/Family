@@ -1,0 +1,2143 @@
+/* ============================================================
+   Beacon — Family Calendar Display
+   Skylight-inspired light theme
+   ============================================================ */
+
+/* --- Google Fonts Import --- */
+@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Plus+Jakarta+Sans:wght@300;400;500;600;700&family=Inter:wght@300;400;500;600&display=swap');
+
+/* --- Custom Properties --- */
+:root {
+  /* These are fallback defaults — the theme hook overrides them at runtime */
+  --bg-primary: #faf9f6;
+  --bg-surface: #ffffff;
+  --bg-hover: color-mix(in srgb, var(--text-primary, #1a1a1a) 6%, var(--bg-primary, #faf9f6));
+  --bg-today: rgba(59, 130, 246, 0.04);
+  --bg-header: #ffffff;
+  --bg-sidebar: #f0eeeb;
+
+  --text-primary: #1a1a1a;
+  --text-secondary: #4b5563;  /* was #6b7280 — darker for better contrast */
+  --text-muted: #6b7280;      /* was #9ca3af — much darker for legibility */
+  --text-light: #9ca3af;
+
+  --grid-lines: #e5e5e5;
+  --border: #e5e5e5;
+  --border-subtle: #f0efec;
+  --accent: #3b82f6;
+  --shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+
+  /* These pastel/full color pairs power the family-member/calendar color
+     system (EventCard borders, timer buttons, role badges, etc). The
+     *-full values are aliased to the canonical tokens in tokens.css
+     (imported before this file in main.tsx) so there's a single source of
+     truth for each hue instead of two independently-maintained hex lists.
+     See docs/design-tokens.md. */
+  --color-blue: #bfdbfe;
+  --color-blue-full: var(--color-accent, #3b82f6);
+  --color-green: #bbf7d0;
+  --color-green-full: var(--color-success, #22c55e);
+  --color-purple: #ddd6fe;
+  --color-purple-full: var(--color-cat-lavender, #8b5cf6);
+  --color-orange: #fed7aa;
+  --color-orange-full: var(--color-cat-coral, #f97316);
+  /* Rose (#ec4899) was cut from the palette (least distinguishable from
+     Coral) — this legacy token now points at Coral, the nearest surviving
+     hue, instead of a dead/cut color. See docs/design-tokens.md. */
+  --color-pink: #fed7aa;
+  --color-pink-full: var(--color-cat-coral, #f97316);
+  --color-teal: #99f6e4;
+  --color-teal-full: var(--color-cat-teal, #14b8a6);
+
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 20px;
+  --radius-pill: 9999px;
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.04);
+  --shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.08);
+  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.12);
+
+  --transition: 200ms ease;
+
+  --font-display: 'Fraunces', -apple-system, BlinkMacSystemFont, serif;
+  --font-body: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+
+  --header-height: 64px;
+  --time-axis-width: 64px;
+  --hour-height: 72px;
+}
+
+/* --- Reset --- */
+*,
+*::before,
+*::after {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html, body, #root {
+  height: 100%;
+  overflow: hidden;
+}
+
+body {
+  font-family: var(--font-body);
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+button {
+  font-family: inherit;
+  cursor: pointer;
+  border: none;
+  background: none;
+  color: inherit;
+  font-size: inherit;
+}
+
+input, select, textarea {
+  font-family: inherit;
+  font-size: inherit;
+}
+
+/* Global focus-visible styles for keyboard accessibility */
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: 2px solid var(--accent, #3b82f6);
+  outline-offset: 2px;
+}
+
+/* Remove outline for mouse/touch */
+button:focus:not(:focus-visible),
+a:focus:not(:focus-visible) {
+  outline: none;
+}
+
+/* --- Sidebar width variable --- */
+:root {
+  --sidebar-width: 64px;
+}
+
+/* --- Main Layout (sidebar + content grid) --- */
+.beacon {
+  height: 100vh;
+  display: grid;
+  overflow: hidden;
+  background: var(--bg-primary);
+}
+
+/* Sidebar LEFT (default) */
+.beacon--sidebar-left {
+  grid-template-columns: var(--sidebar-width) 1fr;
+}
+
+.beacon--sidebar-left .beacon-main {
+  grid-column: 2;
+}
+
+.beacon--sidebar-left .sidebar {
+  grid-column: 1;
+  border-right: 1px solid var(--border-subtle);
+  border-left: none;
+}
+
+/* Sidebar RIGHT */
+.beacon--sidebar-right {
+  grid-template-columns: 1fr var(--sidebar-width);
+}
+
+.beacon--sidebar-right .beacon-main {
+  grid-column: 1;
+}
+
+.beacon--sidebar-right .sidebar {
+  grid-column: 2;
+  border-left: 1px solid var(--border-subtle);
+  border-right: none;
+}
+
+/* Sidebar BOTTOM */
+.beacon--sidebar-bottom {
+  grid-template-columns: 1fr;
+  padding-bottom: var(--mobile-tab-bar-height, 72px);
+}
+
+.beacon--sidebar-bottom .beacon-main {
+  grid-column: 1;
+}
+
+.beacon--sidebar-bottom .mobile-tab-bar {
+  display: flex;
+}
+
+.beacon-main {
+  display: flex;
+  flex-direction: column;
+  overflow: clip;
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  position: relative;
+  background: var(--bg-primary);
+  /* Prevent iOS WebView from showing content behind this container */
+  isolation: isolate;
+}
+
+/* The calendar body fills the remaining space */
+.beacon-body {
+  flex: 1;
+  min-height: 0;
+}
+
+/* Ensure views take full height even on mobile */
+.beacon-main > .settings-view,
+.beacon-main > .grocery-view,
+.beacon-main > .music-view,
+.beacon-main > .dashboard,
+.beacon-main > .photo-frame {
+  flex: 1;
+  min-height: 0;
+}
+
+/* Smooth view transitions */
+.beacon-main > * {
+  animation: view-enter 250ms ease both;
+}
+
+@keyframes view-enter {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* --- Sidebar --- */
+.sidebar {
+  grid-row: 1 / -1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  background: var(--bg-sidebar, #f0eeeb);
+  padding: 12px 0;
+  height: 100vh;
+  z-index: 15;
+  overflow-y: auto;
+  overflow-x: hidden;
+  /* Hide the scrollbar visually while keeping it scrollable — this is a
+     slim icon rail, a visible scrollbar track looks out of place, but on
+     short screens (small kiosk displays, split-screen, etc.) there needs
+     to be some way to reach icons that don't fit in the viewport height. */
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* older Edge/IE */
+}
+
+.sidebar::-webkit-scrollbar {
+  display: none; /* Chrome, Safari, WebView (incl. the HA companion app) */
+}
+
+.sidebar-logo {
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 16px;
+  flex-shrink: 0;
+}
+
+.sidebar-logo img {
+  width: 32px;
+  height: auto;
+}
+
+.sidebar-nav-group {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+  padding: 0 8px;
+}
+
+.sidebar-nav-group--bottom {
+  margin-top: auto;
+}
+
+.sidebar-divider {
+  width: 32px;
+  height: 1px;
+  background: var(--border);
+  margin: 12px 0;
+  flex-shrink: 0;
+}
+
+.sidebar-icon {
+  width: 44px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-md);
+  color: var(--text-muted);
+  transition: all var(--transition);
+  position: relative;
+  flex-shrink: 0;
+}
+
+.sidebar-icon:hover {
+  background: color-mix(in srgb, var(--accent, #3b82f6) 12%, transparent);
+  color: var(--text-primary);
+}
+
+.sidebar-icon--active {
+  background: color-mix(in srgb, var(--accent, #3b82f6) 15%, transparent);
+  color: var(--accent, #3b82f6);
+}
+
+.sidebar-icon--active::before {
+  content: '';
+  position: absolute;
+  top: 8px;
+  bottom: 8px;
+  width: 3px;
+  background: var(--color-blue-full);
+}
+
+/* Active indicator on the correct edge based on sidebar position */
+.beacon--sidebar-left .sidebar-icon--active::before {
+  right: -8px;
+  left: auto;
+  border-radius: 3px 0 0 3px;
+}
+
+.beacon--sidebar-right .sidebar-icon--active::before {
+  left: -8px;
+  right: auto;
+  border-radius: 0 3px 3px 0;
+}
+
+/* --- Filter Bar (above calendar) --- */
+.filter-bar {
+  padding: 8px 16px 0;
+  flex-shrink: 0;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+
+.filter-bar::-webkit-scrollbar {
+  display: none;
+}
+
+
+/* --- Header (simplified — nav moved to sidebar) --- */
+.beacon-header {
+  flex-shrink: 0;
+  height: var(--header-height);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 24px;
+  background: var(--bg-surface);
+  border-bottom: 1px solid var(--border-subtle);
+  z-index: 10;
+}
+
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.header-family-name {
+  font-family: var(--font-display);
+  font-size: 1.35rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  letter-spacing: -0.3px;
+}
+
+.header-date {
+  font-size: 0.9rem;
+  font-weight: 400;
+  color: var(--text-secondary);
+}
+
+.header-separator {
+  width: 1px;
+  height: 24px;
+  background: var(--border);
+}
+
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+/* --- Tiny Clock --- */
+.clock-mini {
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+  min-width: 72px;
+  text-align: right;
+}
+
+/* --- Family Filter (Header Pills) --- */
+.family-filter {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: nowrap;
+}
+
+.filter-pill {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  border-radius: var(--radius-pill);
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  transition: all var(--transition);
+  min-height: 36px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.filter-pill:hover {
+  background: var(--bg-hover);
+}
+
+.filter-pill--active {
+  background: var(--bg-surface);
+  border-color: var(--border);
+  box-shadow: var(--shadow-sm);
+}
+
+.filter-pill--hidden {
+  opacity: 0.35;
+  background: transparent;
+}
+
+.filter-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  transition: all var(--transition);
+}
+
+.filter-name {
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.filter-pill--hidden .filter-name {
+  color: var(--text-muted);
+}
+
+/* --- Calendar Body --- */
+.beacon-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  padding: 16px 16px 0;
+  position: relative;
+}
+
+/* --- Two-column layout (calendar + sidebar) --- */
+.beacon-body--two-col {
+  flex-direction: row;
+  gap: 0;
+}
+
+.beacon-body--two-col .beacon-body-calendar {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.calendar-sidebar {
+  width: 280px;
+  flex-shrink: 0;
+  border-left: 1px solid var(--border-subtle);
+  padding: 16px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.cal-sidebar-heading {
+  font-family: var(--font-display);
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+  margin-bottom: 10px;
+}
+
+.cal-sidebar-section {
+  display: flex;
+  flex-direction: column;
+}
+
+.cal-sidebar-empty {
+  font-size: 0.85rem;
+  color: var(--text-light);
+}
+
+.cal-sidebar-events {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.cal-sidebar-event {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.cal-sidebar-event-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-top: 5px;
+  flex-shrink: 0;
+}
+
+.cal-sidebar-event-info {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.cal-sidebar-event-title {
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cal-sidebar-event-time {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.cal-sidebar-todos {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.cal-sidebar-todo {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.cal-sidebar-todo-check {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  display: flex;
+  align-items: center;
+}
+
+.cal-sidebar-todo-label {
+  font-size: 0.85rem;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* --- Week Calendar --- */
+.week-calendar {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--bg-surface);
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+
+/* --- Week navigation header (prev/next/today + label + ±4w jumps) --- */
+.week-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border-subtle);
+  background: var(--bg-surface);
+  flex-shrink: 0;
+}
+
+.week-nav-controls,
+.week-nav-jump {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.week-nav-btn,
+.week-nav-jump-btn,
+.week-nav-today {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 32px;
+  height: 32px;
+  padding: 0 10px;
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  border-radius: var(--radius-sm);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background var(--transition), border-color var(--transition);
+  font-family: inherit;
+}
+
+.week-nav-btn {
+  font-size: 18px;
+  line-height: 1;
+}
+
+.week-nav-btn:hover,
+.week-nav-jump-btn:hover,
+.week-nav-today:not(:disabled):hover {
+  background: var(--bg-hover);
+  border-color: var(--border);
+}
+
+.week-nav-today--active,
+.week-nav-today:disabled {
+  background: transparent;
+  color: var(--text-muted);
+  cursor: default;
+  border-color: var(--border-subtle);
+}
+
+.week-nav-label {
+  font-family: var(--font-display, inherit);
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-primary);
+  letter-spacing: 0.01em;
+  text-align: center;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (max-width: 480px) {
+  .week-nav {
+    padding: 8px 10px;
+    gap: 6px;
+  }
+  .week-nav-label { font-size: 13px; }
+  .week-nav-jump { display: none; }
+}
+
+/* --- Expanded event highlight --- */
+.event-block--expanded {
+  box-shadow: 0 0 0 2px var(--accent, #3b82f6), var(--shadow-md);
+  z-index: 6;
+}
+
+/* --- Event details popover (inline expansion) --- */
+.event-details-popover {
+  z-index: 9000;
+  background: var(--bg-surface, #fff);
+  border-radius: var(--radius-md, 12px);
+  box-shadow: var(--shadow-lg, 0 10px 30px rgba(0, 0, 0, 0.18));
+  border: 1px solid var(--border-subtle);
+  display: flex;
+  overflow: hidden;
+  max-height: calc(100vh - 32px);
+  animation: event-details-popover-in 120ms ease-out;
+}
+
+@keyframes event-details-popover-in {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.event-details-popover-stripe {
+  width: 4px;
+  flex-shrink: 0;
+}
+
+.event-details-popover-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  padding: 14px 16px 12px;
+  gap: 10px;
+  min-width: 0;
+  overflow-y: auto;
+}
+
+.event-details-popover-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.event-details-popover-title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.3;
+  color: var(--text-primary);
+  word-break: break-word;
+}
+
+.event-details-popover-close {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 4px;
+  border-radius: var(--radius-sm);
+}
+
+.event-details-popover-close:hover {
+  color: var(--text-primary);
+  background: var(--bg-hover);
+}
+
+.event-details-popover-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.event-details-popover-time {
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.event-details-popover-calendar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.event-details-popover-calendar-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.event-details-popover-recurrence {
+  font-size: 12px;
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.event-details-popover-description {
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-primary);
+  white-space: pre-wrap;
+  word-break: break-word;
+  border-top: 1px solid var(--border-subtle);
+  padding-top: 10px;
+}
+
+.event-details-popover-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 2px;
+}
+
+.event-details-popover-btn {
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  padding: 6px 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: background var(--transition), border-color var(--transition);
+}
+
+.event-details-popover-btn:hover {
+  background: var(--bg-hover);
+}
+
+.event-details-popover-btn--primary {
+  background: var(--accent, #3b82f6);
+  border-color: var(--accent, #3b82f6);
+  color: #fff;
+}
+
+.event-details-popover-btn--primary:hover {
+  background: var(--accent-hover, #2563eb);
+  border-color: var(--accent-hover, #2563eb);
+}
+
+/* Column Headers */
+.week-calendar-header {
+  display: grid;
+  grid-template-columns: var(--time-axis-width) repeat(7, 1fr);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.week-header-spacer {
+  /* Empty cell above the time axis */
+}
+
+.week-header-day {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 12px 4px;
+  border-left: 1px solid var(--border-subtle);
+}
+
+.week-header-day--today {
+  background: var(--bg-today);
+}
+
+.week-header-day-name {
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--text-muted);
+}
+
+.week-header-day-number {
+  font-family: var(--font-display);
+  font-size: 1.5rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  margin-top: 2px;
+}
+
+.week-header-day--today .week-header-day-number {
+  background: var(--color-blue-full);
+  color: #ffffff;
+}
+
+.week-header-day--today .week-header-day-name {
+  color: var(--color-blue-full);
+}
+
+/* Weather indicator in day header */
+.week-header-weather {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  margin-top: 2px;
+  font-size: 11px;
+  color: var(--text-muted);
+  line-height: 1;
+}
+
+.week-header-weather-icon {
+  font-size: 12px;
+}
+
+.week-header-weather-temps {
+  font-family: var(--font-body);
+  font-weight: 400;
+  white-space: nowrap;
+}
+
+/* All-day Events Row */
+.week-allday-row {
+  display: grid;
+  grid-template-columns: var(--time-axis-width) repeat(7, 1fr);
+  min-height: 0;
+  flex-shrink: 0;
+}
+
+.week-allday-label {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding-right: 8px;
+  font-size: 0.65rem;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-muted);
+}
+
+.week-allday-cell {
+  border-left: 1px solid var(--border-subtle);
+  padding: 4px 2px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-height: 32px;
+  overflow: hidden;
+  min-width: 0; /* prevent event content from expanding the grid cell */
+}
+
+.week-allday-cell--today {
+  background: var(--bg-today);
+}
+
+/* Time Grid */
+.week-grid-scroll {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+
+.week-grid-scroll::-webkit-scrollbar {
+  width: 4px;
+}
+
+.week-grid-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.week-grid-scroll::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 2px;
+}
+
+.week-time-grid {
+  display: grid;
+  grid-template-columns: var(--time-axis-width) repeat(7, 1fr);
+  position: relative;
+}
+
+/* Time Axis Labels */
+.week-time-slot {
+  grid-column: 1;
+  height: var(--hour-height);
+  display: flex;
+  align-items: flex-start;
+  justify-content: flex-end;
+  padding-right: 8px;
+  padding-top: 0;
+  transform: translateY(-8px);
+}
+
+.week-time-label {
+  font-size: 0.7rem;
+  font-weight: 500;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
+/* Day Columns */
+.week-day-column {
+  position: relative;
+  border-left: 1px solid var(--border-subtle);
+}
+
+.week-day-column--today {
+  background: var(--bg-today);
+}
+
+.week-hour-cell {
+  height: var(--hour-height);
+  border-bottom: 1px solid var(--border-subtle);
+  position: relative;
+}
+
+.week-hour-cell::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  border-bottom: 1px dashed var(--border-subtle);
+}
+
+/* Clickable empty hour cell */
+.week-hour-cell-btn {
+  position: absolute;
+  inset: 0;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  z-index: 0;
+  border-radius: 0;
+  padding: 0;
+  min-height: 0;
+}
+
+.week-hour-cell-btn:hover {
+  background: rgba(59, 130, 246, 0.03);
+}
+
+/* --- Event Block --- */
+.event-block {
+  position: absolute;
+  left: 2px;
+  width: calc(100% - 4px);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  cursor: pointer;
+  transition: box-shadow var(--transition), transform var(--transition);
+  z-index: 1;
+  display: flex;
+  min-height: 22px;
+  border: 1px solid #fff;
+  text-align: left;
+  padding: 0;
+}
+
+.event-block:hover {
+  box-shadow: var(--shadow-md);
+  transform: scale(1.01);
+  z-index: 5;
+}
+
+.event-block:active {
+  transform: scale(0.99);
+}
+
+/* Events that have already ended are muted so upcoming ones stand out */
+.event-block--past {
+  opacity: 0.55;
+  filter: grayscale(0.6);
+}
+
+.event-block-stripe {
+  width: 3px;
+  flex-shrink: 0;
+}
+
+.event-block-content {
+  flex: 1;
+  padding: 4px 6px;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.event-block-title {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: rgba(0, 0, 0, 0.85);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  overflow-wrap: break-word;
+  line-height: 1.3;
+}
+
+.event-block-time {
+  font-size: 0.65rem;
+  font-weight: 400;
+  color: rgba(0, 0, 0, 0.5);
+  line-height: 1.2;
+}
+
+.event-block-location {
+  font-size: 0.65rem;
+  font-weight: 400;
+  color: rgba(0, 0, 0, 0.55);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1.2;
+}
+
+/* All-day event blocks */
+.event-block--allday {
+  position: relative;
+  left: auto;
+  right: auto;
+  border-radius: 6px;
+  min-height: 22px;
+  max-width: 100%;
+  overflow: hidden;
+}
+
+.event-block--allday .event-block-content {
+  padding: 2px 6px;
+}
+
+.event-block--allday .event-block-title {
+  font-size: 0.7rem;
+}
+
+/* --- All-day section wrapper --- */
+.week-allday-section {
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+/* Multi-day wrapper uses same grid as allday row */
+.week-allday-multiday-wrapper {
+  display: grid;
+  grid-template-columns: var(--time-axis-width) 1fr;
+}
+
+.week-allday-multiday-spacer {
+  /* Empty cell matching time-axis width */
+}
+
+/* --- Multi-day spanning bars --- */
+.week-allday-spans {
+  position: relative;
+}
+
+.event-block--multiday {
+  position: absolute;
+  height: 24px;
+  border-radius: 6px;
+  overflow: hidden;
+  cursor: pointer;
+  border: none;
+  background: transparent;
+  padding: 0;
+  text-align: left;
+  z-index: 2;
+  transition: box-shadow var(--transition);
+}
+
+.event-block--multiday:hover {
+  box-shadow: var(--shadow-md);
+  z-index: 5;
+}
+
+.event-block-inner--multiday {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.event-block-inner--multiday .event-block-content {
+  padding: 2px 8px;
+  display: flex;
+  align-items: center;
+}
+
+.event-block-inner--multiday .event-block-title {
+  font-size: 0.7rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* --- Draggable events --- */
+.event-block--draggable {
+  cursor: grab;
+}
+
+.event-block--draggable:active {
+  cursor: grabbing;
+  opacity: 0.7;
+}
+
+/* --- Drop target highlight --- */
+.week-hour-cell-btn--drop-target {
+  background: color-mix(in srgb, var(--accent, #3b82f6) 10%, transparent) !important;
+  outline: 2px dashed var(--accent, #3b82f6);
+  outline-offset: -2px;
+  border-radius: 4px;
+}
+
+/* --- Drag ghost preview --- */
+.drag-ghost-preview {
+  position: absolute;
+  inset: 2px;
+  background: color-mix(in srgb, var(--accent, #3b82f6) 15%, transparent);
+  border: 1px dashed var(--accent, #3b82f6);
+  border-radius: var(--radius-sm);
+  display: flex;
+  align-items: flex-start;
+  padding: 4px 8px;
+  pointer-events: none;
+  z-index: 3;
+}
+
+.drag-ghost-title {
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--accent, #3b82f6);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* --- Current Time Indicator --- */
+.current-time-line {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: var(--color-error, #ef4444);
+  z-index: 10;
+  pointer-events: none;
+}
+
+.current-time-line::before {
+  content: '';
+  position: absolute;
+  left: -4px;
+  top: -3px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--color-error, #ef4444);
+}
+
+/* --- FAB (Add Event) --- */
+.btn--fab {
+  position: absolute;
+  bottom: 24px;
+}
+
+/* FAB position depends on sidebar side -- default right */
+.beacon--sidebar-left .btn--fab,
+.beacon--sidebar-bottom .btn--fab {
+  right: 24px;
+}
+
+.beacon--sidebar-right .btn--fab {
+  right: 24px;
+}
+
+.btn--fab {
+  right: 24px;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: var(--color-blue-full);
+  color: white;
+  font-size: 1.8rem;
+  font-weight: 300;
+  box-shadow: var(--shadow-lg);
+  transition: all var(--transition);
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+
+.btn--fab:hover {
+  background: #2563eb;
+  transform: scale(1.08);
+  box-shadow: 0 12px 32px rgba(59, 130, 246, 0.3);
+}
+
+.btn--fab:active {
+  transform: scale(0.95);
+}
+
+/* --- Connection Status --- */
+.connection-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.connection-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  /* "Connecting" pending state — deliberately var(--color-warning), NOT brand
+     gold, so this transient status dot is never visually identical to the
+     Beacon logo mark. See docs/design-tokens.md. */
+  background: var(--color-warning, #d97706);
+  animation: pulse 2s infinite;
+}
+
+/* --- Demo Badge --- */
+.demo-badge {
+  position: fixed;
+  bottom: 24px;
+  left: 24px;
+  background: var(--bg-surface);
+  color: var(--text-muted);
+  font-size: 0.65rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  padding: 6px 12px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-sm);
+  z-index: 50;
+}
+
+/* --- Modal --- */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.25);
+  backdrop-filter: blur(8px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+  animation: fade-in 150ms ease;
+}
+
+.modal {
+  background: var(--bg-surface);
+  border-radius: var(--radius-xl);
+  width: 90%;
+  max-width: 480px;
+  max-height: 90vh;
+  overflow-y: auto;
+  box-shadow: var(--shadow-lg);
+  animation: slide-up 200ms ease;
+}
+
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 24px 24px 0;
+}
+
+.modal-title {
+  font-family: var(--font-display);
+  font-size: 1.2rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.modal-close {
+  width: 44px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  font-size: 1.1rem;
+  color: var(--text-muted);
+  transition: all var(--transition);
+}
+
+.modal-close:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.modal-body {
+  padding: 20px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.modal-error {
+  margin: 0 24px;
+  padding: 10px 12px;
+  border-radius: var(--radius-md, 8px);
+  background: rgba(220, 38, 38, 0.1);
+  border: 1px solid rgba(220, 38, 38, 0.35);
+  color: #dc2626;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.modal-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 24px;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.modal-footer-right {
+  display: flex;
+  gap: 8px;
+  margin-left: auto;
+}
+
+/* --- Form Elements --- */
+.form-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.form-field--toggle {
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.form-row {
+  display: flex;
+  gap: 12px;
+}
+
+.form-row .form-field {
+  flex: 1;
+}
+
+.form-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.form-input,
+.form-select,
+.form-textarea {
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+  color: var(--text-primary);
+  font-size: 1rem;
+  transition: border-color var(--transition), box-shadow var(--transition);
+  min-height: 44px;
+}
+
+.form-input:focus,
+.form-select:focus,
+.form-textarea:focus {
+  outline: none;
+  border-color: var(--color-blue-full);
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.form-select {
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%239ca3af' fill='none' stroke-width='2'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  padding-right: 36px;
+}
+
+.form-textarea {
+  resize: vertical;
+  min-height: 80px;
+}
+
+/* --- Toggle --- */
+.toggle {
+  width: 48px;
+  height: 26px;
+  border-radius: 13px;
+  background: var(--border);
+  border: none;
+  position: relative;
+  transition: all var(--transition);
+  flex-shrink: 0;
+}
+
+.toggle--on {
+  background: var(--color-blue-full);
+}
+
+.toggle-knob {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: white;
+  box-shadow: var(--shadow-sm);
+  transition: transform var(--transition);
+}
+
+.toggle--on .toggle-knob {
+  transform: translateX(22px);
+}
+
+/* --- Buttons --- */
+.btn {
+  padding: 10px 20px;
+  border-radius: var(--radius-sm);
+  font-weight: 600;
+  font-size: 0.9rem;
+  transition: all var(--transition);
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.btn--primary {
+  background: var(--color-blue-full);
+  color: white;
+  border-radius: var(--radius-md);
+}
+
+.btn--primary:hover {
+  background: #2563eb;
+}
+
+.btn--secondary {
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+
+.btn--secondary:hover {
+  background: var(--bg-hover);
+}
+
+.btn--danger {
+  background: transparent;
+  color: var(--color-error, #ef4444);
+}
+
+.btn--danger:hover {
+  background: color-mix(in srgb, var(--color-error, #ef4444) 6%, transparent);
+}
+
+/* --- Animations --- */
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes slide-up {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+/* --- Responsive: Tablet landscape 1024x768 (primary target) --- */
+@media (max-width: 1100px) {
+  :root {
+    --header-height: 56px;
+    --time-axis-width: 52px;
+    --hour-height: 64px;
+  }
+
+  .header-family-name {
+    font-size: 1.15rem;
+  }
+
+  .week-header-day-number {
+    font-size: 1.3rem;
+    width: 36px;
+    height: 36px;
+  }
+
+  .event-block-title {
+    font-size: 0.7rem;
+  }
+
+  .event-block-time {
+    font-size: 0.6rem;
+  }
+}
+
+/* ============================================================
+   Mobile Tab Bar (bottom navigation)
+   ============================================================ */
+
+/* Hide mobile tab bar on desktop */
+.mobile-tab-bar {
+  display: none;
+}
+
+/* Hide mobile calendar nav on desktop */
+.week-mobile-nav {
+  display: none;
+}
+
+/* ============================================================
+   Responsive: Tablets < 768px
+   ============================================================ */
+@media (max-width: 768px) {
+  :root {
+    --time-axis-width: 44px;
+    --hour-height: 56px;
+    --sidebar-width: 0px;
+    --mobile-tab-bar-height: 72px;
+  }
+
+  /* --- Layout: remove sidebar column, add bottom padding for tab bar --- */
+  .beacon {
+    grid-template-columns: 1fr !important;
+    padding-bottom: var(--mobile-tab-bar-height);
+  }
+
+  .beacon .beacon-main,
+  .beacon--sidebar-left .beacon-main,
+  .beacon--sidebar-right .beacon-main {
+    grid-column: 1 !important;
+  }
+
+  /* Hide calendar sidebar on mobile — content is on dashboard */
+  .calendar-sidebar {
+    display: none;
+  }
+
+  .beacon-body--two-col {
+    flex-direction: column;
+  }
+
+  /* Hide desktop sidebar on mobile — show bottom tab bar instead */
+  .sidebar--desktop {
+    display: none !important;
+  }
+
+  /* --- Show mobile bottom tab bar --- */
+  .mobile-tab-bar {
+    display: flex;
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: var(--mobile-tab-bar-height);
+    background: var(--bg-surface, #ffffff);
+    border-top: 1px solid var(--border, #e5e5e5);
+    box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.08);
+    z-index: 90;
+    align-items: stretch;
+    justify-content: space-around;
+    padding: 8px 4px 0;
+    padding-bottom: max(12px, env(safe-area-inset-bottom, 12px));
+  }
+
+  .mobile-tab {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    min-width: 56px;
+    min-height: 48px;
+    padding: 6px 8px;
+    border-radius: var(--radius-sm);
+    color: var(--text-muted);
+    transition: color var(--transition);
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .mobile-tab--active {
+    color: var(--accent, #3b82f6);
+    position: relative;
+  }
+
+  .mobile-tab--active::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 24px;
+    height: 3px;
+    border-radius: 0 0 3px 3px;
+    background: var(--accent, #3b82f6);
+  }
+
+  .mobile-tab-label {
+    font-size: 0.6rem;
+    font-weight: 600;
+    letter-spacing: 0.2px;
+  }
+
+  /* --- Mobile overflow menu --- */
+  .mobile-more-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.25);
+    z-index: 99;
+  }
+
+  .mobile-more-menu {
+    position: fixed;
+    bottom: var(--mobile-tab-bar-height);
+    left: 0;
+    right: 0;
+    background: var(--bg-surface);
+    border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+    box-shadow: var(--shadow-lg);
+    z-index: 100;
+    padding: 8px 0 16px;
+    padding-bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+    animation: slide-up 200ms ease;
+  }
+
+  .mobile-more-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 20px 12px;
+  }
+
+  .mobile-more-title {
+    font-family: var(--font-display);
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: var(--text-primary);
+  }
+
+  .mobile-more-close {
+    width: 44px;
+    height: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    color: var(--text-muted);
+    transition: all var(--transition);
+  }
+
+  .mobile-more-close:hover {
+    background: var(--bg-hover);
+    color: var(--text-primary);
+  }
+
+  .mobile-more-item {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    width: 100%;
+    padding: 14px 24px;
+    font-size: 0.95rem;
+    font-weight: 500;
+    color: var(--text-primary);
+    min-height: 48px;
+    transition: background var(--transition);
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .mobile-more-item:hover,
+  .mobile-more-item:active {
+    background: var(--bg-hover);
+  }
+
+  .mobile-more-item--active {
+    color: var(--accent, #3b82f6);
+  }
+
+  .mobile-more-theme {
+    padding: 8px 24px 0;
+  }
+
+  /* --- Header: simplified on mobile --- */
+  .beacon-header {
+    padding: 0 12px;
+    height: 48px;
+  }
+
+  .header-separator {
+    display: none;
+  }
+
+  .header-date {
+    display: none;
+  }
+
+  .clock-mini {
+    display: none;
+  }
+
+  .header-family-name {
+    font-size: 1.1rem;
+  }
+
+  /* --- Calendar body spacing --- */
+  .beacon-body {
+    padding: 8px 8px 0;
+  }
+
+  .filter-bar {
+    padding: 6px 8px 0;
+  }
+
+  .filter-name {
+    font-size: 0.7rem;
+  }
+
+  .filter-pill {
+    padding: 4px 10px;
+    min-height: 32px;
+  }
+
+  /* --- Calendar header --- */
+  .week-header-day-name {
+    font-size: 0.6rem;
+  }
+
+  .week-header-day-number {
+    font-size: 1.1rem;
+    width: 32px;
+    height: 32px;
+  }
+
+  .week-header-day {
+    padding: 8px 2px;
+  }
+
+  .week-header-weather-temps {
+    display: none;
+  }
+
+  .week-header-weather {
+    font-size: 10px;
+  }
+
+  /* --- Mobile 3-day calendar navigation --- */
+  .week-mobile-nav {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    padding: 6px 8px 2px;
+    flex-shrink: 0;
+  }
+
+  .week-mobile-nav-btn {
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    font-size: 1.2rem;
+    color: var(--text-secondary);
+    transition: all var(--transition);
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .week-mobile-nav-btn:hover {
+    background: var(--bg-hover);
+  }
+
+  .week-mobile-nav-btn:disabled {
+    color: var(--text-light);
+    pointer-events: none;
+  }
+
+  .week-mobile-dots {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+  }
+
+  .week-mobile-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--border);
+    transition: all var(--transition);
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .week-mobile-dot--active {
+    background: var(--accent, #3b82f6);
+    width: 20px;
+    border-radius: 4px;
+  }
+
+  /* Calendar header/grid now use inline gridTemplateColumns from React */
+
+  /* --- Event blocks: larger touch targets --- */
+  .event-block {
+    min-height: 32px;
+  }
+
+  .event-block-time {
+    display: none;
+  }
+
+  .event-block-location {
+    display: none;
+  }
+
+  .event-block-title {
+    font-size: 0.7rem;
+  }
+
+  .event-block-content {
+    padding: 6px 8px;
+  }
+
+  /* --- FAB repositioned above tab bar --- */
+  .btn--fab {
+    width: 52px;
+    height: 52px;
+    bottom: calc(var(--mobile-tab-bar-height) + 16px);
+    right: 16px;
+    font-size: 1.5rem;
+  }
+
+  /* --- Modals: full-screen on mobile --- */
+  .modal-overlay {
+    align-items: flex-end;
+  }
+
+  .modal {
+    width: 100%;
+    max-width: 100%;
+    max-height: 95vh;
+    border-radius: var(--radius-xl) var(--radius-xl) 0 0;
+    animation: slide-up 250ms ease;
+  }
+
+  /* --- Slide panels: full-width from bottom --- */
+  .slide-panel {
+    top: auto;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    width: 100%;
+    max-height: 90vh;
+    border-radius: var(--radius-xl) var(--radius-xl) 0 0;
+    transform: translateY(100%);
+  }
+
+  .slide-panel--open {
+    transform: translateY(0);
+  }
+
+  /* --- Timer panel: full-width from bottom on mobile --- */
+  .timer-panel {
+    top: auto;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    width: 100%;
+    height: auto;
+    max-height: 80vh;
+    border-radius: var(--radius-xl) var(--radius-xl) 0 0;
+    border-right: none;
+    transform: translateY(100%);
+  }
+
+  .timer-panel--open {
+    transform: translateY(0);
+  }
+
+  /* --- Demo badge above tab bar --- */
+  .demo-badge {
+    bottom: calc(var(--mobile-tab-bar-height) + 12px);
+    left: 12px;
+  }
+
+  /* --- Grocery drawer adjustments --- */
+  .grocery-drawer {
+    bottom: var(--mobile-tab-bar-height);
+  }
+
+  /* --- Now playing bar: fixed above tab bar on mobile --- */
+  .now-playing-bar {
+    position: fixed;
+    bottom: var(--mobile-tab-bar-height);
+    left: 0;
+    right: 0;
+    z-index: 80;
+    margin-bottom: 0;
+    border-radius: 0;
+  }
+}
+
+/* ============================================================
+   Responsive: Phones < 480px
+   ============================================================ */
+@media (max-width: 480px) {
+  :root {
+    --time-axis-width: 36px;
+    --hour-height: 52px;
+  }
+
+  .header-family-name {
+    font-size: 1rem;
+  }
+
+  .beacon-header {
+    padding: 0 8px;
+    height: 44px;
+  }
+
+  .beacon-body {
+    padding: 4px 4px 0;
+  }
+
+  .filter-bar {
+    padding: 4px 4px 0;
+  }
+
+  .filter-pill {
+    padding: 4px 6px;
+  }
+
+  .week-header-day-name {
+    font-size: 0.55rem;
+    letter-spacing: 0.5px;
+  }
+
+  .week-header-day-number {
+    font-size: 1rem;
+    width: 28px;
+    height: 28px;
+  }
+
+  .week-header-day {
+    padding: 6px 1px;
+  }
+
+  .week-time-label {
+    font-size: 0.6rem;
+  }
+
+  .event-block-title {
+    font-size: 0.65rem;
+  }
+
+  .event-block-content {
+    padding: 4px 6px;
+  }
+
+  .btn--fab {
+    width: 48px;
+    height: 48px;
+    bottom: calc(var(--mobile-tab-bar-height) + 12px);
+    right: 12px;
+  }
+
+  /* Tighter modal padding */
+  .modal-header {
+    padding: 16px 16px 0;
+  }
+
+  .modal-body {
+    padding: 16px;
+  }
+
+  .modal-footer {
+    padding: 12px 16px;
+  }
+
+  /* Mobile tab bar slightly shorter */
+  .mobile-tab-bar {
+    height: 56px;
+  }
+
+  .mobile-tab {
+    min-width: 48px;
+    padding: 4px 6px;
+  }
+
+  .mobile-tab-label {
+    font-size: 0.55rem;
+  }
+}
+
+/* --- HA Ingress mode --- */
+/* Beacon sidebar should show alongside HA's sidebar.
+   The ingress iframe already gets the space after HA's sidebar,
+   so Beacon's sidebar just needs to be slightly narrower. */
+.beacon--ingress {
+  --sidebar-width: 52px;
+}
+
+.beacon--ingress.beacon--sidebar-left {
+  grid-template-columns: 52px 1fr;
+}
+
+.beacon--ingress.beacon--sidebar-right {
+  grid-template-columns: 1fr 52px;
+}
+
+/* On very narrow viewports in ingress (phone), switch to bottom tabs */
+/* compact sidebar hiding is handled via inline style in component */
+
+.beacon--compact {
+  grid-template-columns: 1fr !important;
+  --sidebar-width: 0px;
+  padding-bottom: var(--mobile-tab-bar-height, 72px);
+}
+
+.beacon--compact .mobile-tab-bar {
+  display: flex;
+}
+
+/* ============================================================
+   Accessibility: Reduced Motion
+   ============================================================ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
