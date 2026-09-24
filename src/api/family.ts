@@ -1,0 +1,265 @@
+import {
+  FamilyMember,
+  Chore,
+  ChoreCompletion,
+  Streak,
+  Routine,
+  RoutineTaskCompletion,
+} from '../types/family';
+import {
+  getCollection,
+  getCollectionSync,
+  addToCollection,
+  updateInCollection,
+  removeFromCollection,
+} from './beacon-collection';
+import { localDayKey } from './date-keys';
+
+const STORAGE_KEYS = {
+  members: 'beacon_family_members',
+  chores: 'beacon_chores',
+  completions: 'beacon_completions',
+  streaks: 'beacon_streaks',
+  routines: 'beacon_routines',
+  routine_completions: 'beacon_routine_completions',
+} as const;
+
+/**
+ * Family data store.
+ *
+ * Members, chores, routines and completions are stored as atomic
+ * collections (see beacon-collection.ts / server.js's
+ * /beacon-collection/* API): every add/update/delete is performed BY
+ * THE SERVER against its own on-disk copy, one at a time per collection.
+ * This is what actually prevents two devices editing concurrently from
+ * silently overwriting each other's changes — a client-side
+ * fetch-the-whole-array-modify-save pattern can't guarantee that no
+ * matter how reliably each individual write is delivered, since the
+ * "modify" step might be starting from an already-stale copy.
+ *
+ * Streaks are naturally one-record-per-member, so they're stored the
+ * same way with member_id doubling as the record's id.
+ *
+ * Sync reads (getMembersSync, getChoresSync, ...) still come from a
+ * localStorage cache that's kept reasonably up to date by the async
+ * calls, purely so the UI has something to show before the first fetch
+ * completes.
+ */
+export class FamilyStore {
+  // --- Members ---
+
+  async getMembers(): Promise<FamilyMember[]> {
+    return getCollection<FamilyMember>(STORAGE_KEYS.members);
+  }
+
+  getMembersSync(): FamilyMember[] {
+    return getCollectionSync<FamilyMember>(STORAGE_KEYS.members);
+  }
+
+  async addMember(member: Omit<FamilyMember, 'id'>): Promise<FamilyMember> {
+    return addToCollection<FamilyMember>(STORAGE_KEYS.members, member);
+  }
+
+  async updateMember(id: string, data: Partial<Omit<FamilyMember, 'id'>>): Promise<FamilyMember | null> {
+    return updateInCollection<FamilyMember>(STORAGE_KEYS.members, id, data);
+  }
+
+  async removeMember(id: string): Promise<boolean> {
+    return removeFromCollection(STORAGE_KEYS.members, id);
+  }
+
+  // --- Chores ---
+
+  async getChores(): Promise<Chore[]> {
+    return getCollection<Chore>(STORAGE_KEYS.chores);
+  }
+
+  getChoresSync(): Chore[] {
+    return getCollectionSync<Chore>(STORAGE_KEYS.chores);
+  }
+
+  async addChore(chore: Omit<Chore, 'id'>): Promise<Chore> {
+    return addToCollection<Chore>(STORAGE_KEYS.chores, chore);
+  }
+
+  async updateChore(id: string, data: Partial<Omit<Chore, 'id'>>): Promise<Chore | null> {
+    return updateInCollection<Chore>(STORAGE_KEYS.chores, id, data);
+  }
+
+  async removeChore(id: string): Promise<boolean> {
+    return removeFromCollection(STORAGE_KEYS.chores, id);
+  }
+
+  // --- Completions ---
+
+  async getCompletions(): Promise<ChoreCompletion[]> {
+    return getCollection<ChoreCompletion>(STORAGE_KEYS.completions);
+  }
+
+  getCompletionsSync(): ChoreCompletion[] {
+    return getCollectionSync<ChoreCompletion>(STORAGE_KEYS.completions);
+  }
+
+  async getCompletionsToday(): Promise<ChoreCompletion[]> {
+    const today = localDayKey();
+    const completions = await this.getCompletions();
+    return completions.filter(
+      (c) => localDayKey(c.completed_at) === today
+    );
+  }
+
+  async getCompletionsForPeriod(startDate: string, endDate: string): Promise<ChoreCompletion[]> {
+    const completions = await this.getCompletions();
+    return completions.filter((c) => {
+      const date = localDayKey(c.completed_at);
+      return date >= startDate && date <= endDate;
+    });
+  }
+
+  async completeChore(choreId: string, memberId: string, verifiedBy?: string): Promise<ChoreCompletion> {
+    const today = localDayKey();
+    const completions = await this.getCompletions();
+    const existing = completions.find(
+      (c) =>
+        c.chore_id === choreId &&
+        c.member_id === memberId &&
+        localDayKey(c.completed_at) === today
+    );
+    if (existing) return existing;
+
+    const completion = await addToCollection<ChoreCompletion>(STORAGE_KEYS.completions, {
+      chore_id: choreId,
+      member_id: memberId,
+      completed_at: new Date().toISOString(),
+      verified_by: verifiedBy,
+    });
+
+    // Update streaks
+    await this.updateStreakForMember(memberId);
+
+    return completion;
+  }
+
+  async uncompleteChore(choreId: string, memberId: string): Promise<boolean> {
+    const today = localDayKey();
+    const completions = await this.getCompletions();
+    const match = completions.find(
+      (c) =>
+        c.chore_id === choreId &&
+        c.member_id === memberId &&
+        localDayKey(c.completed_at) === today
+    );
+    if (!match?.id) return false;
+    return removeFromCollection(STORAGE_KEYS.completions, match.id);
+  }
+
+  // --- Streaks ---
+  // One record per member; member_id doubles as the collection item's id.
+
+  async getStreaks(): Promise<Streak[]> {
+    return getCollection<Streak>(STORAGE_KEYS.streaks);
+  }
+
+  async getStreakForMember(memberId: string): Promise<Streak> {
+    const streaks = await this.getStreaks();
+    const existing = streaks.find((s) => s.member_id === memberId);
+    return existing ?? { member_id: memberId, current: 0, longest: 0, last_completed: '' };
+  }
+
+  private async updateStreakForMember(memberId: string): Promise<void> {
+    const streaks = await this.getStreaks();
+    const today = localDayKey();
+    const yesterday = localDayKey(Date.now() - 86400000);
+
+    const existing = streaks.find((s) => s.member_id === memberId);
+    const lastDate = localDayKey(existing?.last_completed);
+
+    if (lastDate === today) {
+      // Already counted today
+      return;
+    }
+
+    const current = lastDate === yesterday ? (existing?.current ?? 0) + 1 : 1;
+    const longest = Math.max(existing?.longest ?? 0, current);
+    const patch: Streak = {
+      member_id: memberId,
+      current,
+      longest,
+      last_completed: new Date().toISOString(),
+    };
+
+    if (existing) {
+      await updateInCollection<Streak & { id?: string }>(STORAGE_KEYS.streaks, memberId, patch);
+    } else {
+      await addToCollection<Streak & { id?: string }>(STORAGE_KEYS.streaks, { ...patch, id: memberId } as Streak & { id: string });
+    }
+  }
+
+  // --- Routines ---
+
+  async getRoutines(): Promise<Routine[]> {
+    return getCollection<Routine>(STORAGE_KEYS.routines);
+  }
+
+  async getRoutinesForMember(memberId: string): Promise<Routine[]> {
+    const routines = await this.getRoutines();
+    return routines.filter((r) => r.member_id === memberId);
+  }
+
+  async updateRoutine(id: string, data: Partial<Omit<Routine, 'id'>>): Promise<Routine | null> {
+    return updateInCollection<Routine>(STORAGE_KEYS.routines, id, data);
+  }
+
+  async addRoutine(routine: Omit<Routine, 'id'>): Promise<Routine> {
+    return addToCollection<Routine>(STORAGE_KEYS.routines, routine);
+  }
+
+  async removeRoutine(id: string): Promise<boolean> {
+    return removeFromCollection(STORAGE_KEYS.routines, id);
+  }
+
+  // --- Routine task completions ---
+
+  async getRoutineTaskCompletions(): Promise<RoutineTaskCompletion[]> {
+    return getCollection<RoutineTaskCompletion>(STORAGE_KEYS.routine_completions);
+  }
+
+  async getRoutineTaskCompletionsToday(): Promise<RoutineTaskCompletion[]> {
+    const today = localDayKey();
+    const completions = await this.getRoutineTaskCompletions();
+    return completions.filter((c) => localDayKey(c.completed_at) === today);
+  }
+
+  async completeRoutineTask(routineId: string, taskId: string, memberId: string): Promise<void> {
+    const today = localDayKey();
+    const completions = await this.getRoutineTaskCompletions();
+    const exists = completions.some(
+      (c) =>
+        c.routine_id === routineId &&
+        c.task_id === taskId &&
+        c.member_id === memberId &&
+        localDayKey(c.completed_at) === today
+    );
+    if (exists) return;
+    await addToCollection<RoutineTaskCompletion>(STORAGE_KEYS.routine_completions, {
+      routine_id: routineId,
+      task_id: taskId,
+      member_id: memberId,
+      completed_at: new Date().toISOString(),
+    });
+  }
+
+  async uncompleteRoutineTask(routineId: string, taskId: string, memberId: string): Promise<boolean> {
+    const today = localDayKey();
+    const completions = await this.getRoutineTaskCompletions();
+    const match = completions.find(
+      (c) =>
+        c.routine_id === routineId &&
+        c.task_id === taskId &&
+        c.member_id === memberId &&
+        localDayKey(c.completed_at) === today
+    );
+    if (!match?.id) return false;
+    return removeFromCollection(STORAGE_KEYS.routine_completions, match.id);
+  }
+}
