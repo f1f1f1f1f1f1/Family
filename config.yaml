@@ -1,5 +1,5 @@
 name: Family
-version: "1.45.10"
+version: "1.45.11"
 slug: family
 init: false
 description: "Family command center for wall-mounted displays"
@@ -13,7 +13,7 @@ boot: auto
 ingress: true
 ingress_port: 3000
 panel_icon: mdi:calendar-clock
-panel_title: Beacon
+panel_title: Family
 homeassistant_api: true
 auth_api: true
 options:
