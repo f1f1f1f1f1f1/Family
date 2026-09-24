@@ -1,5 +1,5 @@
 name: Family
-version: "1.45.9"
+version: "1.45.10"
 slug: family
 init: false
 description: "Family command center for wall-mounted displays"
