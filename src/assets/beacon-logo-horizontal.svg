@@ -16,7 +16,7 @@
 
   <!-- Wordmark, vertically centered at y=50 (cap-height ~aligned to tower mid) -->
   <text x="76" y="58"
-        font-family="'Plus Jakarta Sans', system-ui, sans-serif"
+        font-family="'Inter', system-ui, sans-serif"
         font-size="42"
         font-weight="600"
         letter-spacing="-0.02em"

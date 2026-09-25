@@ -23,7 +23,7 @@ export const midnightLight: Theme = {
     '#99f6e4', // teal
   ],
   fonts: {
-    display: "'Fraunces', serif",
+    display: "'Inter', system-ui, -apple-system, sans-serif",
     body: "'Inter', system-ui, -apple-system, sans-serif",
     mono: "'JetBrains Mono', 'SF Mono', 'Fira Code', monospace",
   },

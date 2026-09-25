@@ -23,7 +23,7 @@ export const nord: Theme = {
     '#88C0D0', // nord cyan (frost)
   ],
   fonts: {
-    display: "'Fraunces', serif",
+    display: "'Inter', system-ui, -apple-system, sans-serif",
     body: "'Inter', system-ui, -apple-system, sans-serif",
     mono: "'JetBrains Mono', 'SF Mono', 'Fira Code', monospace",
   },

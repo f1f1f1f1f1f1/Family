@@ -1,7 +1,7 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 48" fill="none">
   <!-- Wordmark -->
   <text x="0" y="36"
-        font-family="'Plus Jakarta Sans', system-ui, sans-serif"
+        font-family="'Inter', system-ui, sans-serif"
         font-size="32"
         font-weight="600"
         letter-spacing="-0.02em"

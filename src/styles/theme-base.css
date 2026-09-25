@@ -38,7 +38,7 @@
   --event-6: #99f6e4;
 
   /* Typography */
-  --font-display: 'Fraunces', serif;
+  --font-display: 'Inter', system-ui, -apple-system, sans-serif;
   --font-body: 'Inter', system-ui, -apple-system, sans-serif;
   --font-mono: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
 
