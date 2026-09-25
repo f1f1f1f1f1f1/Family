@@ -40,6 +40,11 @@ export function RoutineCard({ routine, label, interactive, isTaskCompleted, onTo
           </span>
         )}
       </header>
+      {!interactive && label && (
+        // Previews of a later routine can't be ticked yet; say so, so the
+        // faded card doesn't look broken.
+        <p className="focus-card-note">You can tick these off {label.toLowerCase()}.</p>
+      )}
       <ul className="focus-checklist">
         {tasks.map((task) => {
           const done = isTaskCompleted(task.id);
