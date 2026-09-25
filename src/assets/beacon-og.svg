@@ -24,7 +24,7 @@
 
   <!-- Wordmark -->
   <text x="600" y="345"
-        font-family="'Plus Jakarta Sans', system-ui, sans-serif"
+        font-family="'Inter', system-ui, sans-serif"
         font-size="110"
         font-weight="600"
         letter-spacing="-0.02em"
