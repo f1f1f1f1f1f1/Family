@@ -38,6 +38,8 @@ export interface BeaconSettings {
   shoppingEntity: string;
   hideLocalGroceryList: boolean;
   hideLocalTaskList: boolean;
+  /** Ask HA to hide its top bar and sidebar while Family is open (add-on only) */
+  hideHaHeader: boolean;
   musicDefaultPlayer: string;
   photoDirectory: string;
   photoInterval: number;
@@ -103,6 +105,7 @@ function buildDefaults(): BeaconSettings {
     shoppingEntity: '',
     hideLocalGroceryList: false,
     hideLocalTaskList: false,
+    hideHaHeader: false,
     musicDefaultPlayer: '',
     photoDirectory: config.photo_directory,
     photoInterval: config.photo_interval,

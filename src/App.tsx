@@ -37,6 +37,7 @@ import { FocusView } from './components/focus/FocusView';
 import { getFocusMemberId, clearFocusMode, setDeviceFocusMember } from './focus';
 import { CalendarEvent, resolveCalendarColor } from './types';
 import { getConfig, patchConfig } from './config';
+import { setHaKioskMode } from './utils/ha-kiosk';
 
 const config = getConfig();
 
@@ -141,6 +142,10 @@ export function App() {
   useEffect(() => {
     setTheme(settings.themeId);
   }, [settings.themeId, setTheme]);
+
+  useEffect(() => {
+    setHaKioskMode(settings.hideHaHeader);
+  }, [settings.hideHaHeader]);
 
   // Calendar-view visibility state. Seeded from the Settings-level
   // permanentlyHiddenCalendars list (source of truth) so calendars disabled

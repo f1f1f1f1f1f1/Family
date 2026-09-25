@@ -25,6 +25,7 @@ import {
 } from '../types/family';
 import type { BeaconSettings } from '../hooks/useSettings';
 import { buildFocusUrl } from '../focus';
+import { exitToHomeAssistant, isInHaPanel } from '../utils/ha-kiosk';
 import { useRoutines } from '../hooks/useRoutines';
 import { resolveCalendarColor, CALENDAR_COLOR_PRESETS } from '../types';
 
@@ -431,6 +432,31 @@ export function SettingsView({
             <option value="photos">Photos</option>
           </select>
         </div>
+        {isInHaPanel() && (
+          <>
+            <div className="settings-row">
+              <div>
+                <div className="settings-row-label">Hide Home Assistant Header</div>
+                <div className="settings-row-sublabel">
+                  Hide Home Assistant's top bar and sidebar while Family is open. Needs Home Assistant 2026.1 or later.
+                </div>
+              </div>
+              <Toggle
+                checked={settings.hideHaHeader}
+                onChange={(v) => onUpdateSettings({ hideHaHeader: v })}
+              />
+            </div>
+            <div className="settings-row">
+              <div>
+                <div className="settings-row-label">Open Home Assistant</div>
+                <div className="settings-row-sublabel">Leave Family and go to your Home Assistant dashboard</div>
+              </div>
+              <button type="button" className="settings-btn" onClick={exitToHomeAssistant}>
+                Open
+              </button>
+            </div>
+          </>
+        )}
         <div className="settings-row">
           <div className="settings-row-label">Time Format</div>
           <Segment
