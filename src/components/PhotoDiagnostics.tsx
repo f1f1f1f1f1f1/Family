@@ -10,7 +10,32 @@ import { useEffect, useState, type RefObject } from 'react';
 interface Props {
   frameRef: RefObject<HTMLDivElement | null>;
   photoUrl?: string;
+  testPattern: boolean;
+  onToggleTestPattern: () => void;
   onClose: () => void;
+}
+
+/**
+ * A test image of the given size: white circles on blue, coloured bands on
+ * each edge (red top, blue bottom, green left, yellow right) and a red dot
+ * at its exact centre. Shown in place of the photo to check where the
+ * centre of an image lands on screen.
+ */
+export function testPatternUrl(w = 1448, h = 1930): string {
+  const step = Math.round(Math.min(w, h) / 7);
+  let circles = '';
+  for (let x = step / 2; x < w; x += step) {
+    for (let y = step / 2; y < h; y += step) {
+      circles += `<circle cx="${x}" cy="${y}" r="${step * 0.3}" fill="none" stroke="#fff" stroke-width="6"/>`;
+    }
+  }
+  const band = Math.round(Math.min(w, h) * 0.04);
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">`
+    + `<rect width="${w}" height="${h}" fill="#2a6f97"/>${circles}`
+    + `<rect width="${w}" height="${band}" fill="#d62828"/><rect y="${h - band}" width="${w}" height="${band}" fill="#1d4ed8"/>`
+    + `<rect width="${band}" height="${h}" fill="#2a9d3a"/><rect x="${w - band}" width="${band}" height="${h}" fill="#f2c200"/>`
+    + `<circle cx="${w / 2}" cy="${h / 2}" r="${step * 0.45}" fill="#e63946"/></svg>`;
+  return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
 }
 
 const size = (w?: number, h?: number) =>
@@ -22,6 +47,8 @@ function rectText(r?: DOMRect | null): string {
 }
 
 function measure(frame: HTMLDivElement | null, photo?: { w: number; h: number }): [string, string][] {
+  const image = frame?.querySelector<HTMLElement>('.photo-frame-image') ?? null;
+  const imageStyle = image ? getComputedStyle(image) : null;
   const vv = window.visualViewport;
   const rootStyle = getComputedStyle(document.documentElement);
   const safe = ['top', 'right', 'bottom', 'left']
@@ -56,6 +83,9 @@ function measure(frame: HTMLDivElement | null, photo?: { w: number; h: number })
     ['Family viewport', size(window.innerWidth, window.innerHeight)],
     ['Family visual viewport', vv ? `${size(vv.width, vv.height)} offset ${Math.round(vv.offsetTop)}, ${Math.round(vv.offsetLeft)}` : '—'],
     ['Photo area', rectText(frame?.getBoundingClientRect())],
+    ['Photo layer', rectText(image?.getBoundingClientRect())],
+    ['Photo sizing', imageStyle ? `${imageStyle.backgroundSize} at ${imageStyle.backgroundPosition}` : '—'],
+    ['Page scroll', `${Math.round(window.scrollX)}, ${Math.round(window.scrollY)} (body ${document.body.scrollTop}, root ${document.documentElement.scrollTop})`],
     ['Photo', photo ? size(photo.w, photo.h) : 'loading…'],
     ['HA page viewport', parentViewport],
     ['HA visual viewport', parentVisual],
@@ -68,7 +98,7 @@ function measure(frame: HTMLDivElement | null, photo?: { w: number; h: number })
   ];
 }
 
-export function PhotoDiagnostics({ frameRef, photoUrl, onClose }: Props) {
+export function PhotoDiagnostics({ frameRef, photoUrl, testPattern, onToggleTestPattern, onClose }: Props) {
   const [photo, setPhoto] = useState<{ w: number; h: number }>();
   const [rows, setRows] = useState<[string, string][]>([]);
 
@@ -92,19 +122,29 @@ export function PhotoDiagnostics({ frameRef, photoUrl, onClose }: Props) {
   }, [frameRef, photo]);
 
   return (
-    <div className="photo-diagnostics" onClick={(e) => e.stopPropagation()}>
+    <>
+      {/* Crosshair at the exact centre of the screen */}
+      <div className="photo-diagnostics-crosshair" aria-hidden="true" />
+      <div className="photo-diagnostics" onClick={(e) => e.stopPropagation()}>
       <div className="photo-diagnostics-header">
         <strong>Photo diagnostics</strong>
         <button type="button" onClick={onClose} aria-label="Close diagnostics">✕</button>
       </div>
-      <dl>
-        {rows.map(([label, value]) => (
-          <div key={label}>
-            <dt>{label}</dt>
-            <dd>{value}</dd>
-          </div>
-        ))}
-      </dl>
-    </div>
+      <button type="button" className="photo-diagnostics-pattern" onClick={onToggleTestPattern}>
+        {testPattern ? 'Show photo' : 'Show test pattern'}
+      </button>
+      {/* Collapsed while the test pattern shows, so the screen centre stays visible */}
+      {!testPattern && (
+        <dl>
+          {rows.map(([label, value]) => (
+            <div key={label}>
+              <dt>{label}</dt>
+              <dd>{value}</dd>
+            </div>
+          ))}
+        </dl>
+      )}
+      </div>
+    </>
   );
 }

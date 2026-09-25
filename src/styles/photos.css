@@ -350,3 +350,51 @@
   flex: 1;
   word-break: break-word;
 }
+
+.photo-diagnostics-pattern {
+  width: 100%;
+  margin-bottom: 8px;
+  padding: 8px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.15);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+/* Exact centre of the screen, for comparing with the photo's centre */
+.photo-diagnostics-crosshair {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 36px;
+  height: 36px;
+  margin: -18px 0 0 -18px;
+  border: 2px solid #00ff66;
+  border-radius: 50%;
+  z-index: 12;
+  pointer-events: none;
+}
+
+.photo-diagnostics-crosshair::before,
+.photo-diagnostics-crosshair::after {
+  content: '';
+  position: absolute;
+  background: #00ff66;
+}
+
+.photo-diagnostics-crosshair::before {
+  top: 50%;
+  left: -14px;
+  right: -14px;
+  height: 2px;
+  margin-top: -1px;
+}
+
+.photo-diagnostics-crosshair::after {
+  left: 50%;
+  top: -14px;
+  bottom: -14px;
+  width: 2px;
+  margin-left: -1px;
+}
