@@ -38,6 +38,20 @@ const MIME_TYPES = {
 // Ensure data directory exists
 try { fs.mkdirSync(DATA_DIR, { recursive: true }); } catch { /* ignore */ }
 
+/**
+ * Caching for the built app. Vite puts a content hash in every file name
+ * under /assets, so those never change and can be cached for a year — a
+ * new build references new names. Everything else (index.html, the
+ * runtime-config.js written at startup, icons, manifest) is revalidated
+ * on each load with its ETag, which costs a tiny 304 when unchanged.
+ * Compression isn't done here: HA's ingress proxy compresses responses
+ * on the way to the browser.
+ */
+function cacheControlFor(filePath) {
+  const rel = path.relative(DIST, filePath).split(path.sep).join('/');
+  return rel.startsWith('assets/') ? 'public, max-age=31536000, immutable' : 'no-cache';
+}
+
 async function serveStatic(req, res) {
   const urlPath = req.url.split('?')[0];
   let filePath = path.join(DIST, urlPath === '/' ? '/index.html' : urlPath);
@@ -50,18 +64,35 @@ async function serveStatic(req, res) {
     return;
   }
 
+  let stat;
   try {
-    await fsp.stat(filePath);
+    stat = await fsp.stat(filePath);
+    if (stat.isDirectory()) throw new Error('directory');
   } catch {
     filePath = path.join(DIST, 'index.html');
+    stat = await fsp.stat(filePath).catch(() => null);
   }
 
   const ext = path.extname(filePath);
   const contentType = MIME_TYPES[ext] || 'application/octet-stream';
+  const headers = { 'Content-Type': contentType, 'Cache-Control': cacheControlFor(filePath) };
+
+  // Weak validator from size + mtime: changes whenever a new build is
+  // deployed or run.sh rewrites runtime-config.js / index.html at startup.
+  if (stat) {
+    const etag = `W/"${stat.size.toString(16)}-${Math.floor(stat.mtimeMs).toString(16)}"`;
+    headers.ETag = etag;
+    const ifNoneMatch = req.headers['if-none-match'];
+    if (ifNoneMatch && ifNoneMatch.split(/\s*,\s*/).includes(etag)) {
+      res.writeHead(304, headers);
+      res.end();
+      return;
+    }
+  }
 
   try {
     const data = await fsp.readFile(filePath);
-    res.writeHead(200, { 'Content-Type': contentType });
+    res.writeHead(200, headers);
     res.end(data);
   } catch {
     res.writeHead(404, { 'Content-Type': 'text/plain' });
