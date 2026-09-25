@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef } from 'react';
-import { Chore, FamilyMember, Routine } from '../types/family';
+import { Chore, FamilyMember } from '../types/family';
 import { FamilyStore, notifyFamilyDataChanged } from '../api/family';
 import { callHaService, hasToken } from '../api/ha-rest';
 import {
@@ -10,8 +10,7 @@ import {
 } from '../api/beacon-collection';
 
 /**
- * Bidirectional sync between Beacon (chores + routine tasks) and Google
- * Tasks, one list per family member (accessed through HA's `todo`
+ * Bidirectional sync between Beacon chores and Google Tasks, one list per family member (accessed through HA's `todo`
  * integration — Beacon never talks to Google's API directly).
  *
  * CHORES: each family member who has a list configured gets their own
@@ -21,28 +20,25 @@ import {
  * preserves Beacon's per-person completion tracking through a sync to a
  * system that has no concept of multiple assignees.
  *
- * ROUTINE TASKS: each task within a member's routines also gets its own
- * synced task, titled "[Routine Name] Task Name" so it's distinguishable
- * from plain chores sharing the same list. Routines only ever belong to
- * one member (Routine.member_id), so there's no multi-assignee case to
- * handle there.
+ * ROUTINES are not synced. Google Tasks subtasks aren't visible through
+ * HA's todo integration, and one task per routine step cluttered the
+ * lists. Routine tasks created by earlier versions (tracked in
+ * beacon_routine_sync_links) are removed from Google Tasks on the next
+ * pass.
  *
- * Both reset automatically with no special "daily reset" logic: Beacon's
- * own completion tracking is already date-scoped (completionsToday /
- * routine completionsToday), so once a new day starts it naturally goes
+ * Chores reset automatically with no special "daily reset" logic: Beacon's
+ * own completion tracking is already date-scoped (completionsToday), so
+ * once a new day starts it naturally goes
  * back to "not completed" on Beacon's side — the very next sync pass
  * compares that against what was last pushed to the task and un-checks
  * it, the same as any other change.
  *
  * New tasks added directly in someone's Google Tasks app are imported
- * as CHORES ONLY (assigned to that member) — there's no way to tell
- * from a bare new task whether it was meant as a one-off chore or a
- * step in some routine, so that ambiguity is resolved in favor of the
- * simpler, originally-requested behavior.
+ * as chores assigned to that member.
  *
  * Sync link records (via the atomic collection API — beacon-collection.ts
  * / server.js) track which task (by uid, within that member's list)
- * corresponds to which chore or routine task, plus the status Beacon and
+ * corresponds to which chore, plus the status Beacon and
  * the task last agreed on — that's what lets a sync pass tell a genuine
  * change apart from one it already applied.
  */
@@ -55,17 +51,15 @@ interface ChoreSyncLink {
   last_synced_status: 'needs_action' | 'completed';
 }
 
-interface RoutineSyncLink {
-  id: string; // `${routine_id}:${task_id}:${member_id}`
-  routine_id: string;
-  task_id: string;
+/** Left by versions that also synced routine tasks; only read for cleanup. */
+interface LegacyRoutineSyncLink {
+  id: string;
   member_id: string;
   uid: string;
-  last_synced_status: 'needs_action' | 'completed';
 }
 
 const LINKS_COLLECTION = 'beacon_chores_sync_links';
-const ROUTINE_LINKS_COLLECTION = 'beacon_routine_sync_links';
+const LEGACY_ROUTINE_LINKS_COLLECTION = 'beacon_routine_sync_links';
 const SYNC_MARKER_PREFIX = '[beacon-sync]';
 
 interface TodoItem {
@@ -82,14 +76,6 @@ function formatChoreTitle(chore: Chore): string {
 
 function formatChoreDescription(choreId: string, memberId: string): string {
   return `${SYNC_MARKER_PREFIX} chore_id:${choreId} member_id:${memberId}`;
-}
-
-function formatRoutineTaskTitle(routine: Routine, taskName: string): string {
-  return `[${routine.name}] ${taskName}`;
-}
-
-function formatRoutineDescription(routineId: string, taskId: string, memberId: string): string {
-  return `${SYNC_MARKER_PREFIX} routine_id:${routineId} task_id:${taskId} member_id:${memberId}`;
 }
 
 /**
@@ -124,7 +110,7 @@ function findByMarker(items: TodoItem[], marker: string): TodoItem | undefined {
   return items.find((it) => it.uid && it.description?.includes(marker));
 }
 
-/** Push/pull one (task-in-a-list) pair against its sync link. Shared logic for chores and routine tasks. */
+/** Push/pull one (task-in-a-list) pair against its sync link. */
 async function reconcileOne<T extends { id: string; uid: string; last_synced_status: 'needs_action' | 'completed' }>(
   entityId: string,
   link: T | undefined,
@@ -186,20 +172,17 @@ export function useChoresSync(
     syncingRef.current = true;
 
     try {
-      // Read chores/routines fresh every pass rather than taking them from
-      // React state: a component's copy can still be empty on mount (the
-      // first pass runs immediately), and every link missing from an empty
-      // list would be removed from Google Tasks as "deleted in Beacon".
-      const [links, routineLinks, chores, completionsToday, routines, routineCompletionsToday] = await Promise.all([
+      // Read chores fresh every pass rather than taking them from React
+      // state: a component's copy can still be empty on mount (the first
+      // pass runs immediately), and every link missing from an empty list
+      // would be removed from Google Tasks as "deleted in Beacon".
+      const [links, legacyRoutineLinks, chores, completionsToday] = await Promise.all([
         getCollection<ChoreSyncLink>(LINKS_COLLECTION),
-        getCollection<RoutineSyncLink>(ROUTINE_LINKS_COLLECTION),
+        getCollection<LegacyRoutineSyncLink>(LEGACY_ROUTINE_LINKS_COLLECTION),
         store.getChores(),
         store.getCompletionsToday(),
-        store.getRoutines(),
-        store.getRoutineTaskCompletionsToday(),
       ]);
       const linksByKey = new Map(links.map((l) => [l.id, l]));
-      const routineLinksByKey = new Map(routineLinks.map((l) => [l.id, l]));
       const knownUidsByList = new Map<string, Set<string>>();
 
       const itemsByEntity = new Map<string, TodoItem[]>();
@@ -213,7 +196,28 @@ export function useChoresSync(
           else console.warn(`Beacon: unreadable todo response for ${entityId}, skipping this sync`);
         }
       }
-      for (const l of [...links, ...routineLinks]) {
+      // Remove routine tasks created before routines stopped syncing, and
+      // drop them from this pass's item lists so they aren't imported.
+      for (const link of legacyRoutineLinks) {
+        const entityId = listByMember[link.member_id];
+        if (entityId) {
+          await callHaService('todo', 'remove_item', { entity_id: entityId, item: link.uid }).catch(() => {});
+          const items = itemsByEntity.get(entityId);
+          if (items) itemsByEntity.set(entityId, items.filter((it) => it.uid !== link.uid));
+        }
+        await removeFromCollection(LEGACY_ROUTINE_LINKS_COLLECTION, link.id);
+      }
+      // Routine tasks whose link was already lost are still recognizable by
+      // their description marker.
+      for (const [entityId, items] of itemsByEntity) {
+        const orphans = items.filter((it) => it.uid && it.description?.includes(`${SYNC_MARKER_PREFIX} routine_id:`));
+        for (const it of orphans) {
+          await callHaService('todo', 'remove_item', { entity_id: entityId, item: it.uid }).catch(() => {});
+        }
+        if (orphans.length) itemsByEntity.set(entityId, items.filter((it) => !orphans.includes(it)));
+      }
+
+      for (const l of links) {
         const entityId = listByMember[l.member_id];
         if (!entityId) continue;
         if (!knownUidsByList.has(entityId)) knownUidsByList.set(entityId, new Set());
@@ -221,11 +225,9 @@ export function useChoresSync(
       }
 
       let choresChanged = false;
-      let routinesChanged = false;
 
       // --- Pull: tasks with no known link were added directly in that
-      // member's Google Tasks app. Import as a chore assigned to them
-      // (never as a routine task — see file header for why). ---
+      // member's Google Tasks app. Import as a chore assigned to them. ---
       for (const member of activeMembers) {
         const entityId = listByMember[member.id];
         const items = itemsByEntity.get(entityId) ?? [];
@@ -320,74 +322,9 @@ export function useChoresSync(
         await removeFromCollection(LINKS_COLLECTION, link.id);
       }
 
-      // --- Reconcile every routine task for members with a synced list ---
-      const desiredRoutineKeys = new Set<string>();
-      for (const routine of routines) {
-        const entityId = listByMember[routine.member_id];
-        if (!entityId) continue;
-
-        for (const task of routine.tasks) {
-          const key = `${routine.id}:${task.id}:${routine.member_id}`;
-          desiredRoutineKeys.add(key);
-
-          const beaconStatus: 'needs_action' | 'completed' = routineCompletionsToday.some(
-            (c) => c.routine_id === routine.id && c.task_id === task.id && c.member_id === routine.member_id,
-          ) ? 'completed' : 'needs_action';
-          const link = routineLinksByKey.get(key);
-          const items = itemsByEntity.get(entityId);
-          if (!items) continue; // list unreadable this pass
-          const itemsByUid = new Map(items.filter((it) => it.uid).map((it) => [it.uid as string, it]));
-
-          if (!link) {
-            const marker = formatRoutineDescription(routine.id, task.id, routine.member_id);
-            let match = findByMarker(items, marker);
-            if (!match) {
-              await callHaService('todo', 'add_item', {
-                entity_id: entityId,
-                item: formatRoutineTaskTitle(routine, task.name),
-                description: marker,
-              });
-              const fresh = await fetchTodoItems(entityId);
-              if (fresh) {
-                itemsByEntity.set(entityId, fresh);
-                match = findByMarker(fresh, marker);
-              }
-            }
-            const known = knownUidsByList.get(entityId) ?? new Set<string>();
-            if (match?.uid) {
-              await addToCollection<RoutineSyncLink>(ROUTINE_LINKS_COLLECTION, {
-                routine_id: routine.id, task_id: task.id, member_id: routine.member_id,
-                uid: match.uid, last_synced_status: match.status,
-              });
-              known.add(match.uid);
-              knownUidsByList.set(entityId, known);
-            }
-            continue;
-          }
-
-          const { changed } = await reconcileOne(
-            entityId, link, beaconStatus, itemsByUid, ROUTINE_LINKS_COLLECTION,
-            async (status) => {
-              if (status === 'completed') await store.completeRoutineTask(routine.id, task.id, routine.member_id);
-              else await store.uncompleteRoutineTask(routine.id, task.id, routine.member_id);
-            },
-          );
-          if (changed) routinesChanged = true;
-        }
-      }
-
-      for (const link of routineLinks) {
-        if (desiredRoutineKeys.has(link.id)) continue;
-        const entityId = listByMember[link.member_id];
-        if (entityId) {
-          await callHaService('todo', 'remove_item', { entity_id: entityId, item: link.uid }).catch(() => {});
-        }
-        await removeFromCollection(ROUTINE_LINKS_COLLECTION, link.id);
-      }
-
-      if (choresChanged || routinesChanged) notifyFamilyDataChanged();
+      if (choresChanged) notifyFamilyDataChanged();
     } catch (err) {
-      console.warn('Beacon: chores/routines sync failed', err);
+      console.warn('Beacon: chores sync failed', err);
     } finally {
       syncingRef.current = false;
     }
