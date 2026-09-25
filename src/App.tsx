@@ -135,7 +135,17 @@ export function App() {
     members,
   );
 
-  const dashboardTasks = useDashboardTasks(connected, settings.groceryListIds, settings.hideLocalTaskList);
+  // Lists mirrored as chores by the Google Tasks sync already show on the
+  // Chores screen, so keep them out of the Tasks screen and dashboard.
+  const choreSyncListKey = settings.choresSyncEnabled
+    ? Object.values(settings.choresSyncListByMember).filter(Boolean).sort().join(',')
+    : '';
+  const choreSyncListIds = useMemo(
+    () => (choreSyncListKey ? choreSyncListKey.split(',') : []),
+    [choreSyncListKey],
+  );
+
+  const dashboardTasks = useDashboardTasks(connected, settings.groceryListIds, settings.hideLocalTaskList, choreSyncListIds);
 
   // Apply theme at App level so it stays active regardless of which view is shown
   const { setTheme } = useTheme();
@@ -658,9 +668,9 @@ export function App() {
             onEnterFocusMode={handleEnterFocusMode}
           />
         ) : activeView === 'grocery' ? (
-          <GroceryView defaultListId={settings.defaultGroceryList || undefined} mode="grocery" groceryListIds={settings.groceryListIds} hideLocalList={settings.hideLocalGroceryList} />
+          <GroceryView defaultListId={settings.defaultGroceryList || undefined} mode="grocery" groceryListIds={settings.groceryListIds} hideLocalList={settings.hideLocalGroceryList} hiddenListIds={choreSyncListIds} />
         ) : activeView === 'tasks' ? (
-          <GroceryView mode="tasks" groceryListIds={settings.groceryListIds} hideLocalList={settings.hideLocalTaskList} />
+          <GroceryView mode="tasks" groceryListIds={settings.groceryListIds} hideLocalList={settings.hideLocalTaskList} hiddenListIds={choreSyncListIds} />
         ) : activeView === 'timer' ? (
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', padding: 24 }}>
             <Timer />

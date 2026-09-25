@@ -39,9 +39,13 @@ interface GroceryViewProps {
   groceryListIds?: string[];
   /** When true, excludes Beacon's built-in local list (beacon-shopping / beacon-todo) from selection */
   hideLocalList?: boolean;
+  /** HA todo entity IDs never shown here (e.g. per-person chore sync lists) */
+  hiddenListIds?: string[];
 }
 
-export function GroceryView({ defaultListId, mode = 'grocery', groceryListIds = [], hideLocalList = false }: GroceryViewProps) {
+const NO_HIDDEN_LISTS: string[] = [];
+
+export function GroceryView({ defaultListId, mode = 'grocery', groceryListIds = [], hideLocalList = false, hiddenListIds = NO_HIDDEN_LISTS }: GroceryViewProps) {
   const [haLists, setHaLists] = useState<GroceryList[]>([]);
   const [selectedListId, setSelectedListId] = useState<string>(defaultListId || '');
   const [haItems, setHaItems] = useState<TodoItem[]>([]);
@@ -56,7 +60,9 @@ export function GroceryView({ defaultListId, mode = 'grocery', groceryListIds = 
 
   // Merge HA lists + local lists, then filter by mode
   const allLists = useMemo<UnifiedList[]>(() => {
-    const ha: UnifiedList[] = haLists.map(l => ({ id: l.id, name: l.name, source: 'ha' }));
+    const ha: UnifiedList[] = haLists
+      .filter(l => !hiddenListIds.includes(l.id))
+      .map(l => ({ id: l.id, name: l.name, source: 'ha' }));
     // When hideLocalList is set, drop every local-sourced list entirely —
     // including any custom ones the user may have created, not just the
     // built-in beacon-shopping / beacon-todo defaults.
@@ -87,7 +93,7 @@ export function GroceryView({ defaultListId, mode = 'grocery', groceryListIds = 
     return merged.filter(l =>
       l.id === 'beacon-todo' || (l.source === 'ha' && !isGroceryHA(l.id, l.name))
     );
-  }, [haLists, localTasks.lists, mode, defaultListId, groceryListIds, hideLocalList]);
+  }, [haLists, localTasks.lists, mode, defaultListId, groceryListIds, hideLocalList, hiddenListIds]);
 
   const selectedList = allLists.find(l => l.id === selectedListId);
   const isLocal = selectedList?.source === 'local';
