@@ -1,5 +1,5 @@
 import { useState, useCallback, useMemo, useEffect } from 'react';
-import { FamilyStore, FAMILY_DATA_CHANGED_EVENT } from '../api/family';
+import { FamilyStore, notifyFamilyDataChanged, onFamilyDataChanged } from '../api/family';
 import { Chore, ChoreCompletion, Streak, MemberEarnings } from '../types/family';
 
 export function useChores() {
@@ -22,15 +22,14 @@ export function useChores() {
 
   useEffect(() => {
     refresh();
-    const onChanged = () => void refresh();
-    window.addEventListener(FAMILY_DATA_CHANGED_EVENT, onChanged);
-    return () => window.removeEventListener(FAMILY_DATA_CHANGED_EVENT, onChanged);
-  }, [refresh]);
+    return onFamilyDataChanged(store, () => void refresh());
+  }, [refresh, store]);
 
   const addChore = useCallback(
     async (chore: Omit<Chore, 'id'>) => {
       await store.addChore(chore);
       await refresh();
+      notifyFamilyDataChanged(store);
     },
     [store, refresh]
   );
@@ -39,6 +38,7 @@ export function useChores() {
     async (id: string, data: Partial<Omit<Chore, 'id'>>) => {
       await store.updateChore(id, data);
       await refresh();
+      notifyFamilyDataChanged(store);
     },
     [store, refresh]
   );
@@ -47,6 +47,7 @@ export function useChores() {
     async (id: string) => {
       await store.removeChore(id);
       await refresh();
+      notifyFamilyDataChanged(store);
     },
     [store, refresh]
   );
@@ -55,6 +56,7 @@ export function useChores() {
     async (choreId: string, memberId: string) => {
       await store.completeChore(choreId, memberId);
       await refresh();
+      notifyFamilyDataChanged(store);
     },
     [store, refresh]
   );
@@ -63,6 +65,7 @@ export function useChores() {
     async (choreId: string, memberId: string) => {
       await store.uncompleteChore(choreId, memberId);
       await refresh();
+      notifyFamilyDataChanged(store);
     },
     [store, refresh]
   );

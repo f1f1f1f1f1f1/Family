@@ -76,27 +76,44 @@ export function loadDataSync<T>(key: string, fallback: T): T {
  */
 export async function saveData<T>(key: string, data: T): Promise<void> {
   const json = JSON.stringify(data);
+  writeLocalCache(key, json);
+  if (isAddOn()) sendToServer(`/beacon-data/${key}`, json);
+}
+
+/**
+ * Save only the changed fields of an object-valued key. The server merges
+ * `patch` into its stored copy, so fields changed meanwhile on another
+ * device are kept rather than overwritten by this device's (possibly
+ * stale) copy of the rest. `full` is this device's merged value, cached
+ * locally for the next initial render.
+ */
+export async function saveDataPatch<T extends object>(key: string, patch: Partial<T>, full: T): Promise<void> {
+  writeLocalCache(key, JSON.stringify(full));
+  if (isAddOn()) sendToServer(`/beacon-data/${key}?merge`, JSON.stringify(patch));
+}
+
+function writeLocalCache(key: string, json: string): void {
   try {
     localStorage.setItem(key, json);
   } catch {
     /* localStorage unavailable */
   }
-  if (isAddOn()) {
-    const base = getIngressBasePath();
-    const url = `${base}/beacon-data/${key}`;
-    const delivered = 'sendBeacon' in navigator
-      ? navigator.sendBeacon(url, new Blob([json], { type: 'application/json' }))
-      : false;
-    if (!delivered) {
-      // sendBeacon unsupported, or its queue was full (payload too large /
-      // too many pending beacons) — fall back to a normal fetch.
-      fetch(url, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: json,
-      }).catch(() => {
-        /* server persistence is best-effort */
-      });
-    }
+}
+
+function sendToServer(path: string, json: string): void {
+  const url = `${getIngressBasePath()}${path}`;
+  const delivered = 'sendBeacon' in navigator
+    ? navigator.sendBeacon(url, new Blob([json], { type: 'application/json' }))
+    : false;
+  if (!delivered) {
+    // sendBeacon unsupported, or its queue was full (payload too large /
+    // too many pending beacons) — fall back to a normal fetch.
+    fetch(url, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: json,
+    }).catch(() => {
+      /* server persistence is best-effort */
+    });
   }
 }

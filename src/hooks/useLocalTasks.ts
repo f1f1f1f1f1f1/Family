@@ -1,5 +1,5 @@
-import { useState, useCallback, useEffect } from 'react';
-import { loadData, loadDataSync, saveData } from '../api/beacon-store';
+import { useCallback } from 'react';
+import { useStoredData } from './useStoredData';
 
 /**
  * Built-in local task/todo list synced via beacon-store.
@@ -29,46 +29,16 @@ const DEFAULT_LISTS: LocalTaskList[] = [
   { id: 'beacon-shopping', name: 'Shopping List' },
 ];
 
+const NO_TASKS: LocalTask[] = [];
+
 export function useLocalTasks() {
-  // Initialize with localStorage data immediately
-  const [lists, setLists] = useState<LocalTaskList[]>(() =>
-    loadDataSync<LocalTaskList[]>(LISTS_KEY, DEFAULT_LISTS)
-  );
-  const [tasks, setTasks] = useState<LocalTask[]>(() =>
-    loadDataSync<LocalTask[]>(STORAGE_KEY, [])
-  );
+  const [lists, setLists, refreshLists] = useStoredData<LocalTaskList[]>(LISTS_KEY, DEFAULT_LISTS);
+  const [tasks, setTasks, refreshTasks] = useStoredData<LocalTask[]>(STORAGE_KEY, NO_TASKS);
 
   /** Re-fetch tasks and lists from server. */
   const refresh = useCallback(async () => {
-    const [serverLists, serverTasks] = await Promise.all([
-      loadData<LocalTaskList[]>(LISTS_KEY, DEFAULT_LISTS),
-      loadData<LocalTask[]>(STORAGE_KEY, []),
-    ]);
-    setLists(serverLists);
-    setTasks(serverTasks);
-  }, []);
-
-  // Fetch from server on mount
-  useEffect(() => {
-    refresh();
-  }, [refresh]);
-
-  // Re-fetch when the app becomes visible (mirror ha-entity-store pattern)
-  useEffect(() => {
-    const handleVisibilityChange = () => {
-      if (!document.hidden) {
-        void refresh();
-      }
-    };
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-    return () => {
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
-    };
-  }, [refresh]);
-
-  // Persist on change
-  useEffect(() => { saveData(LISTS_KEY, lists); }, [lists]);
-  useEffect(() => { saveData(STORAGE_KEY, tasks); }, [tasks]);
+    await Promise.all([refreshLists(), refreshTasks()]);
+  }, [refreshLists, refreshTasks]);
 
   const getTasksForList = useCallback((listId: string) => {
     return tasks.filter(t => t.listId === listId);

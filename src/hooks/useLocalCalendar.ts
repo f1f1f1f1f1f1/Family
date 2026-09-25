@@ -1,6 +1,6 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useCallback } from 'react';
 import { CalendarEvent, CalendarInfo } from '../types';
-import { loadData, loadDataSync, saveData } from '../api/beacon-store';
+import { useStoredData } from './useStoredData';
 
 /**
  * Built-in local calendar synced via beacon-store.
@@ -22,38 +22,10 @@ function withLocalCalName(events: CalendarEvent[]): CalendarEvent[] {
   return events.map((e) => (e.calendarName === LOCAL_CAL_NAME ? e : { ...e, calendarName: LOCAL_CAL_NAME }));
 }
 
+const NO_EVENTS: CalendarEvent[] = [];
+
 export function useLocalCalendar() {
-  // Initialize with localStorage data immediately
-  const [events, setEvents] = useState<CalendarEvent[]>(() =>
-    withLocalCalName(loadDataSync<CalendarEvent[]>(EVENTS_KEY, []))
-  );
-
-  /** Re-fetch events from server. */
-  const refresh = useCallback(async () => {
-    const serverEvents = await loadData<CalendarEvent[]>(EVENTS_KEY, []);
-    setEvents(withLocalCalName(serverEvents));
-  }, []);
-
-  // Fetch from server on mount
-  useEffect(() => {
-    refresh();
-  }, [refresh]);
-
-  // Re-fetch when the app becomes visible (mirror ha-entity-store pattern)
-  useEffect(() => {
-    const handleVisibilityChange = () => {
-      if (!document.hidden) {
-        void refresh();
-      }
-    };
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-    return () => {
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
-    };
-  }, [refresh]);
-
-  // Persist on change
-  useEffect(() => { saveData(EVENTS_KEY, events); }, [events]);
+  const [events, setEvents, refresh] = useStoredData<CalendarEvent[]>(EVENTS_KEY, NO_EVENTS, withLocalCalName);
 
   const getEventsInRange = useCallback((start: string, end: string): CalendarEvent[] => {
     const startDate = new Date(start);

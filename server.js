@@ -436,8 +436,25 @@ async function readCollectionArray(name) {
   }
 }
 
+/**
+ * Write a data file atomically: write a temporary file next to it, then
+ * rename it over the original. A rename is atomic on the same filesystem,
+ * so a crash or power loss mid-write leaves either the old file or the new
+ * one — never a half-written file that would parse as garbage.
+ */
+async function writeFileAtomic(filePath, contents) {
+  const tmpPath = `${filePath}.${process.pid}.${Math.random().toString(36).slice(2, 8)}.tmp`;
+  try {
+    await fsp.writeFile(tmpPath, contents, 'utf8');
+    await fsp.rename(tmpPath, filePath);
+  } catch (err) {
+    await fsp.unlink(tmpPath).catch(() => {});
+    throw err;
+  }
+}
+
 async function writeCollectionArray(name, items) {
-  await fsp.writeFile(collectionFilePath(name), JSON.stringify(items), 'utf8');
+  await writeFileAtomic(collectionFilePath(name), JSON.stringify(items));
 }
 
 function generateItemId() {
@@ -527,8 +544,12 @@ async function handleCollectionApi(req, res) {
  * PUT  /beacon-data/:key  → write JSON body to storage
  */
 async function handleDataApi(req, res) {
+  const [pathname, query = ''] = req.url.split('?');
   // Sanitize key: only allow alphanumeric, hyphens, underscores
-  const key = req.url.replace('/beacon-data/', '').replace(/[^a-zA-Z0-9_-]/g, '');
+  const key = pathname.replace('/beacon-data/', '').replace(/[^a-zA-Z0-9_-]/g, '');
+  // ?merge: shallow-merge the body object into the stored object instead
+  // of replacing it, so a client can send only the fields it changed.
+  const merge = new URLSearchParams(query).has('merge');
   if (!key) {
     res.writeHead(400, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ error: 'Missing key' }));
@@ -558,8 +579,23 @@ async function handleDataApi(req, res) {
     try {
       const bodyBuf = await collectBody(req);
       const body = (bodyBuf || '{}').toString('utf8');
-      JSON.parse(body); // validate JSON
-      await fsp.writeFile(filePath, body, 'utf8');
+      const parsed = JSON.parse(body); // validate JSON
+      if (merge && (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed))) {
+        throw new Error('merge body must be a JSON object');
+      }
+      // Same lock as the collection API: both store DATA_DIR/<key>.json.
+      await withCollectionLock(key, async () => {
+        if (!merge) {
+          await writeFileAtomic(filePath, body);
+          return;
+        }
+        let existing = {};
+        try {
+          const current = JSON.parse(await fsp.readFile(filePath, 'utf8'));
+          if (current && typeof current === 'object' && !Array.isArray(current)) existing = current;
+        } catch { /* no file yet */ }
+        await writeFileAtomic(filePath, JSON.stringify({ ...existing, ...parsed }));
+      });
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ ok: true }));
     } catch (err) {
