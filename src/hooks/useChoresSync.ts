@@ -36,6 +36,12 @@ import {
  * New tasks added directly in someone's Google Tasks app are imported
  * as chores assigned to that member.
  *
+ * Tasks carry nothing in their notes: they're matched by uid through the
+ * link records below. If a link is lost, an unlinked task with the
+ * chore's title in that member's list is adopted rather than imported as
+ * a new chore. Earlier builds wrote a "[beacon-sync] chore_id:…" tag into
+ * each task's notes; it's still recognized, and stripped on the next pass.
+ *
  * Sync link records (via the atomic collection API — beacon-collection.ts
  * / server.js) track which task (by uid, within that member's list)
  * corresponds to which chore, plus the status Beacon and
@@ -70,7 +76,8 @@ function choreLinkKey(link: Pick<ChoreSyncLink, 'chore_id' | 'member_id'>): stri
   return `${link.chore_id}:${link.member_id}`;
 }
 const LEGACY_ROUTINE_LINKS_COLLECTION = 'beacon_routine_sync_links';
-const SYNC_MARKER_PREFIX = '[beacon-sync]';
+/** Tag earlier builds wrote into task notes; no longer written. */
+const LEGACY_MARKER_PREFIX = '[beacon-sync]';
 
 interface TodoItem {
   uid?: string;
@@ -84,8 +91,18 @@ function formatChoreTitle(chore: Chore): string {
   return `${icon}${chore.name}`;
 }
 
-function formatChoreDescription(choreId: string, memberId: string): string {
-  return `${SYNC_MARKER_PREFIX} chore_id:${choreId} member_id:${memberId}`;
+function legacyChoreMarker(choreId: string, memberId: string): string {
+  return `${LEGACY_MARKER_PREFIX} chore_id:${choreId} member_id:${memberId}`;
+}
+
+/** Notes with the legacy tag line removed; null when nothing else is left. */
+function stripLegacyMarker(description: string): string | null {
+  const kept = description
+    .split('\n')
+    .filter((line) => !line.includes(LEGACY_MARKER_PREFIX))
+    .join('\n')
+    .trim();
+  return kept || null;
 }
 
 /**
@@ -115,9 +132,15 @@ async function fetchTodoItems(entityId: string, refresh = false): Promise<TodoIt
   return Array.isArray(items) ? items : null;
 }
 
-/** Find a task Beacon created, by the marker in its description. */
-function findByMarker(items: TodoItem[], marker: string): TodoItem | undefined {
-  return items.find((it) => it.uid && it.description?.includes(marker));
+/**
+ * An unlinked task in this list that belongs to the chore: one tagged
+ * for it by an earlier build, else one with the chore's title.
+ */
+function findUnlinkedTask(items: TodoItem[], known: Set<string>, chore: Chore, memberId: string): TodoItem | undefined {
+  const unlinked = items.filter((it) => it.uid && !known.has(it.uid));
+  const marker = legacyChoreMarker(chore.id, memberId);
+  return unlinked.find((it) => it.description?.includes(marker))
+    ?? unlinked.find((it) => it.summary === formatChoreTitle(chore));
 }
 
 /** Push/pull one (task-in-a-list) pair against its sync link. */
@@ -250,7 +273,7 @@ export function useChoresSync(
       // Routine tasks whose link was already lost are still recognizable by
       // their description marker.
       for (const [entityId, items] of itemsByEntity) {
-        const orphans = items.filter((it) => it.uid && it.description?.includes(`${SYNC_MARKER_PREFIX} routine_id:`));
+        const orphans = items.filter((it) => it.uid && it.description?.includes(`${LEGACY_MARKER_PREFIX} routine_id:`));
         for (const it of orphans) {
           await callHaService('todo', 'remove_item', { entity_id: entityId, item: it.uid }, false, 'chores-sync: orphaned routine task').catch(() => {});
         }
@@ -295,19 +318,36 @@ export function useChoresSync(
       if (extraLinks.length) note(`removed ${extraLinks.length} duplicate link record(s)`);
 
       let choresChanged = false;
+      const knownUids = (entityId: string) => {
+        if (!knownUidsByList.has(entityId)) knownUidsByList.set(entityId, new Set());
+        return knownUidsByList.get(entityId)!;
+      };
+
+      // Titles of chores with no link yet, per list: an unlinked task with
+      // one of these titles is adopted by the reconcile step below, not
+      // imported as a new chore.
+      const unlinkedTitles = new Map<string, Set<string>>();
+      for (const chore of chores) {
+        for (const memberId of chore.assigned_to) {
+          const entityId = listByMember[memberId];
+          if (!entityId || linksByKey.has(`${chore.id}:${memberId}`)) continue;
+          if (!unlinkedTitles.has(entityId)) unlinkedTitles.set(entityId, new Set());
+          unlinkedTitles.get(entityId)!.add(formatChoreTitle(chore));
+        }
+      }
 
       // --- Pull: tasks with no known link were added directly in that
       // member's Google Tasks app. Import as a chore assigned to them. ---
       for (const member of activeMembers) {
         const entityId = listByMember[member.id];
         const items = itemsByEntity.get(entityId) ?? [];
-        const known = knownUidsByList.get(entityId) ?? new Set<string>();
+        const known = knownUids(entityId);
 
         for (const item of items) {
           if (!item.uid || known.has(item.uid)) continue;
-          // Beacon's own task whose link was lost — re-linked below, never
-          // imported as a new chore.
-          if (item.description?.includes(SYNC_MARKER_PREFIX)) continue;
+          // Family's own task whose link was lost: adopted below.
+          if (item.description?.includes(LEGACY_MARKER_PREFIX)) continue;
+          if (unlinkedTitles.get(entityId)?.has(item.summary)) continue;
 
           const newChore = await store.addChore({
             name: item.summary,
@@ -349,22 +389,20 @@ export function useChoresSync(
           const itemsByUid = new Map(items.filter((it) => it.uid).map((it) => [it.uid as string, it]));
 
           if (!link) {
-            const marker = formatChoreDescription(chore.id, memberId);
-            let match = findByMarker(items, marker);
+            const known = knownUids(entityId);
+            let match = findUnlinkedTask(items, known, chore, memberId);
             const relinked = !!match;
             if (!match) {
               await callHaService('todo', 'add_item', {
                 entity_id: entityId,
                 item: formatChoreTitle(chore),
-                description: marker,
               });
               const fresh = await fetchTodoItems(entityId);
               if (fresh) {
                 itemsByEntity.set(entityId, fresh);
-                match = findByMarker(fresh, marker);
+                match = findUnlinkedTask(fresh, known, chore, memberId);
               }
             }
-            const known = knownUidsByList.get(entityId) ?? new Set<string>();
             if (match?.uid) {
               // Baseline 'needs_action', not the task's current status: a
               // re-found task may have been ticked in Google meanwhile, and
@@ -375,7 +413,6 @@ export function useChoresSync(
                 chore_id: chore.id, member_id: memberId, uid: match.uid, last_synced_status: 'needs_action',
               });
               known.add(match.uid);
-              knownUidsByList.set(entityId, known);
               note(`${label}: ${relinked ? 're-linked existing' : 'created'} Google task ${match.uid} (google=${match.status} family=${beaconStatus})`);
             } else {
               note(`${label}: created Google task but couldn't find it afterwards`);
@@ -387,7 +424,7 @@ export function useChoresSync(
           // left by earlier builds. Only removed while the linked task
           // exists, so the last copy is never deleted.
           if (itemsByUid.has(link.uid)) {
-            const marker = formatChoreDescription(chore.id, memberId);
+            const marker = legacyChoreMarker(chore.id, memberId);
             const dups = items.filter((it) => it.uid && it.uid !== link.uid && it.description?.includes(marker));
             for (const dup of dups) {
               note(`${label}: deleting duplicate Google task ${dup.uid}`);
@@ -395,7 +432,15 @@ export function useChoresSync(
             }
           }
 
-          const googleStatus = itemsByUid.get(link.uid)?.status ?? 'missing';
+          const linkedTask = itemsByUid.get(link.uid);
+          if (linkedTask?.description?.includes(LEGACY_MARKER_PREFIX)) {
+            note(`${label}: removing legacy tag from task notes`);
+            await callHaService('todo', 'update_item', {
+              entity_id: entityId, item: link.uid, description: stripLegacyMarker(linkedTask.description),
+            }).catch((err) => note(`${label}: couldn't clean notes: ${err instanceof Error ? err.message : String(err)}`));
+          }
+
+          const googleStatus = linkedTask?.status ?? 'missing';
           const { changed, action } = await reconcileOne(
             entityId, link, beaconStatus, itemsByUid, LINKS_COLLECTION,
             async (status) => {

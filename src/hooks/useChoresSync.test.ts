@@ -37,6 +37,7 @@ vi.mock('../api/ha-rest', () => ({
         const it = find(data.item);
         if (!it) throw new Error('item_not_found');
         if (data.status) it.status = data.status as FakeItem['status'];
+        if ('description' in data) it.description = (data.description as string | null) ?? undefined;
         return null;
       }
       case 'remove_item': {
@@ -135,6 +136,39 @@ describe('useChoresSync', () => {
     await sync();
     expect(task()[0].status).toBe('needs_action');
     expect((await store.getCompletionsToday())).toHaveLength(0);
+  });
+
+  it('writes nothing into the notes of new tasks', async () => {
+    const { task } = await setup();
+    expect(task()[0].description).toBeUndefined();
+  });
+
+  it('strips the legacy [beacon-sync] tag but keeps other notes', async () => {
+    const { chore, sync, task } = await setup();
+    task()[0].description = `Use the upstairs vacuum\n[beacon-sync] chore_id:${chore.id} member_id:kai`;
+    await sync();
+    expect(task()[0].description).toBe('Use the upstairs vacuum');
+    task()[0].description = `[beacon-sync] chore_id:${chore.id} member_id:kai`;
+    await sync();
+    expect(task()[0].description).toBeUndefined();
+  });
+
+  it('adopts the existing task by title when its link is lost', async () => {
+    const { sync, task } = await setup();
+    db.collections.set('beacon_chores_sync_links', []);
+    await sync();
+    expect(task()).toHaveLength(1);
+    expect(await store.getChores()).toHaveLength(1); // not imported as a new chore
+    expect(db.collections.get('beacon_chores_sync_links')).toHaveLength(1);
+  });
+
+  it('imports a task added in Google as a new chore', async () => {
+    const { sync, task } = await setup();
+    task().push({ uid: 'mine', summary: 'Feed the cat', status: 'needs_action' });
+    await sync();
+    const chores = await store.getChores();
+    expect(chores.map((c) => c.name).sort()).toEqual(['Feed the cat', 'Vacuum']);
+    expect(task()).toHaveLength(2);
   });
 
   it('deletes the task when the chore is deleted in Family', async () => {
