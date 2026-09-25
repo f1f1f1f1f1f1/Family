@@ -72,6 +72,7 @@ interface TodoItem {
   uid?: string;
   summary: string;
   status: 'needs_action' | 'completed';
+  description?: string;
 }
 
 function formatChoreTitle(chore: Chore): string {
@@ -91,7 +92,21 @@ function formatRoutineDescription(routineId: string, taskId: string, memberId: s
   return `${SYNC_MARKER_PREFIX} routine_id:${routineId} task_id:${taskId} member_id:${memberId}`;
 }
 
-async function fetchTodoItems(entityId: string): Promise<TodoItem[]> {
+/**
+ * Returns null (not []) when the response can't be parsed, so callers can
+ * skip that list instead of treating every linked task as deleted.
+ *
+ * `refresh` forces HA to re-poll the backing integration first. Google
+ * Tasks' coordinator only polls every 30 minutes, and get_items answers
+ * from that cache — so without this, a task checked off in the Google
+ * Tasks app stays "needs_action" from Beacon's view for up to 30 min.
+ */
+async function fetchTodoItems(entityId: string, refresh = false): Promise<TodoItem[] | null> {
+  if (refresh) {
+    await callHaService('homeassistant', 'update_entity', { entity_id: entityId }).catch((err) => {
+      console.warn(`Beacon: couldn't refresh ${entityId}, using cached items`, err);
+    });
+  }
   const result = await callHaService(
     'todo',
     'get_items',
@@ -101,7 +116,12 @@ async function fetchTodoItems(entityId: string): Promise<TodoItem[]> {
 
   const svcResponse = (result as { service_response?: Record<string, { items: TodoItem[] }> })?.service_response ?? result;
   const items = (svcResponse as Record<string, { items: TodoItem[] }>)?.[entityId]?.items;
-  return Array.isArray(items) ? items : [];
+  return Array.isArray(items) ? items : null;
+}
+
+/** Find a task Beacon created, by the marker in its description. */
+function findByMarker(items: TodoItem[], marker: string): TodoItem | undefined {
+  return items.find((it) => it.uid && it.description?.includes(marker));
 }
 
 /** Push/pull one (task-in-a-list) pair against its sync link. Shared logic for chores and routine tasks. */
@@ -184,7 +204,11 @@ export function useChoresSync(
       for (const member of activeMembers) {
         const entityId = listByMember[member.id];
         if (!itemsByEntity.has(entityId)) {
-          itemsByEntity.set(entityId, await fetchTodoItems(entityId));
+          const items = await fetchTodoItems(entityId, true);
+          // Unreadable list: leave it out entirely, so nothing below
+          // mistakes its tasks for deleted ones this pass.
+          if (items) itemsByEntity.set(entityId, items);
+          else console.warn(`Beacon: unreadable todo response for ${entityId}, skipping this sync`);
         }
       }
       for (const l of [...links, ...routineLinks]) {
@@ -207,7 +231,9 @@ export function useChoresSync(
 
         for (const item of items) {
           if (!item.uid || known.has(item.uid)) continue;
-          if (item.summary.includes(SYNC_MARKER_PREFIX)) continue;
+          // Beacon's own task whose link was lost — re-linked below, never
+          // imported as a new chore.
+          if (item.description?.includes(SYNC_MARKER_PREFIX)) continue;
 
           const newChore = await store.addChore({
             name: item.summary,
@@ -242,23 +268,29 @@ export function useChoresSync(
             (c) => c.chore_id === chore.id && c.member_id === memberId,
           ) ? 'completed' : 'needs_action';
           const link = linksByKey.get(key);
-          const items = itemsByEntity.get(entityId) ?? [];
+          const items = itemsByEntity.get(entityId);
+          if (!items) continue; // list unreadable this pass
           const itemsByUid = new Map(items.filter((it) => it.uid).map((it) => [it.uid as string, it]));
 
           if (!link) {
-            await callHaService('todo', 'add_item', {
-              entity_id: entityId,
-              item: formatChoreTitle(chore),
-              description: formatChoreDescription(chore.id, memberId),
-              status: beaconStatus,
-            });
-            const fresh = await fetchTodoItems(entityId);
-            itemsByEntity.set(entityId, fresh);
+            const marker = formatChoreDescription(chore.id, memberId);
+            let match = findByMarker(items, marker);
+            if (!match) {
+              await callHaService('todo', 'add_item', {
+                entity_id: entityId,
+                item: formatChoreTitle(chore),
+                description: marker,
+              });
+              const fresh = await fetchTodoItems(entityId);
+              if (fresh) {
+                itemsByEntity.set(entityId, fresh);
+                match = findByMarker(fresh, marker);
+              }
+            }
             const known = knownUidsByList.get(entityId) ?? new Set<string>();
-            const match = fresh.find((it) => it.summary === formatChoreTitle(chore) && it.uid && !known.has(it.uid));
             if (match?.uid) {
               await addToCollection<ChoreSyncLink>(LINKS_COLLECTION, {
-                chore_id: chore.id, member_id: memberId, uid: match.uid, last_synced_status: beaconStatus,
+                chore_id: chore.id, member_id: memberId, uid: match.uid, last_synced_status: match.status,
               });
               known.add(match.uid);
               knownUidsByList.set(entityId, known);
@@ -300,25 +332,30 @@ export function useChoresSync(
             (c) => c.routine_id === routine.id && c.task_id === task.id && c.member_id === routine.member_id,
           ) ? 'completed' : 'needs_action';
           const link = routineLinksByKey.get(key);
-          const items = itemsByEntity.get(entityId) ?? [];
+          const items = itemsByEntity.get(entityId);
+          if (!items) continue; // list unreadable this pass
           const itemsByUid = new Map(items.filter((it) => it.uid).map((it) => [it.uid as string, it]));
-          const title = formatRoutineTaskTitle(routine, task.name);
 
           if (!link) {
-            await callHaService('todo', 'add_item', {
-              entity_id: entityId,
-              item: title,
-              description: formatRoutineDescription(routine.id, task.id, routine.member_id),
-              status: beaconStatus,
-            });
-            const fresh = await fetchTodoItems(entityId);
-            itemsByEntity.set(entityId, fresh);
+            const marker = formatRoutineDescription(routine.id, task.id, routine.member_id);
+            let match = findByMarker(items, marker);
+            if (!match) {
+              await callHaService('todo', 'add_item', {
+                entity_id: entityId,
+                item: formatRoutineTaskTitle(routine, task.name),
+                description: marker,
+              });
+              const fresh = await fetchTodoItems(entityId);
+              if (fresh) {
+                itemsByEntity.set(entityId, fresh);
+                match = findByMarker(fresh, marker);
+              }
+            }
             const known = knownUidsByList.get(entityId) ?? new Set<string>();
-            const match = fresh.find((it) => it.summary === title && it.uid && !known.has(it.uid));
             if (match?.uid) {
               await addToCollection<RoutineSyncLink>(ROUTINE_LINKS_COLLECTION, {
                 routine_id: routine.id, task_id: task.id, member_id: routine.member_id,
-                uid: match.uid, last_synced_status: beaconStatus,
+                uid: match.uid, last_synced_status: match.status,
               });
               known.add(match.uid);
               knownUidsByList.set(entityId, known);
@@ -355,11 +392,17 @@ export function useChoresSync(
     }
   }, [enabled, listByMember, chores, members, completionsToday, refreshChores, routines, routineCompletionsToday, refreshRoutines, store]);
 
+  // The interval below outlives renders; calling through this ref makes
+  // each tick use the latest chores/completions instead of the ones from
+  // when the interval was created.
+  const runSyncRef = useRef(runSync);
+  runSyncRef.current = runSync;
+
   useEffect(() => {
     const hasAnyList = Object.keys(listByMember).length > 0;
     if (!enabled || !hasAnyList) return;
-    void runSync();
-    const interval = setInterval(() => void runSync(), 60_000);
+    void runSyncRef.current();
+    const interval = setInterval(() => void runSyncRef.current(), 60_000);
     return () => clearInterval(interval);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [enabled, JSON.stringify(listByMember)]);
