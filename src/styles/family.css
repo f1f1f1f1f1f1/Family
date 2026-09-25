@@ -927,7 +927,11 @@
   height: 100%;
   min-height: 0;
   padding: 24px 32px;
-  overflow: hidden;
+  /* The whole screen scrolls; member columns grow to fit their chores
+     rather than each scrolling inside a box capped to the screen height,
+     which left only two or three chores visible on short displays. */
+  overflow-x: hidden;
+  overflow-y: auto;
 }
 
 .chores-view-header {
@@ -1022,13 +1026,12 @@
      current width — no fixed breakpoint needed for the common case, and
      it adapts automatically as members are added/removed too, instead
      of needing a --member-count variable recomputed from JS. */
-  grid-template-columns: repeat(auto-fit, minmax(min(200px, 100%), 1fr));
+  /* 280px / 20px match MIN_COLUMN_WIDTH / COLUMN_GAP in ChoresView,
+     which switches to person tabs when the members don't all fit. */
+  grid-template-columns: repeat(auto-fit, minmax(min(280px, 100%), 1fr));
   gap: 20px;
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
-  overflow-x: hidden;
-  align-content: start;
+  align-items: start;
+  flex-shrink: 0;
 }
 
 .chores-member-col {
@@ -1036,17 +1039,95 @@
   flex-direction: column;
   gap: 10px;
   min-width: 0;
-  min-height: 0;
-  max-height: 100%;
   background: var(--bg-card, var(--bg-page));
   border-radius: var(--radius-lg);
   padding: 16px;
 }
 
-.chores-member-col-list {
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
+/* The column header already shows whose chores these are. */
+.chores-member-col .chore-card-left {
+  display: none;
+}
+
+.chores-member-col .chore-card-name {
+  overflow-wrap: break-word;
+  min-width: 0;
+}
+
+/* --- Person tabs (phones, short landscape displays) --- */
+.chores-person-tabs {
+  position: sticky;
+  top: -1px;
+  z-index: 1;
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  padding: 4px 0 12px;
+  margin-bottom: 4px;
+  background: var(--bg-primary);
+  flex-shrink: 0;
+}
+
+.chores-person-tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.chores-person-tab {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+  min-height: 48px;
+  padding: 6px 14px 6px 6px;
+  border-radius: 999px;
+  border: 2px solid var(--border);
+  background: var(--bg-card, var(--bg-page));
+  color: var(--text-primary);
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.chores-person-tab--active {
+  background: var(--bg-hover);
+}
+
+.chores-person-tab-count {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.chores-family-grid.chores-family-grid--single {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+/* The active tab already names the person and shows their streak. */
+.chores-family-grid--single .dash-member-header {
+  display: none;
+}
+
+/* One person fills the width: lay their chores out in as many columns
+   as fit (2 on an Echo Show 5, 1 on a phone). */
+.chores-family-grid--single .chores-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(320px, 100%), 1fr));
+  gap: 8px 12px;
+}
+
+@media (max-height: 540px) {
+  .chores-view {
+    padding: 12px 16px;
+  }
+
+  .chores-view-header {
+    margin-bottom: 10px;
+  }
+
+  .chores-member-col {
+    padding: 12px;
+  }
 }
 
 .chores-member-add-btn {
@@ -1073,28 +1154,8 @@
   border-color: var(--text-secondary);
 }
 
-/* Between the single-column phone breakpoint and full desktop width,
-   cap columns at 2 so cards stay comfortably readable on tablets rather
-   than auto-fit cramming in 3+ narrow columns. */
-@media (max-width: 1100px) and (min-width: 769px) {
-  .chores-family-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-}
-
 @media (max-width: 768px) {
   .chores-view {
     padding: 16px;
-  }
-
-  .chores-family-grid {
-    grid-template-columns: 1fr;
-    overflow-x: visible;
-    overflow-y: auto;
-  }
-
-  .chores-member-col {
-    min-height: 200px;
-    max-height: none;
   }
 }

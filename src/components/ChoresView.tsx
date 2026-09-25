@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Plus, Pencil, Trash2 } from 'lucide-react';
 import { Chore, FamilyMember, STAR_CURRENCY, formatChoreValue } from '../types/family';
 import { ChoreCard } from './ChoreCard';
@@ -6,6 +6,32 @@ import { StreakBadge } from './StreakBadge';
 import { useChores } from '../hooks/useChores';
 import { useFamily } from '../hooks/useFamily';
 import { useSettings } from '../hooks/useSettings';
+import { useMediaQuery } from '../hooks/useMediaQuery';
+
+/**
+ * Member columns are shown side by side only when every member fits in
+ * one row at a readable width (keep in sync with .chores-family-grid) and
+ * the screen is tall enough for a useful list. Otherwise — phones, short
+ * landscape displays like the Echo Show 5 (960×480), or more members than
+ * fit across — one member is shown at a time, picked from tabs.
+ */
+const MIN_COLUMN_WIDTH = 280;
+const COLUMN_GAP = 20;
+const SHORT_SCREEN_QUERY = '(max-height: 540px)';
+
+/** Width of an element's content box, kept up to date as it resizes. */
+function useContentWidth<T extends HTMLElement>() {
+  const ref = useRef<T>(null);
+  const [width, setWidth] = useState(0);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(([entry]) => setWidth(entry.contentRect.width));
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+  return [ref, width] as const;
+}
 
 const CHORE_ICONS = ['🧹', '🍽️', '🐕', '🛏️', '📚', '🗑️', '👕', '🧺', '🪥', '🚿', '🧼', '💪'];
 
@@ -168,6 +194,13 @@ export function ChoresView() {
     getMemberProgress,
   } = useChores();
 
+  const isShortScreen = useMediaQuery(SHORT_SCREEN_QUERY);
+  const [viewRef, viewWidth] = useContentWidth<HTMLDivElement>();
+  const columnsFit =
+    members.length * MIN_COLUMN_WIDTH + (members.length - 1) * COLUMN_GAP <= viewWidth;
+  const usePersonTabs = members.length > 1 && viewWidth > 0 && (isShortScreen || !columnsFit);
+  const [selectedMemberId, setSelectedMemberId] = useState<string | null>(null);
+
   const [showForm, setShowForm] = useState(false);
   const [editingChoreId, setEditingChoreId] = useState<string | null>(null);
   const [newChore, setNewChore] = useState({ ...EMPTY_CHORE_FORM });
@@ -262,8 +295,76 @@ export function ChoresView() {
     completeChore(choreId, memberId);
   };
 
+  const selectedGroup =
+    memberChoreGroups.find((g) => g.member.id === selectedMemberId) ?? memberChoreGroups[0];
+
+  const renderMemberCol = ({ member, chores: memberChores, progress, streak }: (typeof memberChoreGroups)[number]) => (
+    <section key={member.id} className="chores-member-col">
+      <div className="dash-member-header">
+        <span
+          className="dash-member-avatar"
+          style={{ backgroundColor: member.color + '22', borderColor: member.color }}
+        >
+          {member.avatar}
+        </span>
+        <span className="dash-member-name" style={{ color: member.color }}>
+          {member.name}
+        </span>
+        <StreakBadge streak={streak} size="sm" />
+      </div>
+
+      {memberChores.length > 0 && (
+        <div className="chores-progress">
+          <div className="chores-progress-bar">
+            <div
+              className="chores-progress-fill"
+              style={{
+                width: `${progress.total > 0 ? (progress.completed / progress.total) * 100 : 0}%`,
+                backgroundColor: member.color,
+              }}
+            />
+          </div>
+          <span className="chores-progress-text">
+            {progress.completed}/{progress.total}
+          </span>
+        </div>
+      )}
+
+      <div className="chores-member-col-list">
+        {memberChores.length === 0 ? (
+          <div className="chores-member-empty">No chores assigned</div>
+        ) : (
+          <div className="chores-list">
+            {memberChores.map((chore) => (
+              <ChoreCard
+                key={`${chore.id}-${member.id}`}
+                chore={chore}
+                member={member}
+                isCompleted={isChoreCompletedToday(chore.id, member.id)}
+                onComplete={() => completeChore(chore.id, member.id)}
+                onUncomplete={() => uncompleteChore(chore.id, member.id)}
+                onEdit={() => handleStartEdit(chore)}
+                onDelete={() => handleDeleteChore(chore.id)}
+                currencySymbol={settings.currencySymbol}
+              />
+            ))}
+          </div>
+        )}
+      </div>
+
+      <button
+        type="button"
+        className="chores-member-add-btn"
+        onClick={() => openAddForm(member.id)}
+      >
+        <Plus size={14} strokeWidth={2} />
+        Add chore for {member.name}
+      </button>
+    </section>
+  );
+
   return (
-    <div className="chores-view">
+    <div className="chores-view" ref={viewRef}>
       <header className="chores-view-header">
         <h1 className="chores-view-title">Chores</h1>
         {members.length > 0 && (
@@ -304,72 +405,42 @@ export function ChoresView() {
             </section>
           )}
 
-          <div className="chores-family-grid">
-          {memberChoreGroups.map(({ member, chores: memberChores, progress, streak }) => (
-            <section key={member.id} className="chores-member-col">
-              <div className="dash-member-header">
-                <span
-                  className="dash-member-avatar"
-                  style={{ backgroundColor: member.color + '22', borderColor: member.color }}
-                >
-                  {member.avatar}
-                </span>
-                <span className="dash-member-name" style={{ color: member.color }}>
-                  {member.name}
-                </span>
-                <StreakBadge streak={streak} size="sm" />
+          {usePersonTabs && selectedGroup ? (
+            <>
+              <div className="chores-person-tabs" role="tablist" aria-label="Family members">
+                {memberChoreGroups.map(({ member, progress, streak }) => (
+                  <button
+                    key={member.id}
+                    type="button"
+                    role="tab"
+                    aria-selected={member.id === selectedGroup.member.id}
+                    className={`chores-person-tab${member.id === selectedGroup.member.id ? ' chores-person-tab--active' : ''}`}
+                    style={{ borderColor: member.id === selectedGroup.member.id ? member.color : undefined }}
+                    onClick={() => setSelectedMemberId(member.id)}
+                  >
+                    <span
+                      className="dash-member-avatar"
+                      style={{ backgroundColor: member.color + '22', borderColor: member.color }}
+                    >
+                      {member.avatar}
+                    </span>
+                    <span className="chores-person-tab-name">{member.name}</span>
+                    {progress.total > 0 && (
+                      <span className="chores-person-tab-count">{progress.completed}/{progress.total}</span>
+                    )}
+                    <StreakBadge streak={streak} size="sm" />
+                  </button>
+                ))}
               </div>
-
-              {memberChores.length > 0 && (
-                <div className="chores-progress">
-                  <div className="chores-progress-bar">
-                    <div
-                      className="chores-progress-fill"
-                      style={{
-                        width: `${progress.total > 0 ? (progress.completed / progress.total) * 100 : 0}%`,
-                        backgroundColor: member.color,
-                      }}
-                    />
-                  </div>
-                  <span className="chores-progress-text">
-                    {progress.completed}/{progress.total}
-                  </span>
-                </div>
-              )}
-
-              <div className="chores-member-col-list">
-                {memberChores.length === 0 ? (
-                  <div className="chores-member-empty">No chores assigned</div>
-                ) : (
-                  <div className="chores-list">
-                    {memberChores.map((chore) => (
-                      <ChoreCard
-                        key={`${chore.id}-${member.id}`}
-                        chore={chore}
-                        member={member}
-                        isCompleted={isChoreCompletedToday(chore.id, member.id)}
-                        onComplete={() => completeChore(chore.id, member.id)}
-                        onUncomplete={() => uncompleteChore(chore.id, member.id)}
-                        onEdit={() => handleStartEdit(chore)}
-                        onDelete={() => handleDeleteChore(chore.id)}
-                        currencySymbol={settings.currencySymbol}
-                      />
-                    ))}
-                  </div>
-                )}
+              <div className="chores-family-grid chores-family-grid--single">
+                {renderMemberCol(selectedGroup)}
               </div>
-
-              <button
-                type="button"
-                className="chores-member-add-btn"
-                onClick={() => openAddForm(member.id)}
-              >
-                <Plus size={14} strokeWidth={2} />
-                Add chore for {member.name}
-              </button>
-            </section>
-          ))}
-        </div>
+            </>
+          ) : (
+            <div className="chores-family-grid">
+              {memberChoreGroups.map(renderMemberCol)}
+            </div>
+          )}
         </>
       )}
 
