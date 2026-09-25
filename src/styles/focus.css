@@ -124,6 +124,13 @@
   color: var(--text-muted);
 }
 
+.focus-card-note {
+  margin: 0;
+  padding: 0 20px 4px;
+  font-size: 0.9rem;
+  color: var(--text-muted);
+}
+
 .focus-card-count {
   font-size: 0.95rem;
   font-weight: 700;
