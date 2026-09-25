@@ -147,7 +147,7 @@ export function EventModal({
       });
     }
     setError(null);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only reset when the edited event changes; defaultRecurrenceEnd changes at midnight and must not wipe the form
   }, [event]);
 
   const updateField = <K extends keyof EventFormData>(key: K, value: EventFormData[K]) => {

@@ -11,9 +11,9 @@ dev:
 build:
 	npm run build
 
-## Lint (add eslint when configured)
+## Lint
 lint:
-	@echo "No linter configured yet"
+	npm run lint
 
 ## TypeScript type-check (no emit)
 typecheck:
