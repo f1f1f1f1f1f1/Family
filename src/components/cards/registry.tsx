@@ -78,10 +78,16 @@ export const cardRegistry: Record<string, CardDefinition> = {
     displayName: 'Shopping',
     icon: '🛒',
     component: ShoppingCard,
-    defaultConfig: { shoppingEntity: '' },
+    defaultConfig: { shoppingEntity: '', showAddField: false },
     defaultSize: 'sm',
     configFields: [
       { type: 'entity', key: 'shoppingEntity', label: 'Shopping list (leave empty to use the one in Settings)', domain: 'todo' },
+      {
+        type: 'toggle',
+        key: 'showAddField',
+        label: 'Show add item field',
+        description: 'Type new items straight into this card. Off: just the list, tap items to tick them off (like Tasks).',
+      },
     ],
     allowedRegions: ['sidebar'],
   },
