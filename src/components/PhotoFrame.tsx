@@ -11,7 +11,7 @@ import {
 import { usePhotos } from '../hooks/usePhotos';
 import { requestFullBleed } from '../utils/ha-kiosk';
 import { NowPlayingBar } from './NowPlayingBar';
-import { PhotoDiagnostics } from './PhotoDiagnostics';
+import { PhotoDiagnostics, testPatternUrl } from './PhotoDiagnostics';
 import { MediaPlayer } from '../types/music';
 
 interface PhotoFrameProps {
@@ -70,6 +70,20 @@ export function PhotoFrame({
 
   const [showControls, setShowControls] = useState(false);
   const [showDiagnostics, setShowDiagnostics] = useState(false);
+  const [testPattern, setTestPattern] = useState(false);
+  const [photoSize, setPhotoSize] = useState<{ w: number; h: number }>();
+
+  // Test pattern uses the current photo's shape; the slideshow pauses
+  // while diagnostics are open so the readout stays on one photo.
+  useEffect(() => {
+    if (!showDiagnostics || !currentPhoto?.url) return;
+    const img = new Image();
+    img.onload = () => setPhotoSize({ w: img.naturalWidth, h: img.naturalHeight });
+    img.src = currentPhoto.url;
+  }, [showDiagnostics, currentPhoto?.url]);
+  useEffect(() => {
+    if (showDiagnostics) setActive(false);
+  }, [showDiagnostics, setActive]);
   const frameRef = useRef<HTMLDivElement>(null);
   const [clock, setClock] = useState(formatClock());
   const [date, setDate] = useState(formatDate());
@@ -161,7 +175,11 @@ export function PhotoFrame({
           className="photo-frame-image"
           role="img"
           aria-label={currentPhoto?.caption || 'Photo'}
-          style={currentPhoto ? { backgroundImage: `url("${currentPhoto.url.replace(/"/g, '%22')}")` } : undefined}
+          style={
+            testPattern
+              ? { backgroundImage: `url("${testPatternUrl(photoSize?.w, photoSize?.h)}")` }
+              : currentPhoto ? { backgroundImage: `url("${currentPhoto.url.replace(/"/g, '%22')}")` } : undefined
+          }
         />
       </div>
 
@@ -231,7 +249,9 @@ export function PhotoFrame({
         <PhotoDiagnostics
           frameRef={frameRef}
           photoUrl={currentPhoto?.url}
-          onClose={() => setShowDiagnostics(false)}
+          testPattern={testPattern}
+          onToggleTestPattern={() => setTestPattern((v) => !v)}
+          onClose={() => { setShowDiagnostics(false); setTestPattern(false); }}
         />
       )}
 
