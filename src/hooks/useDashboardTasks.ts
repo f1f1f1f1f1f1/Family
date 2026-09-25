@@ -1,5 +1,8 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { hasToken, haFetch, callHaService } from '../api/ha-rest';
+import { getTodoItems } from '../api/ha-services';
+import { isGroceryListName } from '../utils/grocery';
+import { localDayKey } from '../api/date-keys';
 import { useLocalTasks } from './useLocalTasks';
 import { useTaskmate } from './useTaskmate';
 
@@ -41,24 +44,18 @@ export function useDashboardTasks(
           if (groceryListIds.length > 0) {
             return !groceryListIds.includes(s.entity_id);
           }
-          return !isGroceryEntity(name);
+          return !isGroceryListName(name);
         });
 
         // Fetch items from up to 3 task lists
         const items: Omit<DashboardTodoItem, 'userId'>[] = [];
         for (const entity of todoEntities.slice(0, 3)) {
           try {
-            const result = await callHaService('todo', 'get_items', {
-              entity_id: entity.entity_id,
-            }, true) as {
-              service_response?: Record<string, { items?: Array<{ uid: string; summary: string; status: string }> }>;
-            };
-            const entityItems = result?.service_response?.[entity.entity_id]?.items ?? [];
-            for (const item of entityItems) {
+            for (const item of (await getTodoItems(entity.entity_id)) ?? []) {
               items.push({
                 uid: item.uid,
                 summary: item.summary,
-                status: item.status as 'needs_action' | 'completed',
+                status: item.status,
                 listId: entity.entity_id,
               });
             }
@@ -80,7 +77,7 @@ export function useDashboardTasks(
       ? []
       : localTasks
         .getTasksForList('beacon-todo')
-        .filter(t => t.status === 'needs_action' || (t.completedAt ? isToday(t.completedAt) : false))
+        .filter(t => t.status === 'needs_action' || (t.completedAt ? localDayKey(t.completedAt) === localDayKey() : false))
         .map(t => ({
           uid: t.id,
           summary: t.summary,
@@ -142,24 +139,4 @@ export function useDashboardTasks(
   }, [localTasks, haItems, hideLocalTasks]);
 
   return { items, toggleItem, users };
-}
-
-const GROCERY_KEYWORDS = [
-  'grocer', 'shopping', 'costco', 'walmart', 'target', 'store',
-  'pantry', 'fridge', 'freezer', 'inventory', 'meal',
-];
-
-function isGroceryEntity(name: string): boolean {
-  const lower = name.toLowerCase();
-  return GROCERY_KEYWORDS.some(kw => lower.includes(kw));
-}
-
-function isToday(iso: string): boolean {
-  const d = new Date(iso);
-  const now = new Date();
-  return (
-    d.getFullYear() === now.getFullYear() &&
-    d.getMonth() === now.getMonth() &&
-    d.getDate() === now.getDate()
-  );
 }

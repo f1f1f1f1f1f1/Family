@@ -1,5 +1,6 @@
 import { GroceryItem, GroceryList } from '../types/grocery';
 import { haFetch, callHaService } from './ha-rest';
+import { getTodoItems } from './ha-services';
 
 /**
  * AnyList / Todo integration via Home Assistant's REST API.
@@ -67,24 +68,12 @@ export class AnyListClient {
     if (!entityIds.includes(listId)) return [];
 
     try {
-      // Use todo.get_items with return_response to get actual items
-      const result = await callHaService('todo', 'get_items', {
-        entity_id: listId,
-      }, true) as {
-        service_response?: Record<string, { items?: Array<{ uid: string; summary: string; status: string }> }>;
-      };
-
-      // Parse the service_response format: { "todo.entity_id": { items: [...] } }
-      const entityResponse = result?.service_response?.[listId];
-      if (entityResponse?.items) {
-        return entityResponse.items.map(item => ({
-          id: item.uid,
-          name: item.summary,
-          checked: item.status === 'completed',
-        }));
-      }
-
-      return [];
+      const items = await getTodoItems(listId);
+      return (items ?? []).map(item => ({
+        id: item.uid,
+        name: item.summary,
+        checked: item.status === 'completed',
+      }));
     } catch (err) {
       console.warn(`Beacon: Failed to fetch items for ${listId}`, err);
       return [];

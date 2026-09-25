@@ -161,6 +161,3 @@ export const AVATAR_CATEGORIES: AvatarCategory[] = [
     ],
   },
 ];
-
-/** Flat list of all avatar emojis (for backwards compat) */
-export const AVATAR_OPTIONS = AVATAR_CATEGORIES.flatMap((c) => c.emojis);

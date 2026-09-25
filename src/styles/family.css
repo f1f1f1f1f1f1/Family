@@ -69,10 +69,6 @@
 }
 
 /* --- Family Manager Modal Overrides --- */
-.family-manager {
-  max-width: 520px;
-  width: 95%;
-}
 
 .fm-list {
   display: flex;
@@ -99,131 +95,6 @@
 
 .fm-card:hover {
   background: var(--bg-hover);
-}
-
-.fm-card-avatar {
-  width: 44px;
-  height: 44px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 1.3rem;
-  border: 2px solid;
-  flex-shrink: 0;
-}
-
-.fm-card-info {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 0;
-}
-
-.fm-card-name {
-  font-weight: 600;
-  font-size: 0.95rem;
-  color: var(--text-primary);
-}
-
-.fm-card-role {
-  font-size: 0.7rem;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  color: var(--text-muted);
-}
-
-.fm-card-role--parent {
-  color: var(--color-blue-full);
-}
-
-.fm-card-role--child {
-  color: var(--color-green-full);
-}
-
-.fm-card-dot {
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  flex-shrink: 0;
-}
-
-.fm-card-actions {
-  display: flex;
-  gap: 4px;
-}
-
-.fm-btn-icon {
-  width: 36px;
-  height: 36px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: var(--radius-sm);
-  color: var(--text-muted);
-  transition: all var(--transition);
-}
-
-.fm-btn-icon:hover {
-  background: var(--bg-hover);
-  color: var(--text-primary);
-}
-
-.fm-btn-icon--danger:hover {
-  background: color-mix(in srgb, var(--color-error, #ef4444) 8%, transparent);
-  color: var(--color-error, #ef4444);
-}
-
-.fm-btn-icon--confirm {
-  background: color-mix(in srgb, var(--color-error, #ef4444) 8%, transparent) !important;
-  color: var(--color-error, #ef4444) !important;
-}
-
-.fm-confirm-text {
-  font-size: 0.65rem;
-  font-weight: 600;
-}
-
-.fm-add-btn {
-  width: 100%;
-  margin-top: 8px;
-}
-
-/* Avatar Picker (categorized, scrollable) */
-.fm-avatar-picker {
-  max-height: 200px;
-  overflow-y: auto;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  padding-right: 4px;
-  scrollbar-width: thin;
-  scrollbar-color: var(--border) transparent;
-}
-
-.fm-avatar-picker::-webkit-scrollbar {
-  width: 4px;
-}
-
-.fm-avatar-picker::-webkit-scrollbar-thumb {
-  background: var(--border);
-  border-radius: 2px;
-}
-
-.fm-avatar-category {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.fm-avatar-category-label {
-  font-size: 0.65rem;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  color: var(--text-muted);
 }
 
 /* Avatar Grid */
@@ -257,98 +128,12 @@
   box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.15);
 }
 
-/* Color Grid */
-.fm-color-grid {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.fm-color-option {
-  width: 36px;
-  height: 36px;
-  border-radius: 50%;
-  border: 3px solid transparent;
-  transition: all var(--transition);
-  cursor: pointer;
-}
-
-.fm-color-option:hover {
-  transform: scale(1.1);
-}
-
-.fm-color-option--selected {
-  border-color: var(--text-primary);
-  box-shadow: 0 0 0 3px var(--bg-surface), 0 0 0 5px currentColor;
-}
-
-/* Role Toggle */
-.fm-role-toggle {
-  display: flex;
-  gap: 0;
-  border-radius: var(--radius-md);
-  border: 1px solid var(--border);
-  overflow: hidden;
-}
-
-.fm-role-btn {
-  flex: 1;
-  padding: 10px 16px;
-  font-weight: 600;
-  font-size: 0.85rem;
-  background: var(--bg-page);
-  color: var(--text-secondary);
-  transition: all var(--transition);
-  min-height: 44px;
-}
-
-.fm-role-btn--active {
-  background: var(--color-blue-full);
-  color: white;
-}
-
-.fm-form .modal-footer {
-  padding: 16px 0 0;
-  border-top: none;
-}
-
 /* --- Chores Panel --- */
 .chores-empty {
   text-align: center;
   padding: 32px 16px;
   color: var(--text-muted);
   font-size: 0.9rem;
-}
-
-.chores-group {
-  margin-bottom: 20px;
-}
-
-.chores-group-header {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-bottom: 8px;
-}
-
-.chores-group-avatar {
-  width: 36px;
-  height: 36px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 1.1rem;
-  border: 2px solid;
-  flex-shrink: 0;
-}
-
-.chores-group-name {
-  font-family: var(--font-display);
-  font-weight: 600;
-  font-size: 1rem;
-  color: var(--text-primary);
-  flex: 1;
 }
 
 /* Progress bar */
@@ -391,11 +176,6 @@
   display: flex;
   flex-direction: column;
   gap: 6px;
-}
-
-.chores-add-btn {
-  width: 100%;
-  margin-top: 16px;
 }
 
 /* --- Chore Card --- */
@@ -632,14 +412,6 @@
   margin-top: 16px;
 }
 
-.chores-add-title {
-  font-family: var(--font-display);
-  font-size: 1rem;
-  font-weight: 600;
-  color: var(--text-primary);
-  margin-bottom: 16px;
-}
-
 .chores-value-input {
   display: flex;
   align-items: center;
@@ -682,13 +454,6 @@
 
 .chores-assign-btn--active {
   font-weight: 600;
-}
-
-.chores-add-actions {
-  display: flex;
-  gap: 8px;
-  justify-content: flex-end;
-  margin-top: 16px;
 }
 
 .chores-add-form .form-field {
@@ -808,33 +573,6 @@
   padding: 16px 0;
 }
 
-.sidebar-nav-btn {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 12px 16px;
-  border-radius: var(--radius-md);
-  font-weight: 500;
-  font-size: 0.85rem;
-  color: var(--text-secondary);
-  transition: all var(--transition);
-  min-height: 48px;
-}
-
-.sidebar-nav-btn:hover {
-  background: var(--bg-hover);
-  color: var(--text-primary);
-}
-
-.sidebar-nav-btn--active {
-  background: rgba(59, 130, 246, 0.06);
-  color: var(--color-blue-full);
-}
-
-.sidebar-nav-icon {
-  font-size: 1.2rem;
-}
-
 /* Adjust slide panel position for sidebar-right layout (avoid overlap with sidebar) */
 .beacon--sidebar-right .slide-panel {
   right: var(--sidebar-width);
@@ -855,22 +593,10 @@
     padding: 0 20px 20px;
   }
 
-  .family-manager {
-    max-width: 100%;
-    width: 100%;
-    max-height: 95vh;
-    border-radius: var(--radius-xl) var(--radius-xl) 0 0;
-  }
-
   .fm-avatar-option {
     width: 48px;
     height: 48px;
     font-size: 1.3rem;
-  }
-
-  .fm-btn-icon {
-    width: 44px;
-    height: 44px;
   }
 
   .fm-card {
@@ -909,10 +635,6 @@
 @media (max-width: 480px) {
   .slide-panel-title {
     font-size: 1.1rem;
-  }
-
-  .chores-group-name {
-    font-size: 0.9rem;
   }
 
   .lb-earnings {

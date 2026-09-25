@@ -250,21 +250,6 @@ a:focus:not(:focus-visible) {
   display: none; /* Chrome, Safari, WebView (incl. the HA companion app) */
 }
 
-.sidebar-logo {
-  width: 40px;
-  height: 40px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  margin-bottom: 16px;
-  flex-shrink: 0;
-}
-
-.sidebar-logo img {
-  width: 32px;
-  height: auto;
-}
-
 .sidebar-nav-group {
   display: flex;
   flex-direction: column;
@@ -343,7 +328,6 @@ a:focus:not(:focus-visible) {
 .filter-bar::-webkit-scrollbar {
   display: none;
 }
-
 
 /* --- Header (simplified — nav moved to sidebar) --- */
 .beacon-header {
@@ -1785,10 +1769,6 @@ a:focus:not(:focus-visible) {
     color: var(--accent, #3b82f6);
   }
 
-  .mobile-more-theme {
-    padding: 8px 24px 0;
-  }
-
   /* --- Header: simplified on mobile --- */
   .beacon-header {
     padding: 0 12px;
@@ -1966,33 +1946,10 @@ a:focus:not(:focus-visible) {
     transform: translateY(0);
   }
 
-  /* --- Timer panel: full-width from bottom on mobile --- */
-  .timer-panel {
-    top: auto;
-    bottom: 0;
-    left: 0;
-    right: 0;
-    width: 100%;
-    height: auto;
-    max-height: 80vh;
-    border-radius: var(--radius-xl) var(--radius-xl) 0 0;
-    border-right: none;
-    transform: translateY(100%);
-  }
-
-  .timer-panel--open {
-    transform: translateY(0);
-  }
-
   /* --- Demo badge above tab bar --- */
   .demo-badge {
     bottom: calc(var(--mobile-tab-bar-height) + 12px);
     left: 12px;
-  }
-
-  /* --- Grocery drawer adjustments --- */
-  .grocery-drawer {
-    bottom: var(--mobile-tab-bar-height);
   }
 
   /* --- Now playing bar: fixed above tab bar on mobile --- */
