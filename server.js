@@ -972,7 +972,7 @@ server.on('upgrade', (req, socket, head) => {
 });
 
 server.listen(PORT, () => {
-  console.log(`Beacon server listening on port ${PORT}`);
+  console.log(`Family server listening on port ${PORT}`);
   console.log(`Supervisor token: ${SUPERVISOR_TOKEN ? 'available' : 'NOT available'}`);
   console.log(`Data directory: ${DATA_DIR}`);
 });

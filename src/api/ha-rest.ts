@@ -208,7 +208,7 @@ export async function callBeaconAction(path: string, body: Record<string, unknow
   if (!res.ok) {
     const message = (data && typeof data === 'object' && 'error' in data)
       ? String((data as { error: unknown }).error)
-      : `Beacon action ${path} failed: ${res.status}`;
+      : `Family action ${path} failed: ${res.status}`;
     const code = (data && typeof data === 'object' && 'code' in data)
       ? (data as { code: string | null }).code
       : null;

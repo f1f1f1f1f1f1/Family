@@ -397,7 +397,7 @@ export function SettingsView({
   const renderGeneral = () => (
     <>
       <h2 className="settings-section-title">General</h2>
-      <p className="settings-section-desc">Basic preferences for your Beacon display.</p>
+      <p className="settings-section-desc">Basic preferences for your Family display.</p>
 
       <div className="settings-group">
         <div className="settings-row">
@@ -1445,7 +1445,7 @@ export function SettingsView({
           <div>
             <div className="settings-row-label">Hide Local Shopping List</div>
             <div className="settings-row-sublabel">
-              Remove Beacon's built-in "Shopping List" from the list selector, showing only connected HA lists
+              Remove the built-in "Shopping List" from the list selector, showing only connected HA lists
             </div>
           </div>
           <Toggle
@@ -1461,7 +1461,7 @@ export function SettingsView({
           <div>
             <div className="settings-row-label">Hide Local Task List</div>
             <div className="settings-row-sublabel">
-              Remove Beacon's built-in "To-Do" list from the list selector, showing only connected HA lists
+              Remove the built-in "To-Do" list from the list selector, showing only connected HA lists
             </div>
           </div>
           <Toggle

@@ -1,6 +1,6 @@
 {
-  "name": "Beacon - Family Calendar",
-  "short_name": "Beacon",
+  "name": "Family",
+  "short_name": "Family",
   "description": "A family calendar display powered by Home Assistant",
   "start_url": "/",
   "display": "standalone",

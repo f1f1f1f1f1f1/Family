@@ -9,7 +9,7 @@ import { loadData, loadDataSync, saveData } from '../api/beacon-store';
 
 const EVENTS_KEY = 'beacon-local-events';
 const LOCAL_CAL_ID = 'beacon-local';
-const LOCAL_CAL_NAME = 'Beacon';
+const LOCAL_CAL_NAME = 'Family';
 
 export const LOCAL_CALENDAR: CalendarInfo = {
   id: LOCAL_CAL_ID,
@@ -17,16 +17,21 @@ export const LOCAL_CALENDAR: CalendarInfo = {
   color: '#6366f1', // indigo accent
 };
 
+/** Events saved before the rename still carry the old calendar name. */
+function withLocalCalName(events: CalendarEvent[]): CalendarEvent[] {
+  return events.map((e) => (e.calendarName === LOCAL_CAL_NAME ? e : { ...e, calendarName: LOCAL_CAL_NAME }));
+}
+
 export function useLocalCalendar() {
   // Initialize with localStorage data immediately
   const [events, setEvents] = useState<CalendarEvent[]>(() =>
-    loadDataSync<CalendarEvent[]>(EVENTS_KEY, [])
+    withLocalCalName(loadDataSync<CalendarEvent[]>(EVENTS_KEY, []))
   );
 
   /** Re-fetch events from server. */
   const refresh = useCallback(async () => {
     const serverEvents = await loadData<CalendarEvent[]>(EVENTS_KEY, []);
-    setEvents(serverEvents);
+    setEvents(withLocalCalName(serverEvents));
   }, []);
 
   // Fetch from server on mount

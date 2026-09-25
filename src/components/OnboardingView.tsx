@@ -262,8 +262,8 @@ export default function OnboardingView({ onComplete, onOAuthStart }: OnboardingV
 
   const renderStep1 = () => (
     <div style={{ textAlign: 'center' }}>
-      <img src={beaconLogo} alt="Beacon" style={styles.logo} />
-      <h1 style={styles.heading}>Welcome to Beacon</h1>
+      <img src={beaconLogo} alt="Family" style={styles.logo} />
+      <h1 style={styles.heading}>Welcome to Family</h1>
       <p style={styles.subtext}>Connect your Home Assistant to get started.</p>
       <button
         style={styles.primaryButton}
