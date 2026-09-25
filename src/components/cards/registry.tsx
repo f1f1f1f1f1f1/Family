@@ -81,7 +81,7 @@ export const cardRegistry: Record<string, CardDefinition> = {
     defaultConfig: { shoppingEntity: '' },
     defaultSize: 'sm',
     configFields: [
-      { type: 'entity', key: 'shoppingEntity', label: 'Shopping List Entity' },
+      { type: 'entity', key: 'shoppingEntity', label: 'Shopping list (leave empty to use the one in Settings)', domain: 'todo' },
     ],
     allowedRegions: ['sidebar'],
   },

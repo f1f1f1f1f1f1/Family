@@ -87,6 +87,7 @@ export function CardConfigModal({ card, onSave, onClose }: CardConfigModalProps)
                 {field.type === 'entity' ? (
                   <EntityPicker
                     id={id}
+                    domain={field.domain}
                     value={value}
                     onChange={(value) => updateConfig(field.key, value)}
                   />

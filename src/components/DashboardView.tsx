@@ -37,6 +37,8 @@ interface DashboardViewProps {
   timeFormat: '12h' | '24h';
   selectedDate: Date;
   onSelectedDateChange: (date: Date) => void;
+  /** HA to-do list for shopping cards that don't pick their own. */
+  defaultShoppingList?: string;
 }
 
 function renderCard(card: DashboardCard, context: DashboardCardContext) {
@@ -63,6 +65,7 @@ export function DashboardView({
   timeFormat,
   selectedDate,
   onSelectedDateChange,
+  defaultShoppingList = '',
 }: DashboardViewProps) {
   const [now, setNow] = useState(new Date());
   const [selectedMemberFilter, setSelectedMemberFilter] = useState<string | null>(null);
@@ -116,6 +119,7 @@ export function DashboardView({
 
   const context: DashboardCardContext = {
     now,
+    defaultShoppingList,
     timeFormat,
     events,
     weather,

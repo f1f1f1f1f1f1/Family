@@ -1453,8 +1453,8 @@ export function SettingsView({
         </div>
         <div className="settings-row">
           <div>
-            <div className="settings-row-label">Shopping Card Entity</div>
-            <div className="settings-row-sublabel">HA todo list for sidebar shopping card</div>
+            <div className="settings-row-label">Shopping Card List</div>
+            <div className="settings-row-sublabel">Shown by dashboard shopping cards that don't pick their own list. If None, your default grocery list is used.</div>
           </div>
           <select
             className="settings-input"

@@ -73,17 +73,19 @@ function EntityFilters({ search, domain, domains, onSearch, onDomain }: {
         value={search}
         onChange={(e) => onSearch(e.target.value)}
       />
-      <select
-        className="form-select"
-        aria-label="Filter by domain"
-        value={domain}
-        onChange={(e) => onDomain(e.target.value)}
-      >
-        <option value="">All domains</option>
-        {domains.map((name) => (
-          <option key={name} value={name}>{name}</option>
-        ))}
-      </select>
+      {domains.length > 0 && (
+        <select
+          className="form-select"
+          aria-label="Filter by domain"
+          value={domain}
+          onChange={(e) => onDomain(e.target.value)}
+        >
+          <option value="">All domains</option>
+          {domains.map((name) => (
+            <option key={name} value={name}>{name}</option>
+          ))}
+        </select>
+      )}
     </div>
   );
 }
@@ -99,14 +101,17 @@ interface EntityPickerProps {
   value: string;
   onChange: (entityId: string) => void;
   id?: string;
+  /** Only offer entities of this domain; hides the domain filter. */
+  domain?: string;
 }
 
 /** Single-entity picker dropdown, like Lovelace's entity config field. */
-export function EntityPicker({ value, onChange, id }: EntityPickerProps) {
+export function EntityPicker({ value, onChange, id, domain: fixedDomain }: EntityPickerProps) {
   const options = useEntityOptions();
   const domains = useDomains(options);
   const [search, setSearch] = useState('');
-  const [domain, setDomain] = useState('');
+  const [chosenDomain, setDomain] = useState('');
+  const domain = fixedDomain ?? chosenDomain;
 
   const visible = useMemo(() => {
     const filtered = filterEntityOptions(options, search, domain);
@@ -121,12 +126,12 @@ export function EntityPicker({ value, onChange, id }: EntityPickerProps) {
       <EntityFilters
         search={search}
         domain={domain}
-        domains={domains}
+        domains={fixedDomain ? [] : domains}
         onSearch={setSearch}
         onDomain={setDomain}
       />
       <select id={id} className="form-select" value={value} onChange={(e) => onChange(e.target.value)}>
-        <option value="">Select an entity…</option>
+        <option value="">{fixedDomain ? 'None' : 'Select an entity…'}</option>
         {visible.map((option) => (
           <option key={option.entity_id} value={option.entity_id}>
             {option.label} ({option.entity_id})
