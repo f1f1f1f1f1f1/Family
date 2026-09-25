@@ -14,6 +14,8 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 16px;
+  flex-shrink: 0;
   padding: 24px 32px;
   border-bottom: 3px solid var(--focus-accent, var(--accent));
 }
@@ -22,9 +24,11 @@
   display: flex;
   align-items: center;
   gap: 16px;
+  min-width: 0;
 }
 
 .focus-avatar {
+  flex-shrink: 0;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -47,6 +51,7 @@
 }
 
 .focus-clock {
+  flex-shrink: 0;
   background: none;
   border: none;
   color: inherit;
@@ -66,10 +71,12 @@
 .focus-date {
   font-size: 0.95rem;
   color: var(--text-muted);
+  white-space: nowrap;
 }
 
 .focus-body {
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
   padding: 24px 32px 40px;
   display: flex;
@@ -81,6 +88,10 @@
 }
 
 .focus-card {
+  /* Never shrink to fit the screen: a shrunk card hid the tasks that
+     didn't fit (overflow: hidden) with no way to reach them. The body
+     scrolls instead. */
+  flex: none;
   background: var(--bg-secondary);
   border: 1px solid var(--border);
   border-radius: 16px;
@@ -180,11 +191,17 @@
   transform: scale(1.2);
 }
 
+.focus-check-label {
+  min-width: 0;
+  overflow-wrap: break-word;
+}
+
 .focus-check-icon {
   margin-right: 8px;
 }
 
 .focus-check-value {
+  flex-shrink: 0;
   margin-left: auto;
   font-size: 0.9rem;
   font-weight: 700;
@@ -243,6 +260,130 @@
   gap: 12px;
   justify-content: center;
   margin-top: 16px;
+}
+
+/* --- Responsive layout --- */
+
+/* Landscape screens (Echo Show 5/8, tablets): routine and chores side by
+   side so both are visible without scrolling. A lone card (no routine
+   right now) spreads its tasks across columns instead. */
+@media (min-width: 700px) and (orientation: landscape) {
+  .focus-body {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    align-items: start;
+    max-width: 1280px;
+  }
+
+  .focus-celebration,
+  .focus-empty {
+    grid-column: 1 / -1;
+  }
+
+  .focus-body > .focus-card:only-child .focus-checklist {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+  }
+}
+
+/* Short screens (Echo Show 5 is 480px tall): compact header and rows so
+   more tasks fit, while keeping tap targets comfortably large. */
+@media (max-height: 560px) {
+  .focus-header {
+    padding: 10px 20px;
+    border-bottom-width: 2px;
+  }
+
+  .focus-avatar {
+    width: 44px;
+    height: 44px;
+    font-size: 1.4rem;
+    border-width: 2px;
+  }
+
+  .focus-greeting {
+    font-size: 0.85rem;
+  }
+
+  .focus-name {
+    font-size: 1.35rem;
+  }
+
+  .focus-time {
+    font-size: 1.6rem;
+  }
+
+  .focus-date {
+    font-size: 0.8rem;
+  }
+
+  .focus-body {
+    padding: 12px 20px 20px;
+    gap: 12px;
+  }
+
+  .focus-card-header {
+    padding: 10px 16px 4px;
+  }
+
+  .focus-card-title {
+    font-size: 1.1rem;
+  }
+
+  .focus-checklist {
+    padding: 4px 8px 10px;
+    gap: 2px;
+  }
+
+  .focus-check-row {
+    min-height: 48px;
+    padding: 8px 10px;
+    font-size: 1.05rem;
+    gap: 12px;
+  }
+
+  .focus-check-box {
+    width: 28px;
+    height: 28px;
+  }
+}
+
+/* Phones: tighter header so the name, time and date fit on one line each. */
+@media (max-width: 480px) {
+  .focus-header {
+    padding: 14px 16px;
+  }
+
+  .focus-member {
+    gap: 10px;
+  }
+
+  .focus-avatar {
+    width: 48px;
+    height: 48px;
+    font-size: 1.5rem;
+  }
+
+  .focus-name {
+    font-size: 1.4rem;
+  }
+
+  .focus-time {
+    font-size: 1.6rem;
+  }
+
+  .focus-date {
+    font-size: 0.8rem;
+  }
+
+  .focus-body {
+    padding: 16px 12px 32px;
+    gap: 14px;
+  }
+
+  .focus-check-row {
+    font-size: 1.1rem;
+  }
 }
 
 /* Invalid-member banner (rendered by App in the normal shell) */
