@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { hasToken, haFetch, callHaService } from '../api/ha-rest';
+import { hasToken, callHaService, fetchAllStates } from '../api/ha-rest';
 import { getTodoItems } from '../api/ha-services';
 import { isGroceryListName } from '../utils/grocery';
 import { localDayKey } from '../api/date-keys';
@@ -34,7 +34,7 @@ export function useDashboardTasks(
     async function fetchTasks() {
       try {
         // Get the non-grocery HA todo entities
-        const states = await haFetch('/api/states') as Array<{ entity_id: string; state: string; attributes: Record<string, unknown> }>;
+        const states = await fetchAllStates();
 
         const todoEntities = states.filter(s => {
           if (!s.entity_id.startsWith('todo.') || s.state === 'unavailable') return false;

@@ -54,7 +54,9 @@ async function fetchStates(entityIds: string[]): Promise<HaEntityState[]> {
 
   if (entityIds.length > BULK_FETCH_THRESHOLD) {
     const wanted = new Set(entityIds);
-    const all = await getAllEntityStates();
+    // Just under the 5s poll, so each tick gets fresh data (and other
+    // screens reuse it via the shared copy).
+    const all = await getAllEntityStates(POLL_INTERVAL - 1_000);
     return all.filter((state) => wanted.has(state.entity_id));
   }
 

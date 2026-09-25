@@ -1,5 +1,5 @@
 import { GroceryItem, GroceryList } from '../types/grocery';
-import { haFetch, callHaService } from './ha-rest';
+import { callHaService, fetchAllStates } from './ha-rest';
 import { getTodoItems } from './ha-services';
 
 /**
@@ -13,19 +13,13 @@ export class AnyListClient {
    * Discover available todo entities by fetching all states and filtering
    * to entities that are actually available (not unavailable/unknown).
    *
-   * Always fetches fresh rather than caching — a list created (or
-   * removed) in Google Tasks after this client was constructed needs to
-   * show up without requiring a full page reload to get a new client
-   * instance. /api/states is cheap enough that re-fetching each call is
-   * fine, especially since getLists() already fetches it again anyway.
+   * Uses the shared, briefly cached copy of all states (fetchAllStates),
+   * so a list created or removed in Google Tasks still shows up within
+   * seconds without a page reload.
    */
   private async discoverEntities(): Promise<string[]> {
     try {
-      const states = await haFetch('/api/states') as Array<{
-        entity_id: string;
-        state: string;
-        attributes: Record<string, unknown>;
-      }>;
+      const states = await fetchAllStates();
 
       return states
         .filter(s => s.entity_id.startsWith('todo.') && s.state !== 'unavailable')
@@ -40,11 +34,7 @@ export class AnyListClient {
     if (entityIds.length === 0) return [];
 
     try {
-      const states = await haFetch('/api/states') as Array<{
-        entity_id: string;
-        state: string;
-        attributes: Record<string, unknown>;
-      }>;
+      const states = await fetchAllStates(); // same shared copy discoverEntities used
 
       return entityIds.map(entityId => {
         const entity = states.find(s => s.entity_id === entityId);

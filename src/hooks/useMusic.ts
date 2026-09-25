@@ -3,6 +3,7 @@ import { MediaPlayer } from '../types/music';
 import { HomeAssistantClient } from '../api/homeassistant';
 import {
   getMediaPlayers,
+  refreshMediaPlayers,
   parseMediaPlayer,
   play as apiPlay,
   pause as apiPause,
@@ -90,7 +91,7 @@ export function useMusic(
       pollInterval = setInterval(async () => {
         if (document.hidden || cancelled) return;
         try {
-          const updated = await getMediaPlayers(null);
+          const updated = await refreshMediaPlayers();
           if (!cancelled) setPlayers(updated);
         } catch { /* ignore poll errors */ }
       }, 10_000);

@@ -1,6 +1,6 @@
 import { HomeAssistantClient } from './homeassistant';
 import { MediaPlayer, MediaPlayerState } from '../types/music';
-import { haFetch, hasToken, callHaService } from './ha-rest';
+import { hasToken, callHaService, fetchAllStates, getEntityState } from './ha-rest';
 
 /**
  * Parses a Home Assistant state entity into a MediaPlayer object.
@@ -65,14 +65,11 @@ export async function getMediaPlayers(client?: HomeAssistantClient | null): Prom
       .map(parseMediaPlayer);
   } else if (hasToken()) {
     try {
-      const states = await haFetch('/api/states') as Array<{
-        entity_id: string;
-        state: string;
-        attributes: Record<string, unknown>;
-      }>;
-      all = states
-        .filter(s => s.entity_id.startsWith('media_player.'))
-        .map(parseMediaPlayer);
+      const states = await fetchAllStates();
+      const playerStates = states.filter(s => s.entity_id.startsWith('media_player.'));
+      knownPlayerIds = playerStates.map((s) => s.entity_id);
+      discoveredAt = Date.now();
+      all = playerStates.map(parseMediaPlayer);
     } catch (err) {
       console.warn('Failed to fetch media players via REST:', err);
       return [];
@@ -80,6 +77,31 @@ export async function getMediaPlayers(client?: HomeAssistantClient | null): Prom
   }
 
   return deduplicatePlayers(all);
+}
+
+/**
+ * Players found by the last full discovery (REST mode). Polling fetches
+ * just these instead of every entity in HA; a full rediscovery runs every
+ * few minutes so newly added players still appear.
+ */
+let knownPlayerIds: string[] | null = null;
+let discoveredAt = 0;
+const REDISCOVER_AFTER_MS = 5 * 60 * 1000;
+const MAX_INDIVIDUAL_FETCHES = 8;
+
+/** Refresh players for REST-mode polling, fetching only known players when possible. */
+export async function refreshMediaPlayers(): Promise<MediaPlayer[]> {
+  if (
+    !knownPlayerIds
+    || knownPlayerIds.length > MAX_INDIVIDUAL_FETCHES
+    || Date.now() - discoveredAt > REDISCOVER_AFTER_MS
+  ) {
+    return getMediaPlayers(null);
+  }
+  const states = await Promise.all(knownPlayerIds.map((id) => getEntityState(id)));
+  return deduplicatePlayers(
+    states.filter((s): s is NonNullable<typeof s> => s !== null).map(parseMediaPlayer),
+  );
 }
 
 /** Call a media_player service via WS (if connected) or REST (proxy) */

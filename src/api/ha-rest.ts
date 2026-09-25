@@ -130,22 +130,49 @@ export async function getEntityState(entityId: string): Promise<{
   }
 }
 
-/**
- * Fetch every entity state from the HA REST API (used by HA entity picker
- * UIs and generic entity/sensor cards).
- */
-export async function getAllEntityStates(): Promise<Array<{
+export interface HaStateObject {
   entity_id: string;
   state: string;
   attributes: Record<string, unknown>;
-}>> {
+}
+
+/**
+ * Every entity state from HA's /api/states — a large response on a big
+ * install. One copy is shared by all callers: a copy younger than
+ * `maxAgeMs` is reused, and concurrent requests share one download (the
+ * dashboard used to start several full downloads at once on load).
+ * Throws if the request fails; failures aren't cached.
+ */
+const DEFAULT_STATES_MAX_AGE_MS = 10_000;
+let statesCache: { at: number; states: HaStateObject[] } | null = null;
+let statesInFlight: Promise<HaStateObject[]> | null = null;
+
+export function fetchAllStates(maxAgeMs = DEFAULT_STATES_MAX_AGE_MS): Promise<HaStateObject[]> {
+  if (statesCache && Date.now() - statesCache.at < maxAgeMs) return Promise.resolve(statesCache.states);
+  if (statesInFlight) return statesInFlight;
+  statesInFlight = (haFetch('/api/states') as Promise<HaStateObject[] | null>)
+    .then((states) => {
+      const list = states ?? [];
+      statesCache = { at: Date.now(), states: list };
+      return list;
+    })
+    .finally(() => { statesInFlight = null; });
+  return statesInFlight;
+}
+
+/** Test hook: forget the shared copy. */
+export function resetStatesCache(): void {
+  statesCache = null;
+  statesInFlight = null;
+}
+
+/**
+ * Every entity state, or [] on failure (used by HA entity picker UIs and
+ * generic entity/sensor cards).
+ */
+export async function getAllEntityStates(maxAgeMs?: number): Promise<HaStateObject[]> {
   try {
-    const states = await haFetch('/api/states') as Array<{
-      entity_id: string;
-      state: string;
-      attributes: Record<string, unknown>;
-    }>;
-    return states ?? [];
+    return await fetchAllStates(maxAgeMs);
   } catch {
     return [];
   }
