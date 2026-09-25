@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { format } from 'date-fns';
 import { usePhotos } from '../hooks/usePhotos';
 import { requestFullBleed } from '../utils/ha-kiosk';
+import { CoverPhoto } from './CoverPhoto';
 
 const POSITION_INTERVAL = 30_000; // move clock every 30s
 
@@ -115,10 +116,11 @@ export function ScreenSaver({
     <div className="screensaver-overlay" onClick={wake}>
       {showPhotos && currentPhoto && (
         <>
-          <div
+          <CoverPhoto
             key={currentPhoto.url}
             className="screensaver-photo"
-            style={{ backgroundImage: `url(${currentPhoto.url})` }}
+            src={currentPhoto.url}
+            label={currentPhoto.caption || 'Photo'}
           />
           <div className="screensaver-photo-scrim" />
         </>

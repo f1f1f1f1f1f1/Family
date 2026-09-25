@@ -1,6 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { coverCrop } from './CoverPhoto';
-import { readExifOrientation } from './PhotoDiagnostics';
+import { coverCrop, findExifOrientation, readExifOrientation } from './CoverPhoto';
 
 describe('coverCrop', () => {
   it('crops a portrait photo on a landscape screen equally top and bottom', () => {
@@ -55,5 +54,17 @@ describe('readExifOrientation', () => {
   it('returns null for files without EXIF or that are not JPEGs', () => {
     expect(readExifOrientation(new Uint8Array([0xff, 0xd8, 0xff, 0xda, 0, 2]).buffer)).toBeNull();
     expect(readExifOrientation(new TextEncoder().encode('<svg></svg>').buffer)).toBeNull();
+  });
+});
+
+describe('findExifOrientation', () => {
+  it('points at the orientation value so it can be rewritten to 1', () => {
+    for (const little of [false, true]) {
+      const bytes = jpegWithOrientation(6, little);
+      const found = findExifOrientation(bytes)!;
+      expect(found.value).toBe(6);
+      new DataView(bytes).setUint16(found.offset, 1, found.little);
+      expect(readExifOrientation(bytes)).toBe(1);
+    }
   });
 });
