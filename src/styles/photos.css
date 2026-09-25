@@ -4,9 +4,16 @@
    ============================================================ */
 
 .photo-frame {
-  position: relative;
-  width: 100%;
-  height: 100%;
+  /* Full screen over the app's sidebar and bottom nav; tap for controls
+     and the back button. Offsets are written out rather than using the
+     `inset` shorthand, which older Chromium-based browsers (e.g. Silk on
+     Echo Show) ignore — leaving the photo unsized and off-centre. */
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 900;
   background: #000;
   overflow: hidden;
   cursor: pointer;
@@ -15,14 +22,23 @@
 /* Photo image with crossfade */
 .photo-frame-image-wrapper {
   position: absolute;
-  inset: 0;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
   animation: photo-crossfade 1s ease;
 }
 
 .photo-frame-image {
+  /* Fill the screen without distortion, cropping the edges that don't
+     fit, centred on the middle of the photo. */
+  position: absolute;
+  top: 0;
+  left: 0;
   width: 100%;
   height: 100%;
   object-fit: cover;
+  object-position: 50% 50%;
 }
 
 @keyframes photo-crossfade {
@@ -40,7 +56,8 @@
   bottom: 0;
   left: 0;
   right: 0;
-  padding: 80px 32px 32px;
+  padding: 80px 32px calc(32px + var(--ha-safe-bottom, 0px));
+  padding-left: calc(32px + var(--ha-safe-left, 0px));
   background: linear-gradient(to top, rgba(0, 0, 0, 0.5) 0%, transparent 100%);
   pointer-events: none;
 }
@@ -73,7 +90,10 @@
 /* Controls overlay */
 .photo-frame-controls {
   position: absolute;
-  inset: 0;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -121,8 +141,8 @@
 /* Back button */
 .photo-frame-back {
   position: absolute;
-  top: 16px;
-  left: 16px;
+  top: calc(16px + var(--ha-safe-top, 0px));
+  left: calc(16px + var(--ha-safe-left, 0px));
   width: 48px;
   height: 48px;
   display: flex;
@@ -148,6 +168,7 @@
   left: 0;
   right: 0;
   z-index: 5;
+  padding-bottom: var(--ha-safe-bottom, 0px);
 }
 
 .photo-frame-music .now-playing-bar {

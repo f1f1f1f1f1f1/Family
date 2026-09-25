@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { format } from 'date-fns';
 import { usePhotos } from '../hooks/usePhotos';
+import { requestFullBleed } from '../utils/ha-kiosk';
 
 const POSITION_INTERVAL = 30_000; // move clock every 30s
 
@@ -22,6 +23,10 @@ export function ScreenSaver({
   photoIntervalSeconds = 30,
 }: ScreenSaverProps) {
   const [phase, setPhase] = useState<Phase>('awake');
+
+  // A photo screensaver fills the whole screen, under the iPhone notch too.
+  const fullBleed = enabled && showPhotos && phase === 'screensaver';
+  useEffect(() => (fullBleed ? requestFullBleed() : undefined), [fullBleed]);
   const [now, setNow] = useState(new Date());
   const [position, setPosition] = useState({ x: 50, y: 50 });
   const lastActivityRef = useRef(Date.now());

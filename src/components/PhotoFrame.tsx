@@ -1,4 +1,5 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import {
   ChevronLeft,
   ChevronRight,
@@ -7,6 +8,7 @@ import {
   ArrowLeft,
 } from 'lucide-react';
 import { usePhotos } from '../hooks/usePhotos';
+import { requestFullBleed } from '../utils/ha-kiosk';
 import { NowPlayingBar } from './NowPlayingBar';
 import { MediaPlayer } from '../types/music';
 
@@ -61,6 +63,9 @@ export function PhotoFrame({
     photoCount,
   } = usePhotos(['ha_media', 'local'], intervalSeconds);
 
+  // Draw under the iPhone notch / home bar inside the HA app too.
+  useEffect(() => requestFullBleed(), []);
+
   const [showControls, setShowControls] = useState(false);
   const [clock, setClock] = useState(formatClock());
   const [date, setDate] = useState(formatDate());
@@ -112,9 +117,14 @@ export function PhotoFrame({
     };
   }, []);
 
+  // Rendered at the top level of the page: inside the app's main area,
+  // its animated wrapper confines the fixed full-screen layer's stacking,
+  // leaving the mobile tab bar drawn over the photo.
+  const fullScreen = (content: ReactNode) => createPortal(content, document.body);
+
   // If no photos loaded, show a placeholder
   if (photoCount === 0) {
-    return (
+    return fullScreen(
       <div className="photo-frame" onClick={handleTap}>
         <div className="photo-frame-empty">
           <p>No photos available</p>
@@ -136,7 +146,7 @@ export function PhotoFrame({
     );
   }
 
-  return (
+  return fullScreen(
     <div className="photo-frame" onClick={handleTap}>
       {/* Photo with crossfade */}
       <div className="photo-frame-image-wrapper" key={fadeKey}>
