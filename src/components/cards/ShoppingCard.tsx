@@ -15,6 +15,8 @@ export function ShoppingCard({ config, context }: DashboardCardProps) {
   // The card's own list if one was picked when editing it, otherwise the
   // shopping list chosen in Settings.
   const shoppingEntity = (config?.shoppingEntity as string) || context.defaultShoppingList;
+  // Off by default so the card matches Tasks: just the list, tap to tick off.
+  const showAddField = config?.showAddField === true;
   const [items, setItems] = useState<TodoItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [inputValue, setInputValue] = useState('');
@@ -108,46 +110,48 @@ export function ShoppingCard({ config, context }: DashboardCardProps) {
     <section className="dash-sidebar-section">
       <h3 className="dash-sidebar-heading">Shopping</h3>
 
-      {/* Quick-add input */}
-      <form className="dash-shopping-add" onSubmit={handleAdd} style={{ marginBottom: 12 }}>
-        <input
-          ref={inputRef}
-          type="text"
-          className="dash-shopping-input"
-          placeholder="Add item..."
-          value={inputValue}
-          onChange={(e) => setInputValue(e.target.value)}
-          disabled={submitting}
-          style={{
-            flex: 1,
-            padding: '6px 10px',
-            fontSize: '0.85rem',
-            border: '1px solid var(--border)',
-            borderRadius: 6,
-            background: 'var(--bg-surface)',
-            color: 'var(--text-primary)',
-          }}
-        />
-        <button
-          type="submit"
-          className="dash-shopping-add-btn"
-          disabled={!inputValue.trim() || submitting}
-          aria-label="Add item"
-          style={{
-            padding: '6px 10px',
-            border: 'none',
-            borderRadius: 6,
-            background: inputValue.trim() ? 'var(--accent)' : 'var(--border)',
-            color: 'white',
-            cursor: inputValue.trim() ? 'pointer' : 'not-allowed',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-          }}
-        >
-          <Plus size={16} />
-        </button>
-      </form>
+      {/* Quick-add input (optional, see the card's settings) */}
+      {showAddField && (
+        <form className="dash-shopping-add" onSubmit={handleAdd} style={{ marginBottom: 12 }}>
+          <input
+            ref={inputRef}
+            type="text"
+            className="dash-shopping-input"
+            placeholder="Add item..."
+            value={inputValue}
+            onChange={(e) => setInputValue(e.target.value)}
+            disabled={submitting}
+            style={{
+              flex: 1,
+              padding: '6px 10px',
+              fontSize: '0.85rem',
+              border: '1px solid var(--border)',
+              borderRadius: 6,
+              background: 'var(--bg-surface)',
+              color: 'var(--text-primary)',
+            }}
+          />
+          <button
+            type="submit"
+            className="dash-shopping-add-btn"
+            disabled={!inputValue.trim() || submitting}
+            aria-label="Add item"
+            style={{
+              padding: '6px 10px',
+              border: 'none',
+              borderRadius: 6,
+              background: inputValue.trim() ? 'var(--accent)' : 'var(--border)',
+              color: 'white',
+              cursor: inputValue.trim() ? 'pointer' : 'not-allowed',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            <Plus size={16} />
+          </button>
+        </form>
+      )}
 
       {/* Items list */}
       {loading && items.length === 0 ? (
@@ -156,7 +160,7 @@ export function ShoppingCard({ config, context }: DashboardCardProps) {
         </div>
       ) : uncheckedItems.length === 0 ? (
         <div style={{ padding: '12px 0', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
-          No items yet — add one above
+          {showAddField ? 'No items yet — add one above' : 'Nothing on the list'}
         </div>
       ) : (
         <ul className="task-checklist">

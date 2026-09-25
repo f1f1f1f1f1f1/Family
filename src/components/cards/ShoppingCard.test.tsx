@@ -28,6 +28,19 @@ describe('ShoppingCard', () => {
     expect(getTodoItems).not.toHaveBeenCalledWith('todo.shopping');
   });
 
+  it('shows just the list by default, without an add field', async () => {
+    render(<ShoppingCard config={{ shoppingEntity: 'todo.shopping' }} context={context('')} />);
+    await waitFor(() => expect(screen.getByText('Milk')).toBeInTheDocument());
+    expect(screen.queryByPlaceholderText('Add item...')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Check Milk' })).toBeInTheDocument();
+  });
+
+  it('shows the add field when turned on for the card', async () => {
+    render(<ShoppingCard config={{ shoppingEntity: 'todo.shopping', showAddField: true }} context={context('')} />);
+    await waitFor(() => expect(screen.getByText('Milk')).toBeInTheDocument());
+    expect(screen.getByPlaceholderText('Add item...')).toBeInTheDocument();
+  });
+
   it('explains how to pick a list when neither is set', () => {
     render(<ShoppingCard config={{ shoppingEntity: '' }} context={context('')} />);
     expect(screen.getByText(/Edit this card to pick one/)).toBeInTheDocument();
