@@ -5,7 +5,10 @@
 /* Dim overlay — 70% dark, covers everything */
 .screensaver-dim {
   position: fixed;
-  inset: 0;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
   background: rgba(0, 0, 0, 0.7);
   z-index: 9999;
   cursor: pointer;
@@ -15,7 +18,10 @@
 /* Full screensaver overlay */
 .screensaver-overlay {
   position: fixed;
-  inset: 0;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
   background: var(--bg-primary, #000);
   z-index: 9999;
   cursor: pointer;
@@ -34,16 +40,24 @@
 /* Photo background layer — cross-fades in behind the clock when enabled */
 .screensaver-photo {
   position: absolute;
-  inset: 0;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  /* Fill the screen without distortion, centred, cropping the edges. */
   background-size: cover;
-  background-position: center;
+  background-position: 50% 50%;
+  background-repeat: no-repeat;
   animation: screensaver-photo-fade-in 1.5s ease;
 }
 
 /* Darkening scrim so the clock stays legible over any photo */
 .screensaver-photo-scrim {
   position: absolute;
-  inset: 0;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
   background: linear-gradient(
     to bottom,
     rgba(0, 0, 0, 0.35) 0%,
