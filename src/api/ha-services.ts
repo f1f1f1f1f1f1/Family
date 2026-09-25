@@ -3,7 +3,7 @@
  * (`?return_response`) and for the weather entity, shared by every screen
  * that reads to-do lists or weather.
  */
-import { callHaService, haFetch } from './ha-rest';
+import { callHaService, fetchAllStates, haFetch } from './ha-rest';
 import { getConfig } from '../config';
 
 /**
@@ -67,7 +67,7 @@ export async function findWeatherEntity(): Promise<HaState | null> {
       return await haFetch(`/api/states/${configured}`) as HaState;
     } catch { /* doesn't exist: fall back to discovery */ }
   }
-  const states = await haFetch('/api/states') as HaState[];
+  const states = await fetchAllStates();
   return states.find((s) => s.entity_id.startsWith('weather.')) ?? null;
 }
 

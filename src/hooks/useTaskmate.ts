@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { haFetch, hasToken } from '../api/ha-rest';
+import { fetchAllStates, hasToken } from '../api/ha-rest';
 import { TaskmateUser, TaskmateCompletion } from '../types/taskmate';
 
 interface HaState {
@@ -44,7 +44,7 @@ export function useTaskmate(connected: boolean): UseTaskmateResult {
 
     async function fetchTaskmate() {
       try {
-        const states = (await haFetch('/api/states')) as HaState[];
+        const states = (await fetchAllStates()) as HaState[];
         const byEntity = new Map(states.map((s) => [s.entity_id, s]));
 
         const overview = findOverview(states);
