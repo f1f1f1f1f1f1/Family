@@ -2,7 +2,7 @@ import type { Theme } from './index';
 
 export const midnightLight: Theme = {
   id: 'midnight-light',
-  name: 'Beacon Light',
+  name: 'Family Light',
   colors: {
     background: '#f8fafc',
     surface: '#f1f5f9',

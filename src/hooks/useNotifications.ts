@@ -95,7 +95,7 @@ async function sendHANotification(
     // We call the generic notify.notify which fans out to all targets,
     // or we try the mobile_app domain directly.
     await client.callService('notify', 'notify', '', {
-      title: `Beacon: ${title}`,
+      title: `Family: ${title}`,
       message,
     });
   } catch {
