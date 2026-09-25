@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef } from 'react';
 import { Chore, FamilyMember } from '../types/family';
 import { FamilyStore, notifyFamilyDataChanged } from '../api/family';
-import { callHaService, hasToken } from '../api/ha-rest';
+import { callBeaconAction, callHaService, hasToken } from '../api/ha-rest';
 import {
   getCollection,
   addToCollection,
@@ -118,15 +118,15 @@ async function reconcileOne<T extends { id: string; uid: string; last_synced_sta
   itemsByUid: Map<string, TodoItem>,
   linksCollection: string,
   onPull: (status: 'needs_action' | 'completed') => Promise<void>,
-): Promise<{ changed: boolean }> {
-  if (!link) return { changed: false }; // caller handles creation separately
+): Promise<{ changed: boolean; action: string }> {
+  if (!link) return { changed: false, action: 'no link' }; // caller handles creation separately
 
   const task = itemsByUid.get(link.uid);
   if (!task) {
     // Deleted on the Google Tasks side — drop the link rather than
     // recreating it, so a deliberate delete doesn't just come back.
     await removeFromCollection(linksCollection, link.id);
-    return { changed: false };
+    return { changed: false, action: `Google task ${link.uid} not found, link dropped` };
   }
 
   const beaconChanged = beaconStatus !== link.last_synced_status;
@@ -135,12 +135,12 @@ async function reconcileOne<T extends { id: string; uid: string; last_synced_sta
   if (beaconChanged && !taskChanged) {
     await callHaService('todo', 'update_item', { entity_id: entityId, item: link.uid, status: beaconStatus });
     await updateInCollection<T>(linksCollection, link.id, { last_synced_status: beaconStatus } as Partial<T>);
-    return { changed: false };
+    return { changed: false, action: `pushed ${beaconStatus} to Google` };
   }
   if (taskChanged && !beaconChanged) {
     await onPull(task.status);
     await updateInCollection<T>(linksCollection, link.id, { last_synced_status: task.status } as Partial<T>);
-    return { changed: true };
+    return { changed: true, action: `pulled ${task.status} into Family` };
   }
   if (beaconChanged && taskChanged && beaconStatus !== task.status) {
     const resolved = beaconStatus === 'completed' || task.status === 'completed' ? 'completed' : 'needs_action';
@@ -153,9 +153,15 @@ async function reconcileOne<T extends { id: string; uid: string; last_synced_sta
       await callHaService('todo', 'update_item', { entity_id: entityId, item: link.uid, status: resolved });
     }
     await updateInCollection<T>(linksCollection, link.id, { last_synced_status: resolved } as Partial<T>);
-    return { changed };
+    return { changed, action: `both changed, resolved to ${resolved}` };
   }
-  return { changed: false };
+  if (beaconChanged && taskChanged) {
+    // Both sides changed the same way. Record it, or a later change on
+    // one side would be mistaken for the other side changing back.
+    await updateInCollection<T>(linksCollection, link.id, { last_synced_status: beaconStatus } as Partial<T>);
+    return { changed: false, action: `both changed to ${beaconStatus}, recorded` };
+  }
+  return { changed: false, action: 'in sync' };
 }
 
 export function useChoresSync(
@@ -166,9 +172,29 @@ export function useChoresSync(
   const store = useRef(new FamilyStore()).current;
   const syncingRef = useRef(false);
 
-  const runSync = useCallback(async () => {
+  /**
+   * `verbose` (used by the Settings "Sync Now" button) writes a report of
+   * every decision to the add-on log, readable in HA under the add-on's
+   * Log tab. It also waits for an in-progress pass instead of skipping.
+   */
+  const runSync = useCallback(async (verbose = false) => {
+    const report: string[] = [];
+    const note = (line: string) => { if (verbose) report.push(line); };
+    const memberName = (id: string) => members.find((m) => m.id === id)?.name ?? id;
+
     const activeMembers = members.filter((m) => listByMember[m.id]);
-    if (!enabled || activeMembers.length === 0 || !hasToken() || syncingRef.current) return;
+    if (!enabled || activeMembers.length === 0 || !hasToken()) {
+      if (verbose) {
+        void callBeaconAction('/beacon-action/log', {
+          lines: [`skipped: enabled=${enabled} membersWithLists=${activeMembers.length} hasToken=${hasToken()}`],
+        }).catch(() => {});
+      }
+      return;
+    }
+    if (syncingRef.current) {
+      if (!verbose) return;
+      while (syncingRef.current) await new Promise((r) => setTimeout(r, 250));
+    }
     syncingRef.current = true;
 
     try {
@@ -183,6 +209,8 @@ export function useChoresSync(
         store.getCompletionsToday(),
       ]);
       const linksByKey = new Map(links.map((l) => [l.id, l]));
+      note(`lists: ${activeMembers.map((m) => `${m.name} -> ${listByMember[m.id]}`).join(', ')}`);
+      note(`chores=${chores.length} links=${links.length} completionsToday=${completionsToday.length}`);
       const knownUidsByList = new Map<string, Set<string>>();
 
       const itemsByEntity = new Map<string, TodoItem[]>();
@@ -194,6 +222,9 @@ export function useChoresSync(
           // mistakes its tasks for deleted ones this pass.
           if (items) itemsByEntity.set(entityId, items);
           else console.warn(`Beacon: unreadable todo response for ${entityId}, skipping this sync`);
+          note(items
+            ? `${entityId}: ${items.length} tasks, ${items.filter((it) => it.status === 'completed').length} completed`
+            : `${entityId}: unreadable response, list skipped`);
         }
       }
       // Remove routine tasks created before routines stopped syncing, and
@@ -252,6 +283,7 @@ export function useChoresSync(
             last_synced_status: item.status,
           });
           known.add(item.uid);
+          note(`imported new Google task "${item.summary}" (${item.status}) as a chore for ${memberName(member.id)}`);
           if (item.status === 'completed') {
             await store.completeChore(newChore.id, member.id);
           }
@@ -273,12 +305,14 @@ export function useChoresSync(
           ) ? 'completed' : 'needs_action';
           const link = linksByKey.get(key);
           const items = itemsByEntity.get(entityId);
+          const label = `"${chore.name}" for ${memberName(memberId)}`;
           if (!items) continue; // list unreadable this pass
           const itemsByUid = new Map(items.filter((it) => it.uid).map((it) => [it.uid as string, it]));
 
           if (!link) {
             const marker = formatChoreDescription(chore.id, memberId);
             let match = findByMarker(items, marker);
+            const relinked = !!match;
             if (!match) {
               await callHaService('todo', 'add_item', {
                 entity_id: entityId,
@@ -293,22 +327,32 @@ export function useChoresSync(
             }
             const known = knownUidsByList.get(entityId) ?? new Set<string>();
             if (match?.uid) {
+              // Baseline 'needs_action', not the task's current status: a
+              // re-found task may have been ticked in Google meanwhile, and
+              // recording that as already agreed would make the next pass
+              // push Family's "not done" over it. From this baseline a tick
+              // on either side counts as a change, and done wins.
               await addToCollection<ChoreSyncLink>(LINKS_COLLECTION, {
-                chore_id: chore.id, member_id: memberId, uid: match.uid, last_synced_status: match.status,
+                chore_id: chore.id, member_id: memberId, uid: match.uid, last_synced_status: 'needs_action',
               });
               known.add(match.uid);
               knownUidsByList.set(entityId, known);
+              note(`${label}: ${relinked ? 're-linked existing' : 'created'} Google task ${match.uid} (google=${match.status} family=${beaconStatus})`);
+            } else {
+              note(`${label}: created Google task but couldn't find it afterwards`);
             }
             continue;
           }
 
-          const { changed } = await reconcileOne(
+          const googleStatus = itemsByUid.get(link.uid)?.status ?? 'missing';
+          const { changed, action } = await reconcileOne(
             entityId, link, beaconStatus, itemsByUid, LINKS_COLLECTION,
             async (status) => {
               if (status === 'completed') await store.completeChore(chore.id, memberId);
               else await store.uncompleteChore(chore.id, memberId);
             },
           );
+          note(`${label}: family=${beaconStatus} google=${googleStatus} lastAgreed=${link.last_synced_status} -> ${action}`);
           if (changed) choresChanged = true;
         }
       }
@@ -316,6 +360,7 @@ export function useChoresSync(
       for (const link of links) {
         if (desiredChoreKeys.has(link.id)) continue;
         const entityId = listByMember[link.member_id];
+        note(`link ${link.id} has no matching assigned chore: deleting Google task ${link.uid}`);
         if (entityId) {
           await callHaService('todo', 'remove_item', { entity_id: entityId, item: link.uid }, false, `chores-sync: chore link ${link.id} no longer matches an assigned chore`).catch(() => {});
         }
@@ -325,8 +370,10 @@ export function useChoresSync(
       if (choresChanged) notifyFamilyDataChanged();
     } catch (err) {
       console.warn('Beacon: chores sync failed', err);
+      note(`sync failed: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
       syncingRef.current = false;
+      if (verbose) void callBeaconAction('/beacon-action/log', { lines: report }).catch(() => {});
     }
   }, [enabled, listByMember, members, store]);
 

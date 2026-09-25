@@ -177,6 +177,39 @@ function handleServiceCall(req, res) {
 }
 
 /**
+ * Diagnostic report from the chores sync, written to the add-on log so it
+ * can be read in HA (Settings → Add-ons → Family → Log).
+ * POST /beacon-action/log { lines: string[] }
+ */
+function handleClientLog(req, res) {
+  if (req.method !== 'POST') {
+    res.writeHead(405, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ error: 'Method not allowed' }));
+    return;
+  }
+  collectBody(req, 64 * 1024).then((bodyBuf) => {
+    try {
+      const { lines } = JSON.parse((bodyBuf || '{}').toString('utf8'));
+      if (Array.isArray(lines)) {
+        const from = req.headers['user-agent'] || 'unknown device';
+        console.log(`[chores-sync] report from ${from}`);
+        for (const line of lines.slice(0, 500)) console.log(`[chores-sync]   ${String(line).slice(0, 500)}`);
+      }
+      res.writeHead(204);
+      res.end();
+    } catch {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Invalid JSON' }));
+    }
+  }).catch(() => {
+    if (!res.headersSent) {
+      res.writeHead(413, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Too large' }));
+    }
+  });
+}
+
+/**
  * Send one command over HA's WebSocket API and resolve with its result.
  * Used for calendar event update/delete, which HA moved off the REST
  * services API to WS-only commands (calendar/event/update, /delete) —
@@ -895,6 +928,12 @@ const server = http.createServer((req, res) => {
   // Voice / natural-language action API
   if (req.url === '/beacon-action/voice') {
     handleVoiceAction(req, res);
+    return;
+  }
+
+  // Chores sync diagnostic report -> add-on log
+  if (req.url === '/beacon-action/log') {
+    handleClientLog(req, res);
     return;
   }
 
