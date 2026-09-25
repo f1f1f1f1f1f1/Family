@@ -639,7 +639,7 @@ export function App() {
             settings={settings}
             onUpdateSettings={updateSettings}
             onResetSettings={resetSettings}
-            onRunChoresSync={runChoresSync}
+            onRunChoresSync={() => runChoresSync(true)}
             onExportSettings={exportSettings}
             onImportSettings={importSettings}
             onClearLocalStorage={clearLocalStorage}

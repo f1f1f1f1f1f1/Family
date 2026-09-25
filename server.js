@@ -143,11 +143,21 @@ function handleServiceCall(req, res) {
 
   collectBody(req).then(async (bodyBuf) => {
     try {
-      const { domain, service, data, return_response } = JSON.parse((bodyBuf || '{}').toString('utf8'));
+      const { domain, service, data, return_response, reason } = JSON.parse((bodyBuf || '{}').toString('utf8'));
       if (!domain || !service) {
         res.writeHead(400, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ error: 'Missing domain or service' }));
         return;
+      }
+
+      // Log every to-do delete with the requesting device, so deletes coming
+      // from a device still running an older build can be traced.
+      if (domain === 'todo' && service === 'remove_item') {
+        console.log(
+          `[todo-delete] ${data?.entity_id} item=${JSON.stringify(data?.item)} ` +
+          `reason=${reason || 'none given (older build?)'} ` +
+          `from=${req.headers['user-agent'] || 'unknown device'}`,
+        );
       }
 
       const qs = return_response ? '?return_response' : '';
@@ -162,6 +172,39 @@ function handleServiceCall(req, res) {
     if (!res.headersSent) {
       res.writeHead(413, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ error: err.message }));
+    }
+  });
+}
+
+/**
+ * Diagnostic report from the chores sync, written to the add-on log so it
+ * can be read in HA (Settings → Add-ons → Family → Log).
+ * POST /beacon-action/log { lines: string[] }
+ */
+function handleClientLog(req, res) {
+  if (req.method !== 'POST') {
+    res.writeHead(405, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ error: 'Method not allowed' }));
+    return;
+  }
+  collectBody(req, 64 * 1024).then((bodyBuf) => {
+    try {
+      const { lines } = JSON.parse((bodyBuf || '{}').toString('utf8'));
+      if (Array.isArray(lines)) {
+        const from = req.headers['user-agent'] || 'unknown device';
+        console.log(`[chores-sync] report from ${from}`);
+        for (const line of lines.slice(0, 500)) console.log(`[chores-sync]   ${String(line).slice(0, 500)}`);
+      }
+      res.writeHead(204);
+      res.end();
+    } catch {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Invalid JSON' }));
+    }
+  }).catch(() => {
+    if (!res.headersSent) {
+      res.writeHead(413, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Too large' }));
     }
   });
 }
@@ -885,6 +928,12 @@ const server = http.createServer((req, res) => {
   // Voice / natural-language action API
   if (req.url === '/beacon-action/voice') {
     handleVoiceAction(req, res);
+    return;
+  }
+
+  // Chores sync diagnostic report -> add-on log
+  if (req.url === '/beacon-action/log') {
+    handleClientLog(req, res);
     return;
   }
 
