@@ -12,6 +12,7 @@ import { usePhotos } from '../hooks/usePhotos';
 import { requestFullBleed } from '../utils/ha-kiosk';
 import { NowPlayingBar } from './NowPlayingBar';
 import { PhotoDiagnostics, testPatternUrl } from './PhotoDiagnostics';
+import { CoverPhoto } from './CoverPhoto';
 import { MediaPlayer } from '../types/music';
 
 interface PhotoFrameProps {
@@ -168,18 +169,10 @@ export function PhotoFrame({
     <div className="photo-frame" ref={frameRef} onClick={handleTap}>
       {/* Photo with crossfade */}
       <div className="photo-frame-image-wrapper" key={fadeKey}>
-        {/* A background image rather than <img object-fit>: the photo
-            screensaver draws photos this way and fills the screen
-            correctly on the Echo Shows, where <img object-fit> didn't. */}
-        <div
+        <CoverPhoto
           className="photo-frame-image"
-          role="img"
-          aria-label={currentPhoto?.caption || 'Photo'}
-          style={
-            testPattern
-              ? { backgroundImage: `url("${testPatternUrl(photoSize?.w, photoSize?.h)}")` }
-              : currentPhoto ? { backgroundImage: `url("${currentPhoto.url.replace(/"/g, '%22')}")` } : undefined
-          }
+          src={testPattern ? testPatternUrl(photoSize?.w, photoSize?.h) : currentPhoto?.url}
+          label={currentPhoto?.caption || 'Photo'}
         />
       </div>
 
