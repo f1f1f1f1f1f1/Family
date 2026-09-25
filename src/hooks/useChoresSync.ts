@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef } from 'react';
-import { Chore, FamilyMember, ChoreCompletion, Routine, RoutineTaskCompletion } from '../types/family';
-import { FamilyStore } from '../api/family';
+import { Chore, FamilyMember, Routine } from '../types/family';
+import { FamilyStore, notifyFamilyDataChanged } from '../api/family';
 import { callHaService, hasToken } from '../api/ha-rest';
 import {
   getCollection,
@@ -175,13 +175,7 @@ async function reconcileOne<T extends { id: string; uid: string; last_synced_sta
 export function useChoresSync(
   enabled: boolean,
   listByMember: Record<string, string>,
-  chores: Chore[],
   members: FamilyMember[],
-  completionsToday: ChoreCompletion[],
-  refreshChores: () => Promise<void>,
-  routines: Routine[] = [],
-  routineCompletionsToday: RoutineTaskCompletion[] = [],
-  refreshRoutines: () => Promise<void> = async () => {},
 ) {
   const store = useRef(new FamilyStore()).current;
   const syncingRef = useRef(false);
@@ -192,9 +186,17 @@ export function useChoresSync(
     syncingRef.current = true;
 
     try {
-      const [links, routineLinks] = await Promise.all([
+      // Read chores/routines fresh every pass rather than taking them from
+      // React state: a component's copy can still be empty on mount (the
+      // first pass runs immediately), and every link missing from an empty
+      // list would be removed from Google Tasks as "deleted in Beacon".
+      const [links, routineLinks, chores, completionsToday, routines, routineCompletionsToday] = await Promise.all([
         getCollection<ChoreSyncLink>(LINKS_COLLECTION),
         getCollection<RoutineSyncLink>(ROUTINE_LINKS_COLLECTION),
+        store.getChores(),
+        store.getCompletionsToday(),
+        store.getRoutines(),
+        store.getRoutineTaskCompletionsToday(),
       ]);
       const linksByKey = new Map(links.map((l) => [l.id, l]));
       const routineLinksByKey = new Map(routineLinks.map((l) => [l.id, l]));
@@ -383,14 +385,13 @@ export function useChoresSync(
         await removeFromCollection(ROUTINE_LINKS_COLLECTION, link.id);
       }
 
-      if (choresChanged) await refreshChores();
-      if (routinesChanged) await refreshRoutines();
+      if (choresChanged || routinesChanged) notifyFamilyDataChanged();
     } catch (err) {
       console.warn('Beacon: chores/routines sync failed', err);
     } finally {
       syncingRef.current = false;
     }
-  }, [enabled, listByMember, chores, members, completionsToday, refreshChores, routines, routineCompletionsToday, refreshRoutines, store]);
+  }, [enabled, listByMember, members, store]);
 
   // The interval below outlives renders; calling through this ref makes
   // each tick use the latest chores/completions instead of the ones from
@@ -405,7 +406,7 @@ export function useChoresSync(
     const interval = setInterval(() => void runSyncRef.current(), 60_000);
     return () => clearInterval(interval);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [enabled, JSON.stringify(listByMember)]);
+  }, [enabled, JSON.stringify(listByMember), members.length]);
 
   return { runSync };
 }

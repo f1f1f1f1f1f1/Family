@@ -1,5 +1,5 @@
 import { useState, useCallback, useMemo, useEffect } from 'react';
-import { FamilyStore } from '../api/family';
+import { FamilyStore, FAMILY_DATA_CHANGED_EVENT } from '../api/family';
 import { Chore, ChoreCompletion, Streak, MemberEarnings } from '../types/family';
 
 export function useChores() {
@@ -22,6 +22,9 @@ export function useChores() {
 
   useEffect(() => {
     refresh();
+    const onChanged = () => void refresh();
+    window.addEventListener(FAMILY_DATA_CHANGED_EVENT, onChanged);
+    return () => window.removeEventListener(FAMILY_DATA_CHANGED_EVENT, onChanged);
   }, [refresh]);
 
   const addChore = useCallback(

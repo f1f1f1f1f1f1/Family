@@ -25,6 +25,17 @@ const STORAGE_KEYS = {
 } as const;
 
 /**
+ * Fired when family data changes outside a hook's own mutators (e.g. the
+ * Google Tasks sync pulling in a completion), so every mounted
+ * useChores/useRoutines instance can refresh — each keeps its own state.
+ */
+export const FAMILY_DATA_CHANGED_EVENT = 'beacon:family-data-changed';
+
+export function notifyFamilyDataChanged(): void {
+  window.dispatchEvent(new Event(FAMILY_DATA_CHANGED_EVENT));
+}
+
+/**
  * Family data store.
  *
  * Members, chores, routines and completions are stored as atomic

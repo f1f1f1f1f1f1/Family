@@ -6,7 +6,6 @@ import { useFamily } from './hooks/useFamily';
 import { useWeather } from './hooks/useWeather';
 import { useChores } from './hooks/useChores';
 import { useChoresSync } from './hooks/useChoresSync';
-import { useRoutines } from './hooks/useRoutines';
 import { Clock } from './components/Clock';
 import { WeekCalendar } from './components/WeekCalendar';
 import { DashboardView } from './components/DashboardView';
@@ -127,25 +126,12 @@ export function App() {
     completionsToday,
     completeChore,
     uncompleteChore,
-    refresh: refreshChores,
   } = useChores();
-
-  const {
-    routines,
-    completionsToday: routineCompletionsToday,
-    refresh: refreshRoutines,
-  } = useRoutines(); // no memberId — fetches routines for every member, needed for sync
 
   const { runSync: runChoresSync } = useChoresSync(
     settings.choresSyncEnabled,
     settings.choresSyncListByMember,
-    chores,
     members,
-    completionsToday,
-    refreshChores,
-    routines,
-    routineCompletionsToday,
-    refreshRoutines,
   );
 
   const dashboardTasks = useDashboardTasks(connected, settings.groceryListIds, settings.hideLocalTaskList);
