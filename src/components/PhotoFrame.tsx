@@ -150,10 +150,14 @@ export function PhotoFrame({
     <div className="photo-frame" onClick={handleTap}>
       {/* Photo with crossfade */}
       <div className="photo-frame-image-wrapper" key={fadeKey}>
-        <img
+        {/* A background image rather than <img object-fit>: the photo
+            screensaver draws photos this way and fills the screen
+            correctly on the Echo Shows, where <img object-fit> didn't. */}
+        <div
           className="photo-frame-image"
-          src={currentPhoto?.url}
-          alt={currentPhoto?.caption || 'Photo'}
+          role="img"
+          aria-label={currentPhoto?.caption || 'Photo'}
+          style={currentPhoto ? { backgroundImage: `url("${currentPhoto.url.replace(/"/g, '%22')}")` } : undefined}
         />
       </div>
 
