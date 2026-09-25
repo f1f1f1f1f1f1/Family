@@ -277,3 +277,76 @@
     height: 56px;
   }
 }
+
+/* Diagnostics readout (ⓘ button while controls are showing) */
+.photo-frame-info {
+  position: absolute;
+  top: calc(16px + var(--ha-safe-top, 0px));
+  right: calc(16px + var(--ha-safe-right, 0px));
+  width: 44px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.3);
+  color: white;
+  z-index: 10;
+}
+
+.photo-diagnostics {
+  position: absolute;
+  top: calc(68px + var(--ha-safe-top, 0px));
+  right: 12px;
+  left: 12px;
+  max-width: 560px;
+  margin-left: auto;
+  max-height: calc(100% - 96px);
+  overflow-y: auto;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: rgba(0, 0, 0, 0.82);
+  color: #fff;
+  font-size: 12px;
+  line-height: 1.35;
+  z-index: 11;
+  user-select: text;
+  -webkit-user-select: text;
+  cursor: auto;
+}
+
+.photo-diagnostics-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+  font-size: 13px;
+}
+
+.photo-diagnostics-header button {
+  color: #fff;
+  font-size: 16px;
+  padding: 2px 6px;
+}
+
+.photo-diagnostics dl {
+  margin: 0;
+}
+
+.photo-diagnostics dl > div {
+  display: flex;
+  gap: 10px;
+  padding: 2px 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.photo-diagnostics dt {
+  flex: 0 0 42%;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.photo-diagnostics dd {
+  margin: 0;
+  flex: 1;
+  word-break: break-word;
+}
