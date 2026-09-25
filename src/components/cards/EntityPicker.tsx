@@ -30,10 +30,6 @@ function loadEntityOptions(): Promise<EntityOption[]> {
   return entityOptionsRequest;
 }
 
-export function invalidateEntityOptions(): void {
-  entityOptionsRequest = null;
-}
-
 export function useEntityOptions(): EntityOption[] {
   const [options, setOptions] = useState<EntityOption[]>([]);
 

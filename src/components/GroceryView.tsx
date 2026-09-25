@@ -2,7 +2,9 @@ import { useState, useRef, useCallback, useEffect, useMemo } from 'react';
 import { ChevronDown, ChevronRight, Plus, Trash2 } from 'lucide-react';
 import { GroceryList } from '../types/grocery';
 import { AnyListClient } from '../api/anylist';
-import { callHaService, hasToken } from '../api/ha-rest';
+import { hasToken } from '../api/ha-rest';
+import { getTodoItems } from '../api/ha-services';
+import { isGroceryListName } from '../utils/grocery';
 import { useLocalTasks } from '../hooks/useLocalTasks';
 
 interface TodoItem {
@@ -16,17 +18,6 @@ interface UnifiedList {
   id: string;
   name: string;
   source: 'ha' | 'local';
-}
-
-/** Keywords that identify a list as grocery/shopping (vs tasks) */
-const GROCERY_KEYWORDS = [
-  'grocer', 'shopping', 'costco', 'walmart', 'target', 'store',
-  'pantry', 'fridge', 'freezer', 'inventory', 'meal',
-];
-
-function isGroceryList(name: string): boolean {
-  const lower = name.toLowerCase();
-  return GROCERY_KEYWORDS.some(kw => lower.includes(kw));
 }
 
 export type ListViewMode = 'grocery' | 'tasks';
@@ -78,7 +69,7 @@ export function GroceryView({ defaultListId, mode = 'grocery', groceryListIds = 
       if (groceryListIds.length > 0) {
         return groceryListIds.includes(id);
       }
-      return isGroceryList(name);
+      return isGroceryListName(name);
     };
 
     // Filter by mode: grocery lists vs task lists
@@ -151,14 +142,7 @@ export function GroceryView({ defaultListId, mode = 'grocery', groceryListIds = 
     setLoading(true);
 
     try {
-      const result = await callHaService('todo', 'get_items', {
-        entity_id: entityId,
-      }, true) as {
-        service_response?: Record<string, { items?: TodoItem[] }>;
-      };
-
-      const entityResponse = result?.service_response?.[entityId];
-      setHaItems(entityResponse?.items ?? []);
+      setHaItems((await getTodoItems(entityId)) ?? []);
     } catch (err) {
       console.warn('GroceryView: Failed to load items', err);
       setHaItems([]);

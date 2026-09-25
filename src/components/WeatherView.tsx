@@ -2,8 +2,8 @@ import { useState, useEffect, useCallback } from 'react';
 import { format, parseISO, isSameDay } from 'date-fns';
 import { RefreshCw, ChevronDown, Droplets, Wind } from 'lucide-react';
 import { weatherIcon, conditionLabel } from '../types/weather-icons';
-import { haFetch, callHaService, hasToken } from '../api/ha-rest';
-import { getConfig } from '../config';
+import { hasToken } from '../api/ha-rest';
+import { findWeatherEntity, getWeatherForecast } from '../api/ha-services';
 
 interface ForecastItem {
   datetime: string;
@@ -49,14 +49,7 @@ export function WeatherView() {
   const fetchHourly = useCallback(async (entityId: string) => {
     try {
       setHourlyLoading(true);
-      const result = await callHaService('weather', 'get_forecasts', {
-        entity_id: entityId,
-        type: 'hourly',
-      }, true) as { service_response?: Record<string, { forecast: HourlyItem[] }> };
-
-      const svcResponse = result?.service_response ?? result;
-      const hourlyData = (svcResponse as Record<string, { forecast: HourlyItem[] }>)?.[entityId]?.forecast ?? [];
-      setHourly(hourlyData);
+      setHourly(await getWeatherForecast<HourlyItem>(entityId, 'hourly'));
     } catch {
       setHourly([]);
     } finally {
@@ -75,34 +68,14 @@ export function WeatherView() {
       setLoading(true);
       setError(null);
 
-      // Discover weather entity — try configured, then auto-discover
-      const configEntity = getConfig().weather_entity;
-      let entity: { entity_id: string; state: string; attributes: Record<string, unknown> } | null = null;
-
-      // Try configured entity first
-      if (configEntity) {
-        try {
-          entity = await haFetch(`/api/states/${configEntity}`) as typeof entity;
-        } catch { /* entity doesn't exist, fall through to discovery */ }
-      }
-
-      // Auto-discover if configured entity doesn't exist
+      const entity = await findWeatherEntity();
       if (!entity) {
-        const states = await haFetch('/api/states') as Array<{
-          entity_id: string;
-          state: string;
-          attributes: Record<string, unknown>;
-        }>;
-        const found = states.find(s => s.entity_id.startsWith('weather.'));
-        if (!found) {
-          setError('No weather entity found');
-          setLoading(false);
-          return;
-        }
-        entity = found;
+        setError('No weather entity found');
+        setLoading(false);
+        return;
       }
 
-      const entityId = entity!.entity_id;
+      const entityId = entity.entity_id;
 
       const attrs = entity.attributes;
       setCurrent({
@@ -120,14 +93,7 @@ export function WeatherView() {
 
       // Fetch daily forecast
       try {
-        const result = await callHaService('weather', 'get_forecasts', {
-          entity_id: entityId,
-          type: 'daily',
-        }, true) as { service_response?: Record<string, { forecast: ForecastItem[] }> };
-
-        const svcResponse = result?.service_response ?? result;
-        const forecastData = (svcResponse as Record<string, { forecast: ForecastItem[] }>)?.[entityId]?.forecast ?? [];
-        setForecast(forecastData.slice(0, 7));
+        setForecast((await getWeatherForecast<ForecastItem>(entityId, 'daily')).slice(0, 7));
       } catch {
         // Forecast not available for this entity
         setForecast([]);

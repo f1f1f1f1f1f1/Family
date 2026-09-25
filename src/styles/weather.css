@@ -356,17 +356,6 @@
   font-weight: 500;
 }
 
-/* --- Dashboard weather widget clickable --- */
-.dashboard-weather--clickable {
-  cursor: pointer;
-  transition: background 0.15s;
-  border-radius: 12px;
-}
-
-.dashboard-weather--clickable:hover {
-  background: var(--bg-tertiary, rgba(255, 255, 255, 0.05));
-}
-
 /* --- Responsive --- */
 @media (max-width: 768px) {
   .weather-view {

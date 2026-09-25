@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef } from 'react';
 import { Chore, FamilyMember } from '../types/family';
 import { FamilyStore, notifyFamilyDataChanged } from '../api/family';
 import { callBeaconAction, callHaService, hasToken } from '../api/ha-rest';
+import { getTodoItems } from '../api/ha-services';
 import {
   getCollection,
   addToCollection,
@@ -120,16 +121,7 @@ async function fetchTodoItems(entityId: string, refresh = false): Promise<TodoIt
       console.warn(`Beacon: couldn't refresh ${entityId}, using cached items`, err);
     });
   }
-  const result = await callHaService(
-    'todo',
-    'get_items',
-    { entity_id: entityId, status: ['needs_action', 'completed'] },
-    true,
-  ) as { service_response?: Record<string, { items: TodoItem[] }> } | { [key: string]: { items: TodoItem[] } };
-
-  const svcResponse = (result as { service_response?: Record<string, { items: TodoItem[] }> })?.service_response ?? result;
-  const items = (svcResponse as Record<string, { items: TodoItem[] }>)?.[entityId]?.items;
-  return Array.isArray(items) ? items : null;
+  return getTodoItems(entityId, ['needs_action', 'completed']);
 }
 
 /**

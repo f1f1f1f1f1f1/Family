@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { ForecastDay } from '../types';
-import { callHaService, haFetch, hasToken } from '../api/ha-rest';
-import { getConfig } from '../config';
+import { hasToken } from '../api/ha-rest';
+import { findWeatherEntity, getWeatherForecast } from '../api/ha-services';
 
 const REFRESH_INTERVAL = 30 * 60 * 1000; // 30 minutes
 
@@ -16,40 +16,9 @@ export function useWeatherForecast(): ForecastDay[] {
     if (!hasToken()) return;
 
     try {
-      // Resolve weather entity — try configured, then auto-discover
-      const configEntity = getConfig().weather_entity;
-      let entityId = '';
-
-      if (configEntity) {
-        try {
-          await haFetch(`/api/states/${configEntity}`);
-          entityId = configEntity;
-        } catch { /* doesn't exist, fall through */ }
-      }
-
-      if (!entityId) {
-        const states = (await haFetch('/api/states')) as Array<{ entity_id: string }>;
-        const found = states.find((s) => s.entity_id.startsWith('weather.'));
-        if (!found) return;
-        entityId = found.entity_id;
-      }
-
-      const result = (await callHaService(
-        'weather',
-        'get_forecasts',
-        { entity_id: entityId, type: 'daily' },
-        true,
-      )) as Record<string, unknown>;
-
-      // Response shape: { service_response: { "weather.xxx": { forecast: [...] } } }
-      // or in add-on proxy mode the wrapper may already unwrap service_response
-      const outer =
-        (result as { service_response?: Record<string, unknown> })
-          .service_response ?? result;
-      const entityData = outer[entityId] as
-        | { forecast?: Array<Record<string, unknown>> }
-        | undefined;
-      const raw = entityData?.forecast ?? [];
+      const entity = await findWeatherEntity();
+      if (!entity) return;
+      const raw = await getWeatherForecast(entity.entity_id, 'daily');
 
       const days: ForecastDay[] = raw.map((f) => ({
         date: (f.datetime as string).slice(0, 10), // "2026-03-29"

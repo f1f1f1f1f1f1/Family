@@ -17,8 +17,3 @@ export function hapticMedium() {
 export function hapticSuccess() {
   if (isNative) Haptics.notification({ type: NotificationType.Success }).catch(() => {});
 }
-
-/** Warning notification — for delete confirmations */
-export function hapticWarning() {
-  if (isNative) Haptics.notification({ type: NotificationType.Warning }).catch(() => {});
-}

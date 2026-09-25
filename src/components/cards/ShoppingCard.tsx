@@ -2,7 +2,7 @@ import { useState, useRef, useCallback, useEffect } from 'react';
 import { Plus } from 'lucide-react';
 import { DashboardCardProps } from '../../types/dashboard-cards';
 import { AnyListClient } from '../../api/anylist';
-import { callHaService } from '../../api/ha-rest';
+import { getTodoItems } from '../../api/ha-services';
 
 interface TodoItem {
   uid: string;
@@ -26,14 +26,7 @@ export function ShoppingCard({ config }: DashboardCardProps) {
     setLoading(true);
 
     try {
-      const result = await callHaService('todo', 'get_items', {
-        entity_id: shoppingEntity,
-      }, true) as {
-        service_response?: Record<string, { items?: TodoItem[] }>;
-      };
-
-      const entityResponse = result?.service_response?.[shoppingEntity];
-      setItems(entityResponse?.items ?? []);
+      setItems((await getTodoItems(shoppingEntity)) ?? []);
     } catch (err) {
       console.warn('ShoppingCard: Failed to load items', err);
       setItems([]);
