@@ -143,11 +143,21 @@ function handleServiceCall(req, res) {
 
   collectBody(req).then(async (bodyBuf) => {
     try {
-      const { domain, service, data, return_response } = JSON.parse((bodyBuf || '{}').toString('utf8'));
+      const { domain, service, data, return_response, reason } = JSON.parse((bodyBuf || '{}').toString('utf8'));
       if (!domain || !service) {
         res.writeHead(400, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ error: 'Missing domain or service' }));
         return;
+      }
+
+      // Log every to-do delete with the requesting device, so deletes coming
+      // from a device still running an older build can be traced.
+      if (domain === 'todo' && service === 'remove_item') {
+        console.log(
+          `[todo-delete] ${data?.entity_id} item=${JSON.stringify(data?.item)} ` +
+          `reason=${reason || 'none given (older build?)'} ` +
+          `from=${req.headers['user-agent'] || 'unknown device'}`,
+        );
       }
 
       const qs = return_response ? '?return_response' : '';

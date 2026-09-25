@@ -201,7 +201,7 @@ export function useChoresSync(
       for (const link of legacyRoutineLinks) {
         const entityId = listByMember[link.member_id];
         if (entityId) {
-          await callHaService('todo', 'remove_item', { entity_id: entityId, item: link.uid }).catch(() => {});
+          await callHaService('todo', 'remove_item', { entity_id: entityId, item: link.uid }, false, `chores-sync: legacy routine link ${link.id}`).catch(() => {});
           const items = itemsByEntity.get(entityId);
           if (items) itemsByEntity.set(entityId, items.filter((it) => it.uid !== link.uid));
         }
@@ -212,7 +212,7 @@ export function useChoresSync(
       for (const [entityId, items] of itemsByEntity) {
         const orphans = items.filter((it) => it.uid && it.description?.includes(`${SYNC_MARKER_PREFIX} routine_id:`));
         for (const it of orphans) {
-          await callHaService('todo', 'remove_item', { entity_id: entityId, item: it.uid }).catch(() => {});
+          await callHaService('todo', 'remove_item', { entity_id: entityId, item: it.uid }, false, 'chores-sync: orphaned routine task').catch(() => {});
         }
         if (orphans.length) itemsByEntity.set(entityId, items.filter((it) => !orphans.includes(it)));
       }
@@ -317,7 +317,7 @@ export function useChoresSync(
         if (desiredChoreKeys.has(link.id)) continue;
         const entityId = listByMember[link.member_id];
         if (entityId) {
-          await callHaService('todo', 'remove_item', { entity_id: entityId, item: link.uid }).catch(() => {});
+          await callHaService('todo', 'remove_item', { entity_id: entityId, item: link.uid }, false, `chores-sync: chore link ${link.id} no longer matches an assigned chore`).catch(() => {});
         }
         await removeFromCollection(LINKS_COLLECTION, link.id);
       }

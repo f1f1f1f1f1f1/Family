@@ -98,6 +98,8 @@ export async function callHaService(
   service: string,
   data?: Record<string, unknown>,
   returnResponse = false,
+  /** Why this call is being made; logged by the add-on server for deletes. */
+  reason?: string,
 ): Promise<unknown> {
   // In add-on mode, route through the dedicated service endpoint
   // (HA ingress proxy can mangle POST bodies on /api/* paths)
@@ -106,7 +108,7 @@ export async function callHaService(
     const res = await fetch(`${base}/beacon-action/service`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ domain, service, data: data ?? {}, return_response: returnResponse }),
+      body: JSON.stringify({ domain, service, data: data ?? {}, return_response: returnResponse, reason }),
     });
     if (!res.ok) throw new Error(`Service call ${res.status}: ${res.statusText}`);
     return res.json();
