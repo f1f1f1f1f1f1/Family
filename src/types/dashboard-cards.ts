@@ -76,6 +76,8 @@ export interface DashboardCardContext {
   weekEvents: { day: Date; events: CalendarEvent[] }[];
   todaysMenu: DayMenu;
   todoItems: TodoItem[];
+  /** HA to-do list for shopping cards that don't pick their own (from Settings). */
+  defaultShoppingList: string;
   onToggleTodo?: (uid: string, currentStatus: string, listId?: string) => void;
   taskmateUsers: TaskmateUser[];
   filteredChores: Chore[];
@@ -100,6 +102,8 @@ export type CardConfigField =
     type: 'entity';
     key: string;
     label: string;
+    /** Only offer entities of this domain (e.g. 'todo'). */
+    domain?: string;
   }
   | {
     type: 'entity-list';

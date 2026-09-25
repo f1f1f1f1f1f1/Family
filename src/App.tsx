@@ -620,6 +620,9 @@ export function App() {
               timeFormat={settings.timeFormat}
               selectedDate={dashboardDate}
               onSelectedDateChange={setDashboardDate}
+              defaultShoppingList={
+                settings.shoppingEntity || settings.defaultGroceryList || settings.groceryListIds[0] || ''
+              }
             />
             <OmniAdd
               onAddEvent={handleAddEvent}

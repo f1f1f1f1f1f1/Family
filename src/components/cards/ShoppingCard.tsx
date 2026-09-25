@@ -11,8 +11,10 @@ interface TodoItem {
 }
 
 /** Sidebar "Shopping" section — configurable HA todo entity for shopping lists. */
-export function ShoppingCard({ config }: DashboardCardProps) {
-  const shoppingEntity = (config?.shoppingEntity as string) || '';
+export function ShoppingCard({ config, context }: DashboardCardProps) {
+  // The card's own list if one was picked when editing it, otherwise the
+  // shopping list chosen in Settings.
+  const shoppingEntity = (config?.shoppingEntity as string) || context.defaultShoppingList;
   const [items, setItems] = useState<TodoItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [inputValue, setInputValue] = useState('');
@@ -96,7 +98,7 @@ export function ShoppingCard({ config }: DashboardCardProps) {
       <section className="dash-sidebar-section">
         <h3 className="dash-sidebar-heading">Shopping</h3>
         <div className="dash-sidebar-empty">
-          Configure a shopping list in Settings → Integrations
+          No shopping list yet. Edit this card to pick one, or choose a Shopping Card List in Settings → Integrations.
         </div>
       </section>
     );
