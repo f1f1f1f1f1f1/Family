@@ -11,7 +11,15 @@ export interface DashboardTodoItem {
   userId?: string;
 }
 
-export function useDashboardTasks(connected: boolean, groceryListIds: string[] = [], hideLocalTasks: boolean = false) {
+const NO_HIDDEN_LISTS: string[] = [];
+
+export function useDashboardTasks(
+  connected: boolean,
+  groceryListIds: string[] = [],
+  hideLocalTasks: boolean = false,
+  /** HA todo entity IDs never shown on the dashboard (e.g. per-person chore sync lists) */
+  hiddenListIds: string[] = NO_HIDDEN_LISTS,
+) {
   const localTasks = useLocalTasks();
   const { users, listByUser, completions } = useTaskmate(connected);
   const [haItems, setHaItems] = useState<Omit<DashboardTodoItem, 'userId'>[]>([]);
@@ -27,6 +35,7 @@ export function useDashboardTasks(connected: boolean, groceryListIds: string[] =
 
         const todoEntities = states.filter(s => {
           if (!s.entity_id.startsWith('todo.') || s.state === 'unavailable') return false;
+          if (hiddenListIds.includes(s.entity_id)) return false;
           const name = s.attributes.friendly_name as string || s.entity_id;
           // Use groceryListIds if configured, otherwise fall back to keyword classification
           if (groceryListIds.length > 0) {
@@ -64,7 +73,7 @@ export function useDashboardTasks(connected: boolean, groceryListIds: string[] =
     fetchTasks();
     const interval = setInterval(fetchTasks, 60_000);
     return () => clearInterval(interval);
-  }, [connected, groceryListIds]);
+  }, [connected, groceryListIds, hiddenListIds]);
 
   const items: DashboardTodoItem[] = useMemo(() => {
     const local: DashboardTodoItem[] = hideLocalTasks
