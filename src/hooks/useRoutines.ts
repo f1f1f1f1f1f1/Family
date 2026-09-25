@@ -1,5 +1,5 @@
 import { useState, useCallback, useMemo, useEffect } from 'react';
-import { FamilyStore, FAMILY_DATA_CHANGED_EVENT } from '../api/family';
+import { FamilyStore, notifyFamilyDataChanged, onFamilyDataChanged } from '../api/family';
 import { Routine, RoutineTaskCompletion } from '../types/family';
 
 export function useRoutines(memberId?: string) {
@@ -18,15 +18,14 @@ export function useRoutines(memberId?: string) {
 
   useEffect(() => {
     refresh();
-    const onChanged = () => void refresh();
-    window.addEventListener(FAMILY_DATA_CHANGED_EVENT, onChanged);
-    return () => window.removeEventListener(FAMILY_DATA_CHANGED_EVENT, onChanged);
-  }, [refresh]);
+    return onFamilyDataChanged(store, () => void refresh());
+  }, [refresh, store]);
 
   const addRoutine = useCallback(
     async (routine: Omit<Routine, 'id'>) => {
       await store.addRoutine(routine);
       await refresh();
+      notifyFamilyDataChanged(store);
     },
     [store, refresh]
   );
@@ -35,6 +34,7 @@ export function useRoutines(memberId?: string) {
     async (id: string, data: Partial<Omit<Routine, 'id'>>) => {
       await store.updateRoutine(id, data);
       await refresh();
+      notifyFamilyDataChanged(store);
     },
     [store, refresh]
   );
@@ -43,6 +43,7 @@ export function useRoutines(memberId?: string) {
     async (id: string) => {
       await store.removeRoutine(id);
       await refresh();
+      notifyFamilyDataChanged(store);
     },
     [store, refresh]
   );
@@ -67,6 +68,7 @@ export function useRoutines(memberId?: string) {
         await store.completeRoutineTask(routine.id, taskId, routine.member_id);
       }
       await refresh();
+      notifyFamilyDataChanged(store);
     },
     [store, refresh, isTaskCompletedToday]
   );

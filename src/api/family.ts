@@ -25,14 +25,25 @@ const STORAGE_KEYS = {
 } as const;
 
 /**
- * Fired when family data changes outside a hook's own mutators (e.g. the
- * Google Tasks sync pulling in a completion), so every mounted
- * useChores/useRoutines instance can refresh — each keeps its own state.
+ * Fired whenever family data changes, so every mounted useFamily /
+ * useChores / useRoutines instance refreshes — each screen keeps its own
+ * copy of the state (e.g. the dashboard's chores card and the Chores
+ * screen). `source` identifies the instance that made the change, which
+ * already refreshed itself and skips the event.
  */
 export const FAMILY_DATA_CHANGED_EVENT = 'beacon:family-data-changed';
 
-export function notifyFamilyDataChanged(): void {
-  window.dispatchEvent(new Event(FAMILY_DATA_CHANGED_EVENT));
+export function notifyFamilyDataChanged(source?: object): void {
+  window.dispatchEvent(new CustomEvent(FAMILY_DATA_CHANGED_EVENT, { detail: source }));
+}
+
+/** Subscribe to family data changes made by anyone other than `self`. */
+export function onFamilyDataChanged(self: object, handler: () => void): () => void {
+  const listener = (e: Event) => {
+    if ((e as CustomEvent).detail !== self) handler();
+  };
+  window.addEventListener(FAMILY_DATA_CHANGED_EVENT, listener);
+  return () => window.removeEventListener(FAMILY_DATA_CHANGED_EVENT, listener);
 }
 
 /**

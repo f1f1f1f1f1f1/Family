@@ -1,6 +1,7 @@
-import { useState, useCallback, useEffect, useMemo } from 'react';
+import { useCallback, useMemo } from 'react';
 import { getConfig } from '../config';
-import { loadData, loadDataSync, saveData } from '../api/beacon-store';
+import { saveDataPatch } from '../api/beacon-store';
+import { useStoredData } from './useStoredData';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -136,73 +137,42 @@ function buildDefaults(): BeaconSettings {
 // Persistence helpers
 // ---------------------------------------------------------------------------
 
-function loadSettingsSync(): BeaconSettings {
-  const defaults = buildDefaults();
-  const stored = loadDataSync<Partial<BeaconSettings>>(STORAGE_KEY, {});
-  return { ...defaults, ...stored };
+/** Stored settings may predate newer fields; fill those from defaults. */
+function withDefaults(stored: Partial<BeaconSettings> | null): BeaconSettings {
+  return { ...buildDefaults(), ...stored };
 }
 
-async function loadSettingsAsync(): Promise<BeaconSettings> {
-  const defaults = buildDefaults();
-  const stored = await loadData<Partial<BeaconSettings>>(STORAGE_KEY, {});
-  return { ...defaults, ...stored };
-}
-
-function persistSettings(settings: BeaconSettings): void {
-  saveData(STORAGE_KEY, settings);
-}
+const NO_STORED_SETTINGS = {} as BeaconSettings;
 
 // ---------------------------------------------------------------------------
 // Hook
 // ---------------------------------------------------------------------------
 
 export function useSettings() {
-  // Initialize with localStorage data immediately
-  const [settings, setSettingsState] = useState<BeaconSettings>(loadSettingsSync);
+  // Loading never saves (see useStoredData); only the updaters below do.
+  const [settings, setSettings, refresh] = useStoredData<BeaconSettings>(
+    STORAGE_KEY,
+    NO_STORED_SETTINGS,
+    withDefaults,
+  );
 
-  /** Re-fetch settings from server. */
-  const refresh = useCallback(async () => {
-    const serverSettings = await loadSettingsAsync();
-    setSettingsState(serverSettings);
-  }, []);
-
-  // Fetch from server on mount, update if server has newer data
-  useEffect(() => {
-    refresh();
-  }, [refresh]);
-
-  // Re-fetch when the app becomes visible (mirror ha-entity-store pattern)
-  useEffect(() => {
-    const handleVisibilityChange = () => {
-      if (!document.hidden) {
-        void refresh();
-      }
-    };
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-    return () => {
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
-    };
-  }, [refresh]);
-
-  // Persist whenever settings change
-  useEffect(() => {
-    persistSettings(settings);
-  }, [settings]);
-
-  /** Update one or more settings fields. Changes apply immediately. */
+  /**
+   * Update one or more settings fields. Changes apply immediately. Only the
+   * changed fields are sent to the server, which merges them into its copy,
+   * so settings changed meanwhile on another device aren't overwritten.
+   */
   const updateSettings = useCallback(
     (patch: Partial<BeaconSettings>) => {
-      setSettingsState((prev) => ({ ...prev, ...patch }));
+      const next = setSettings((prev) => ({ ...prev, ...patch }), false);
+      void saveDataPatch(STORAGE_KEY, patch, next);
     },
-    [],
+    [setSettings],
   );
 
   /** Reset all settings to defaults (merged with config.yaml values). */
   const resetSettings = useCallback(() => {
-    const defaults = buildDefaults();
-    setSettingsState(defaults);
-    persistSettings(defaults);
-  }, []);
+    setSettings(() => buildDefaults());
+  }, [setSettings]);
 
   /** Export current settings as a JSON string. */
   const exportSettings = useCallback((): string => {
@@ -211,14 +181,14 @@ export function useSettings() {
 
   /** Import settings from a JSON string. Invalid JSON is silently ignored. */
   const importSettings = useCallback((json: string) => {
+    let parsed: Partial<BeaconSettings>;
     try {
-      const parsed = JSON.parse(json);
-      const defaults = buildDefaults();
-      setSettingsState({ ...defaults, ...parsed });
+      parsed = JSON.parse(json);
     } catch {
-      // invalid JSON — do nothing
+      return; // invalid JSON — do nothing
     }
-  }, []);
+    setSettings(() => withDefaults(parsed));
+  }, [setSettings]);
 
   /** Clear all Beacon data from localStorage. */
   const clearLocalStorage = useCallback(() => {
