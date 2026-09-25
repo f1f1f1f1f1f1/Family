@@ -8,28 +8,16 @@
 
 ## Learnings - 2026-03-29
 
-### Dual-Directory Structure
-HA builds from `beacon/` subdirectory, NOT the repo root. After ANY source change, sync:
-```bash
-rsync -av --delete src/ beacon/src/
-cp Dockerfile run.sh CHANGELOG.md beacon/
-```
-Both `config.yaml` and `beacon/config.yaml` must have matching versions.
+### Single Add-on at Repo Root (this fork)
+This fork (add-on slug `family`) is built by Supervisor from the repo root:
+root `config.yaml` has no `image:` line, so the root `Dockerfile` builds
+from `src/`, `server.js`, `run.sh` etc. at the root. Bump `version` in
+`config.yaml` on every change or Supervisor may reuse a cached build.
 
-**The root-level `Dockerfile` builds from repo-root context (`context: .` in
-`.github/workflows/build-addon.yml`), not from `beacon/`.** So anything that
-Dockerfile `COPY`s -- including `custom_intents/` and `custom_sentences/` --
-must also exist at the repo root, mirrored from `beacon/`, or the Docker
-build fails with `"failed to calculate checksum ... not found"`. This bit
-us once already: those two dirs existed only under `beacon/` and the image
-build silently never ran for months (see the CI/release-trigger bug below),
-so nobody caught it until the pipeline was fixed and the build actually
-executed. When adding root-level content Dockerfile depends on, sync it
-the same way:
-```bash
-rsync -av --delete beacon/custom_intents/ custom_intents/
-rsync -av --delete beacon/custom_sentences/ custom_sentences/
-```
+Upstream's `beacon/` subdirectory was removed: Supervisor treats every
+`config.yaml` in a repository as a separate add-on, so it showed up in the
+add-on store as a stale second "Beacon" add-on. Don't reintroduce a nested
+`config.yaml`.
 
 ### HA Add-on Auth: Long-Lived Token in Config
 SUPERVISOR_TOKEN only works container-side (http://supervisor/core). postMessage auth doesn't work in HA companion app WKWebView. The `ha_token` config option (schema: password) with a user-provided long-lived access token is the only reliable browser-side auth approach.
