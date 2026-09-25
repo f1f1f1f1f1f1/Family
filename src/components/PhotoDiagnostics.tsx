@@ -1,4 +1,36 @@
 import { useEffect, useState, type RefObject } from 'react';
+import { coverCrop } from './CoverPhoto';
+
+/** EXIF Orientation tag (1–8) of a JPEG, or null if absent/not a JPEG. */
+export function readExifOrientation(bytes: ArrayBuffer): number | null {
+  const view = new DataView(bytes);
+  if (view.byteLength < 4 || view.getUint16(0) !== 0xffd8) return null;
+  let offset = 2;
+  while (offset + 4 <= view.byteLength) {
+    const marker = view.getUint16(offset);
+    const length = view.getUint16(offset + 2);
+    if (marker === 0xffe1 && offset + 10 <= view.byteLength && view.getUint32(offset + 4) === 0x45786966) {
+      const tiff = offset + 10;
+      const little = view.getUint16(tiff) === 0x4949;
+      const ifd = tiff + view.getUint32(tiff + 4, little);
+      const entries = view.getUint16(ifd, little);
+      for (let i = 0; i < entries; i++) {
+        const entry = ifd + 2 + i * 12;
+        if (entry + 10 > view.byteLength) return null;
+        if (view.getUint16(entry, little) === 0x0112) return view.getUint16(entry + 8, little);
+      }
+      return null;
+    }
+    if ((marker & 0xff00) !== 0xff00 || marker === 0xffda) return null;
+    offset += 2 + length;
+  }
+  return null;
+}
+
+const ORIENTATION_NAMES: Record<number, string> = {
+  1: '1 (upright)', 2: '2 (mirrored)', 3: '3 (rotated 180°)', 4: '4 (mirrored, 180°)',
+  5: '5 (mirrored, 90°)', 6: '6 (rotated 90°)', 7: '7 (mirrored, 270°)', 8: '8 (rotated 270°)',
+};
 
 /**
  * On-screen readout of everything that decides where a photo lands:
@@ -46,9 +78,13 @@ function rectText(r?: DOMRect | null): string {
   return `${size(r.width, r.height)} at top ${Math.round(r.top)}, left ${Math.round(r.left)}`;
 }
 
-function measure(frame: HTMLDivElement | null, photo?: { w: number; h: number }): [string, string][] {
-  const image = frame?.querySelector<HTMLElement>('.photo-frame-image') ?? null;
-  const imageStyle = image ? getComputedStyle(image) : null;
+function measure(frame: HTMLDivElement | null, photo?: { w: number; h: number }, orientation?: string): [string, string][] {
+  const image = frame?.querySelector<HTMLCanvasElement>('.photo-frame-image') ?? null;
+  let crop = '—';
+  if (image && photo) {
+    const c = coverCrop(photo.w, photo.h, image.width, image.height);
+    crop = `photo ${Math.round(c.sx)},${Math.round(c.sy)} → ${Math.round(c.sw)} × ${Math.round(c.sh)} on ${image.width} × ${image.height} canvas`;
+  }
   const vv = window.visualViewport;
   const rootStyle = getComputedStyle(document.documentElement);
   const safe = ['top', 'right', 'bottom', 'left']
@@ -84,7 +120,8 @@ function measure(frame: HTMLDivElement | null, photo?: { w: number; h: number })
     ['Family visual viewport', vv ? `${size(vv.width, vv.height)} offset ${Math.round(vv.offsetTop)}, ${Math.round(vv.offsetLeft)}` : '—'],
     ['Photo area', rectText(frame?.getBoundingClientRect())],
     ['Photo layer', rectText(image?.getBoundingClientRect())],
-    ['Photo sizing', imageStyle ? `${imageStyle.backgroundSize} at ${imageStyle.backgroundPosition}` : '—'],
+    ['Photo crop', crop],
+    ['Photo rotation (EXIF)', orientation ?? 'checking…'],
     ['Page scroll', `${Math.round(window.scrollX)}, ${Math.round(window.scrollY)} (body ${document.body.scrollTop}, root ${document.documentElement.scrollTop})`],
     ['Photo', photo ? size(photo.w, photo.h) : 'loading…'],
     ['HA page viewport', parentViewport],
@@ -101,6 +138,22 @@ function measure(frame: HTMLDivElement | null, photo?: { w: number; h: number })
 export function PhotoDiagnostics({ frameRef, photoUrl, testPattern, onToggleTestPattern, onClose }: Props) {
   const [photo, setPhoto] = useState<{ w: number; h: number }>();
   const [rows, setRows] = useState<[string, string][]>([]);
+  const [orientation, setOrientation] = useState<string>();
+
+  useEffect(() => {
+    setOrientation(undefined);
+    if (!photoUrl) return;
+    let cancelled = false;
+    fetch(photoUrl, { headers: { Range: 'bytes=0-131071' } })
+      .then((res) => res.arrayBuffer())
+      .then((buf) => {
+        if (cancelled) return;
+        const o = readExifOrientation(buf);
+        setOrientation(o === null ? 'none (not set)' : ORIENTATION_NAMES[o] ?? String(o));
+      })
+      .catch(() => { if (!cancelled) setOrientation('could not read'); });
+    return () => { cancelled = true; };
+  }, [photoUrl]);
 
   useEffect(() => {
     setPhoto(undefined);
@@ -111,7 +164,7 @@ export function PhotoDiagnostics({ frameRef, photoUrl, testPattern, onToggleTest
   }, [photoUrl]);
 
   useEffect(() => {
-    const update = () => setRows(measure(frameRef.current, photo));
+    const update = () => setRows(measure(frameRef.current, photo, orientation));
     update();
     const t = setInterval(update, 1000);
     window.addEventListener('resize', update);
@@ -119,7 +172,7 @@ export function PhotoDiagnostics({ frameRef, photoUrl, testPattern, onToggleTest
       clearInterval(t);
       window.removeEventListener('resize', update);
     };
-  }, [frameRef, photo]);
+  }, [frameRef, photo, orientation]);
 
   return (
     <>
