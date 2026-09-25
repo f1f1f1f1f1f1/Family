@@ -6,10 +6,12 @@ import {
   Play,
   Pause,
   ArrowLeft,
+  Info,
 } from 'lucide-react';
 import { usePhotos } from '../hooks/usePhotos';
 import { requestFullBleed } from '../utils/ha-kiosk';
 import { NowPlayingBar } from './NowPlayingBar';
+import { PhotoDiagnostics } from './PhotoDiagnostics';
 import { MediaPlayer } from '../types/music';
 
 interface PhotoFrameProps {
@@ -67,6 +69,8 @@ export function PhotoFrame({
   useEffect(() => requestFullBleed(), []);
 
   const [showControls, setShowControls] = useState(false);
+  const [showDiagnostics, setShowDiagnostics] = useState(false);
+  const frameRef = useRef<HTMLDivElement>(null);
   const [clock, setClock] = useState(formatClock());
   const [date, setDate] = useState(formatDate());
   const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -147,7 +151,7 @@ export function PhotoFrame({
   }
 
   return fullScreen(
-    <div className="photo-frame" onClick={handleTap}>
+    <div className="photo-frame" ref={frameRef} onClick={handleTap}>
       {/* Photo with crossfade */}
       <div className="photo-frame-image-wrapper" key={fadeKey}>
         {/* A background image rather than <img object-fit>: the photo
@@ -210,6 +214,25 @@ export function PhotoFrame({
         >
           <ArrowLeft size={24} />
         </button>
+      )}
+
+      {/* Diagnostics toggle (in controls mode) and readout */}
+      {showControls && (
+        <button
+          type="button"
+          className="photo-frame-info"
+          onClick={(e) => { e.stopPropagation(); setShowDiagnostics((v) => !v); }}
+          aria-label="Photo diagnostics"
+        >
+          <Info size={22} />
+        </button>
+      )}
+      {showDiagnostics && (
+        <PhotoDiagnostics
+          frameRef={frameRef}
+          photoUrl={currentPhoto?.url}
+          onClose={() => setShowDiagnostics(false)}
+        />
       )}
 
       {/* Music bar overlay */}
