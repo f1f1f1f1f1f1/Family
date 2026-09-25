@@ -44,7 +44,7 @@ import {
  */
 
 interface ChoreSyncLink {
-  id: string; // `${chore_id}:${member_id}`
+  id: string; // record id, assigned by the collection API — not meaningful
   chore_id: string;
   member_id: string;
   uid: string;
@@ -59,6 +59,16 @@ interface LegacyRoutineSyncLink {
 }
 
 const LINKS_COLLECTION = 'beacon_chores_sync_links';
+
+/**
+ * Links are looked up by the chore and member they belong to. Their `id`
+ * is assigned by the server when the record is added, so it can't be
+ * used as this key — doing so meant no link was ever found: every pass
+ * re-linked each chore and then deleted its Google task as orphaned.
+ */
+function choreLinkKey(link: Pick<ChoreSyncLink, 'chore_id' | 'member_id'>): string {
+  return `${link.chore_id}:${link.member_id}`;
+}
 const LEGACY_ROUTINE_LINKS_COLLECTION = 'beacon_routine_sync_links';
 const SYNC_MARKER_PREFIX = '[beacon-sync]';
 
@@ -208,7 +218,6 @@ export function useChoresSync(
         store.getChores(),
         store.getCompletionsToday(),
       ]);
-      const linksByKey = new Map(links.map((l) => [l.id, l]));
       note(`lists: ${activeMembers.map((m) => `${m.name} -> ${listByMember[m.id]}`).join(', ')}`);
       note(`chores=${chores.length} links=${links.length} completionsToday=${completionsToday.length}`);
       const knownUidsByList = new Map<string, Set<string>>();
@@ -254,6 +263,36 @@ export function useChoresSync(
         if (!knownUidsByList.has(entityId)) knownUidsByList.set(entityId, new Set());
         knownUidsByList.get(entityId)!.add(l.uid);
       }
+
+      // One link per (chore, member). Earlier builds could save several;
+      // keep the one whose task still exists and drop the rest, deleting
+      // any extra Google tasks they point at (Beacon-created duplicates).
+      const linksByKey = new Map<string, ChoreSyncLink>();
+      const extraLinks: ChoreSyncLink[] = [];
+      for (const l of links) {
+        const key = choreLinkKey(l);
+        const current = linksByKey.get(key);
+        if (!current) { linksByKey.set(key, l); continue; }
+        const items = itemsByEntity.get(listByMember[l.member_id]);
+        const exists = (link: ChoreSyncLink) => !!items?.some((it) => it.uid === link.uid);
+        if (!exists(current) && exists(l)) {
+          extraLinks.push(current);
+          linksByKey.set(key, l);
+        } else {
+          extraLinks.push(l);
+        }
+      }
+      for (const extra of extraLinks) {
+        const kept = linksByKey.get(choreLinkKey(extra))!;
+        const entityId = listByMember[extra.member_id];
+        if (entityId && extra.uid !== kept.uid && itemsByEntity.get(entityId)?.some((it) => it.uid === extra.uid)) {
+          note(`duplicate link for ${choreLinkKey(extra)}: deleting extra Google task ${extra.uid}`);
+          await callHaService('todo', 'remove_item', { entity_id: entityId, item: extra.uid }, false, `chores-sync: duplicate task for ${choreLinkKey(extra)}`).catch(() => {});
+          itemsByEntity.set(entityId, itemsByEntity.get(entityId)!.filter((it) => it.uid !== extra.uid));
+        }
+        await removeFromCollection(LINKS_COLLECTION, extra.id);
+      }
+      if (extraLinks.length) note(`removed ${extraLinks.length} duplicate link record(s)`);
 
       let choresChanged = false;
 
@@ -344,6 +383,18 @@ export function useChoresSync(
             continue;
           }
 
+          // Other Beacon-created tasks for this same chore are duplicates
+          // left by earlier builds. Only removed while the linked task
+          // exists, so the last copy is never deleted.
+          if (itemsByUid.has(link.uid)) {
+            const marker = formatChoreDescription(chore.id, memberId);
+            const dups = items.filter((it) => it.uid && it.uid !== link.uid && it.description?.includes(marker));
+            for (const dup of dups) {
+              note(`${label}: deleting duplicate Google task ${dup.uid}`);
+              await callHaService('todo', 'remove_item', { entity_id: entityId, item: dup.uid }, false, `chores-sync: duplicate task for ${key}`).catch(() => {});
+            }
+          }
+
           const googleStatus = itemsByUid.get(link.uid)?.status ?? 'missing';
           const { changed, action } = await reconcileOne(
             entityId, link, beaconStatus, itemsByUid, LINKS_COLLECTION,
@@ -357,12 +408,12 @@ export function useChoresSync(
         }
       }
 
-      for (const link of links) {
-        if (desiredChoreKeys.has(link.id)) continue;
+      for (const link of linksByKey.values()) {
+        if (desiredChoreKeys.has(choreLinkKey(link))) continue;
         const entityId = listByMember[link.member_id];
-        note(`link ${link.id} has no matching assigned chore: deleting Google task ${link.uid}`);
+        note(`link for ${choreLinkKey(link)} has no matching assigned chore: deleting Google task ${link.uid}`);
         if (entityId) {
-          await callHaService('todo', 'remove_item', { entity_id: entityId, item: link.uid }, false, `chores-sync: chore link ${link.id} no longer matches an assigned chore`).catch(() => {});
+          await callHaService('todo', 'remove_item', { entity_id: entityId, item: link.uid }, false, `chores-sync: chore link ${choreLinkKey(link)} no longer matches an assigned chore`).catch(() => {});
         }
         await removeFromCollection(LINKS_COLLECTION, link.id);
       }
