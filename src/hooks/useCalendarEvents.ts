@@ -17,6 +17,25 @@ export class CalendarNotSupportedError extends Error {
   }
 }
 
+/**
+ * How long the list of HA calendars is reused. Changing week or calendar
+ * colors used to ask HA for it again every time; a calendar added in HA
+ * still shows up within this long (the 5-minute refresh picks it up).
+ */
+export const CALENDAR_LIST_MAX_AGE_MS = 10 * 60 * 1000;
+
+type HaCalendarListEntry = { entity_id: string; name: string };
+
+type HaCalendarEvent = {
+  uid?: string;
+  summary: string;
+  start: string | { dateTime: string; date: string };
+  end: string | { dateTime: string; date: string };
+  description?: string;
+  location?: string;
+  recurrence_id?: string;
+};
+
 function isNotSupported(err: unknown): boolean {
   if (err instanceof BeaconActionError) return err.code === 'not_supported';
   if (err && typeof err === 'object' && 'code' in err) return (err as { code?: string }).code === 'not_supported';
@@ -45,14 +64,26 @@ export function useCalendarEvents(
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [loading, setLoading] = useState(false);
   const calendarsRef = useRef<CalendarInfo[]>([]);
+  const calendarListRef = useRef<{ list: HaCalendarListEntry[]; fetchedAt: number } | null>(null);
   const colorOptionsRef = useRef(colorOptions);
   colorOptionsRef.current = colorOptions;
 
-  const fetchCalendars = useCallback(async () => {
+  /**
+   * The HA calendars, with colors resolved from the latest settings. The
+   * list itself comes from HA at most every `maxAgeMs`.
+   */
+  const fetchCalendars = useCallback(async (maxAgeMs = CALENDAR_LIST_MAX_AGE_MS) => {
     if (!connected && !hasToken()) return [];
 
     try {
-      const data = await haFetch('/api/calendars') as Array<{ entity_id: string; name: string }>;
+      const cached = calendarListRef.current;
+      let data: HaCalendarListEntry[];
+      if (cached && Date.now() - cached.fetchedAt < maxAgeMs) {
+        data = cached.list;
+      } else {
+        data = await haFetch('/api/calendars') as HaCalendarListEntry[];
+        calendarListRef.current = { list: data, fetchedAt: Date.now() };
+      }
       const cals = data.map((cal, index) => ({
         id: cal.entity_id,
         name: cal.name,
@@ -78,21 +109,13 @@ export function useCalendarEvents(
       }
       if (cals.length === 0) return;
 
-      const allEvents: CalendarEvent[] = [];
-      for (const cal of cals) {
+      // One request per calendar, all at once rather than one after another.
+      const perCalendar = await Promise.all(cals.map(async (cal) => {
         try {
           const params = new URLSearchParams({ start, end });
-          const result = await haFetch(`/api/calendars/${cal.id}?${params}`) as Array<{
-            uid?: string;
-            summary: string;
-            start: string | { dateTime: string; date: string };
-            end: string | { dateTime: string; date: string };
-            description?: string;
-            location?: string;
-            recurrence_id?: string;
-          }>;
+          const result = await haFetch(`/api/calendars/${cal.id}?${params}`) as HaCalendarEvent[];
 
-          for (const ev of (result || [])) {
+          return (result || []).map((ev, index): CalendarEvent => {
             const startStr = typeof ev.start === 'string' ? ev.start : (ev.start.dateTime || ev.start.date);
             const endStr = typeof ev.end === 'string' ? ev.end : (ev.end.dateTime || ev.end.date);
             const allDay = typeof ev.start === 'string'
@@ -106,8 +129,8 @@ export function useCalendarEvents(
             // real uid) can be blocked with a clear error instead of
             // silently no-op'ing server-side.
             const realUid = ev.uid || ev.recurrence_id;
-            allEvents.push({
-              id: realUid || `${cal.id}-${allEvents.length}`,
+            return {
+              id: realUid || `${cal.id}-${index}`,
               title: ev.summary,
               start: startStr,
               end: endStr,
@@ -118,13 +141,15 @@ export function useCalendarEvents(
               calendarName: cal.name,
               color: cal.color,
               hasStableId: !!realUid,
-            });
-          }
+            };
+          });
         } catch (err) {
           console.error(`Failed to fetch events for ${cal.name}:`, err);
+          return [];
         }
-      }
+      }));
 
+      const allEvents = perCalendar.flat();
       allEvents.sort((a, b) => a.start.localeCompare(b.start));
       setEvents(allEvents);
     } finally {

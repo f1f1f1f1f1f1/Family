@@ -304,10 +304,9 @@ export function App() {
 
     loadData();
 
-    // Refresh every 5 minutes for the currently-visible week
-    const interval = setInterval(() => {
-      refetchEventsForWeek(visibleWeekStart);
-    }, 5 * 60 * 1000);
+    // Refresh every 5 minutes for the currently-visible week (the list of
+    // calendars is asked for again once it's CALENDAR_LIST_MAX_AGE_MS old)
+    const interval = setInterval(loadData, 5 * 60 * 1000);
 
     return () => clearInterval(interval);
   }, [connected, fullAppShown, fetchCalendars, refetchEventsForWeek, visibleWeekStart]);
