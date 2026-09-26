@@ -145,22 +145,28 @@ export function EntityPicker({ value, onChange, id, domain: fixedDomain }: Entit
 interface EntityMultiPickerProps {
   selectedIds: string[];
   onToggle: (entityId: string) => void;
+  /** Only offer entities of these domains. */
+  domains?: string[];
 }
 
 /** Checkbox list for card fields that accept several entities. */
-export function EntityMultiPicker({ selectedIds, onToggle }: EntityMultiPickerProps) {
+export function EntityMultiPicker({ selectedIds, onToggle, domains: allowedDomains }: EntityMultiPickerProps) {
   const options = useEntityOptions();
-  const domains = useDomains(options);
+  const offered = useMemo(
+    () => (allowedDomains ? options.filter((option) => allowedDomains.includes(option.domain)) : options),
+    [options, allowedDomains],
+  );
+  const domains = useDomains(offered);
   const [search, setSearch] = useState('');
   const [domain, setDomain] = useState('');
 
   const visible = useMemo(() => {
-    const filtered = filterEntityOptions(options, search, domain);
+    const filtered = filterEntityOptions(offered, search, domain);
     const missingSelected = options.filter(
       (option) => selectedIds.includes(option.entity_id) && !filtered.includes(option),
     );
     return [...missingSelected, ...filtered];
-  }, [options, search, domain, selectedIds]);
+  }, [options, offered, search, domain, selectedIds]);
 
   return (
     <div className="dash-entity-picker">

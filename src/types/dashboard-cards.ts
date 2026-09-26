@@ -111,6 +111,8 @@ export type CardConfigField =
     label: string;
     /** Previous single-entity key to migrate into this list when configured. */
     legacyKey?: string;
+    /** Only offer entities of these domains (e.g. ['light', 'switch']). */
+    domains?: string[];
   }
   | {
     type: 'toggle';

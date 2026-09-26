@@ -74,6 +74,7 @@ export function CardConfigModal({ card, onSave, onClose }: CardConfigModalProps)
                   <label className="form-label">{field.label}</label>
                   <EntityMultiPicker
                     selectedIds={entityIds}
+                    domains={field.domains}
                     onToggle={(entityId) => toggleEntity(field.key, entityId)}
                   />
                 </div>

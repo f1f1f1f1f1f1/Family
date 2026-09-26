@@ -9,6 +9,7 @@ import { ShoppingCard } from './ShoppingCard';
 import { HaEntityCard } from './HaEntityCard';
 import { HaEntitiesListCard } from './HaEntitiesListCard';
 import { HaToggleCard } from './HaToggleCard';
+import { TOGGLE_DOMAINS } from './toggle-domains';
 
 export const cardRegistry: Record<string, CardDefinition> = {
   'clock-weather': {
@@ -127,7 +128,7 @@ export const cardRegistry: Record<string, CardDefinition> = {
     defaultConfig: { entity_ids: [], title: '', subtitle: '' },
     defaultSize: 'sm',
     configFields: [
-      { type: 'entity-list', key: 'entity_ids', label: 'Entities', legacyKey: 'entity_id' },
+      { type: 'entity-list', key: 'entity_ids', label: 'Entities', legacyKey: 'entity_id', domains: TOGGLE_DOMAINS },
       { type: 'text', key: 'title', label: 'Title' },
       { type: 'text', key: 'subtitle', label: 'Subtitle' },
     ],

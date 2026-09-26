@@ -5,6 +5,10 @@
  * - Serves the static SPA from /app/dist
  * - Proxies /api/* to HA Supervisor API with SUPERVISOR_TOKEN
  * - Provides /beacon-data/* for persistent storage (survives rebuilds)
+ *
+ * The Supervisor token has admin rights, so only the HA services and
+ * paths Family uses are passed on, and writes from other websites are
+ * refused — see server-guards.cjs.
  */
 
 const http = require('http');
@@ -12,6 +16,12 @@ const fs = require('fs');
 const fsp = require('fs/promises');
 const path = require('path');
 const WebSocket = require('ws');
+const {
+  isServiceAllowed,
+  isProxyRequestAllowed,
+  isCrossOriginWrite,
+  describeRequester,
+} = require('./server-guards.cjs');
 
 const PORT = 3000;
 const DIST = process.env.BEACON_DIST || '/app/dist';
@@ -178,6 +188,16 @@ function handleServiceCall(req, res) {
       if (!domain || !service) {
         res.writeHead(400, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ error: 'Missing domain or service' }));
+        return;
+      }
+
+      if (!isServiceAllowed(domain, service)) {
+        console.warn(
+          `[blocked] service ${JSON.stringify(`${domain}.${service}`)} is not one Family uses; ` +
+          describeRequester(req.headers),
+        );
+        res.writeHead(403, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: `Service ${domain}.${service} is not allowed` }));
         return;
       }
 
@@ -992,6 +1012,20 @@ function handleVoiceAction(req, res) {
 }
 
 const server = http.createServer((req, res) => {
+  // Refuse writes sent by another website (CSRF) before any route runs.
+  if (isCrossOriginWrite(req.method, req.headers)) {
+    console.warn(
+      `[blocked] cross-origin ${req.method} ${JSON.stringify(req.url.split('?')[0].slice(0, 200))} ` +
+      `origin=${JSON.stringify(req.headers.origin || '')} ` +
+      `sec-fetch-site=${JSON.stringify(req.headers['sec-fetch-site'] || '')} ` +
+      `host=${JSON.stringify(req.headers['x-forwarded-host'] || req.headers.host || '')} ` +
+      describeRequester(req.headers),
+    );
+    res.writeHead(403, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ error: 'Cross-origin request blocked' }));
+    return;
+  }
+
   // Voice / natural-language action API
   if (req.url === '/beacon-action/voice') {
     handleVoiceAction(req, res);
@@ -1034,13 +1068,20 @@ const server = http.createServer((req, res) => {
     return;
   }
 
-  // Proxy API requests to HA
+  // Proxy API requests to HA — only the reads and services Family uses
   if (req.url.startsWith('/api/')) {
-    if (SUPERVISOR_TOKEN) {
-      proxyToHA(req, res);
-    } else {
+    if (!SUPERVISOR_TOKEN) {
       res.writeHead(503);
       res.end(JSON.stringify({ error: 'No Supervisor token available' }));
+    } else if (!isProxyRequestAllowed(req.method, req.url)) {
+      console.warn(
+        `[blocked] ${req.method} ${JSON.stringify(req.url.split('?')[0].slice(0, 200))} is not an HA API path Family uses; ` +
+        describeRequester(req.headers),
+      );
+      res.writeHead(403, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Not allowed' }));
+    } else {
+      proxyToHA(req, res);
     }
     return;
   }
