@@ -1,3 +1,10 @@
+## [1.1.2](https://github.com/f1f1f1f1f1f1/Family/compare/v1.1.1...v1.1.2) (2026-09-26)
+
+
+### Bug Fixes
+
+* only pass on the HA calls Family makes; refuse cross-site writes ([224e0cd](https://github.com/f1f1f1f1f1f1/Family/commit/224e0cd4204b202b4169be33272123015680159d))
+
 ## [1.1.1](https://github.com/f1f1f1f1f1f1/Family/compare/v1.1.0...v1.1.1) (2026-09-26)
 
 
