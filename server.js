@@ -112,23 +112,41 @@ async function serveStatic(req, res) {
   }
 }
 
-/** Collect request body into a Buffer with size limit (default 1MB). */
+/**
+ * Collect request body into a Buffer with size limit (default 1MB). Null
+ * for a request that sent no body. A request that fails or closes before
+ * its end (the device lost power or Wi-Fi mid-upload) rejects: it used to
+ * resolve as an empty body, and a save then replaced the stored file with
+ * {} (every display's settings, say).
+ */
 const MAX_BODY_SIZE = 1024 * 1024; // 1 MB
 function collectBody(req, maxSize = MAX_BODY_SIZE) {
   return new Promise((resolve, reject) => {
     const chunks = [];
     let total = 0;
+    let settled = false;
+    const fail = (err) => {
+      if (settled) return;
+      settled = true;
+      reject(err);
+    };
     req.on('data', (c) => {
       total += c.length;
       if (total > maxSize) {
         req.destroy();
-        reject(new Error('Request body too large'));
+        fail(new Error('Request body too large'));
         return;
       }
       chunks.push(c);
     });
-    req.on('end', () => resolve(chunks.length > 0 ? Buffer.concat(chunks) : null));
-    req.on('error', () => resolve(null));
+    req.on('end', () => {
+      if (settled) return;
+      settled = true;
+      resolve(chunks.length > 0 ? Buffer.concat(chunks) : null);
+    });
+    req.on('error', () => fail(new Error('Request body incomplete')));
+    // 'close' also follows a normal 'end', when it's already settled.
+    req.on('close', () => fail(new Error('Request body incomplete')));
   });
 }
 
@@ -616,7 +634,8 @@ async function handleCollectionApi(req, res) {
 
     if (req.method === 'POST' && !itemId) {
       const bodyBuf = await collectBody(req);
-      const item = JSON.parse((bodyBuf || '{}').toString('utf8'));
+      if (!bodyBuf) throw new Error('Missing request body');
+      const item = JSON.parse(bodyBuf.toString('utf8'));
       const created = await collectionAdd(name, item);
       if (CHORES_SYNC_TRIGGER_COLLECTIONS.has(name)) choresSync.requestSoon();
       res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -696,7 +715,9 @@ async function handleDataApi(req, res) {
   if (req.method === 'PUT' || req.method === 'POST') {
     try {
       const bodyBuf = await collectBody(req);
-      const body = (bodyBuf || '{}').toString('utf8');
+      // An empty save would replace the stored data with {}.
+      if (!bodyBuf) throw new Error('Missing request body');
+      const body = bodyBuf.toString('utf8');
       const parsed = JSON.parse(body); // validate JSON
       if (merge && (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed))) {
         throw new Error('merge body must be a JSON object');

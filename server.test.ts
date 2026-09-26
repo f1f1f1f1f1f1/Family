@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { spawn, type ChildProcess } from 'node:child_process';
 import { copyFileSync, mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
-import { createServer } from 'node:net';
+import { connect, createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -20,6 +20,7 @@ let dir: string;
 let server: ChildProcess;
 let base: string;
 let output = '';
+
 
 function freePort(): Promise<number> {
   return new Promise((resolve, reject) => {
@@ -110,4 +111,24 @@ describe('add-on server', () => {
     expect(await fetch(`${base}/beacon-collection/test_completions?since=${since}`).then((r) => r.json())).toEqual([recent]);
     expect(await fetch(`${base}/beacon-collection/test_completions`).then((r) => r.json())).toHaveLength(2);
   });
+
+  // A save cut off mid-upload (power or Wi-Fi lost) was taken as an empty
+  // body and replaced the stored data with {}.
+  it('keeps stored data when a save is cut off or empty', async () => {
+    const put = (body?: string) => fetch(`${base}/beacon-data/test_settings`, { method: 'PUT', body });
+    expect((await put('{"theme":"dark"}')).status).toBe(200);
+
+    await new Promise<void>((resolve) => {
+      const port = Number(new URL(base).port);
+      const socket = connect(port, '127.0.0.1', () => {
+        socket.write('PUT /beacon-data/test_settings HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Type: application/json\r\nContent-Length: 100\r\n\r\n{"the');
+        setTimeout(() => { socket.destroy(); resolve(); }, 100);
+      });
+    });
+    await new Promise((r) => setTimeout(r, 200));
+
+    expect((await put()).status).toBe(400);
+    expect(await fetch(`${base}/beacon-data/test_settings`).then((r) => r.json())).toEqual({ theme: 'dark' });
+  });
+
 });
