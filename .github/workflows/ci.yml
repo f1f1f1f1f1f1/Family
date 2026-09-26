@@ -30,3 +30,15 @@ jobs:
 
       - name: Build
         run: npm run build
+
+  # Builds the add-on image the way Home Assistant does on each install (same
+  # Dockerfile and base image; there's no build.yaml), so a broken Dockerfile
+  # fails here instead of as a failed update. amd64 only: the arm images come
+  # from the same Dockerfile and are slow to build under emulation.
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build add-on image
+        run: docker build --platform linux/amd64 --tag family-addon:ci .
