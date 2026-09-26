@@ -160,6 +160,7 @@ a:focus:not(:focus-visible) {
   border-bottom: 1px solid var(--border);
 }
 
+
 .beacon-main {
   grid-row: 2;
 }
@@ -1499,6 +1500,11 @@ a:focus:not(:focus-visible) {
   color: var(--text-secondary);
   text-transform: uppercase;
   letter-spacing: 0.5px;
+}
+
+.form-hint {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
 }
 
 .form-input,

@@ -97,7 +97,7 @@ export function EventDetailsPopover({ event, anchor, onClose, onEdit }: EventDet
           </div>
           {event.recurrence && event.recurrence !== 'none' && (
             <div className="event-details-popover-recurrence">
-              Repeats {event.recurrence}
+              {event.recurrence === 'custom' ? 'Repeats' : `Repeats ${event.recurrence}`}
             </div>
           )}
         </div>

@@ -164,4 +164,72 @@ describe('EventModal', () => {
     await user.click(screen.getByRole('button', { name: 'Delete' }));
     expect(await screen.findByRole('alert')).toHaveTextContent('HA rejected the delete');
   });
+
+  describe('repeating events', () => {
+    const occurrence = makeEvent({
+      id: 'series-1::20260802T160000',
+      uid: 'series-1',
+      recurrenceId: '20260802T160000',
+      rrule: 'FREQ=WEEKLY',
+      recurrence: 'weekly',
+      recurrenceEnd: '',
+    });
+
+    // Deleting an occurrence used to delete the whole series.
+    it('deletes just this occurrence unless told otherwise', async () => {
+      const user = userEvent.setup();
+      const onDelete = vi.fn();
+      render(<EventModal event={occurrence} calendars={calendars} onSave={vi.fn()} onDelete={onDelete} onClose={vi.fn()} />);
+
+      await user.click(screen.getByRole('button', { name: 'Delete' }));
+      expect(onDelete).toHaveBeenLastCalledWith(occurrence, 'this');
+
+      await user.selectOptions(screen.getByLabelText('Change'), 'following');
+      await user.click(screen.getByRole('button', { name: 'Delete' }));
+      expect(onDelete).toHaveBeenLastCalledWith(occurrence, 'following');
+    });
+
+    it('lets the repeat change only for this and following occurrences', async () => {
+      const user = userEvent.setup();
+      render(<EventModal event={occurrence} calendars={calendars} onSave={vi.fn()} onDelete={vi.fn()} onClose={vi.fn()} />);
+      expect(screen.getByLabelText('Repeats')).toBeDisabled();
+
+      await user.selectOptions(screen.getByLabelText('Change'), 'following');
+      expect(screen.getByLabelText('Repeats')).toBeEnabled();
+      expect(screen.getByLabelText('Repeats')).toHaveValue('weekly');
+    });
+
+    // The built-in calendar can't repeat events; they were saved as one-offs.
+    it("doesn't offer repeats on the built-in calendar", async () => {
+      const user = userEvent.setup();
+      const onSave = vi.fn();
+      render(
+        <EventModal
+          event={null}
+          calendars={[{ id: 'beacon-local', name: 'Family (built-in)', color: '#6366f1' }, ...calendars]}
+          onSave={onSave}
+          onDelete={vi.fn()}
+          onClose={vi.fn()}
+        />,
+      );
+      await user.selectOptions(screen.getByLabelText('Calendar'), 'cal-1');
+      await user.selectOptions(screen.getByLabelText('Repeats'), 'weekly');
+      await user.selectOptions(screen.getByLabelText('Calendar'), 'beacon-local');
+      expect(screen.getByLabelText('Repeats')).toBeDisabled();
+      expect(screen.getByLabelText('Repeats')).toHaveValue('none');
+
+      await user.type(screen.getByLabelText('Title'), 'Picnic');
+      await user.click(screen.getByRole('button', { name: 'Create' }));
+      expect(onSave).toHaveBeenCalledWith('beacon-local', expect.objectContaining({ recurrence: 'none' }));
+    });
+  });
+
+  // Settings > Default Event Duration was saved but never used.
+  it('gives a new event the default duration', () => {
+    render(
+      <EventModal event={null} calendars={calendars} defaultDurationMinutes={120} prefillDate="2026-08-02" prefillTime="16:00"
+        onSave={vi.fn()} onDelete={vi.fn()} onClose={vi.fn()} />,
+    );
+    expect((document.getElementById('event-end-time') as HTMLInputElement).value).toBe('18:00');
+  });
 });

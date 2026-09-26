@@ -1,4 +1,5 @@
-export type RecurrenceFrequency = 'none' | 'daily' | 'weekly' | 'monthly';
+/** 'custom': a rule set elsewhere that the event form can't show (kept as is). */
+export type RecurrenceFrequency = 'none' | 'daily' | 'weekly' | 'monthly' | 'custom';
 
 export interface CalendarEvent {
   id: string;
@@ -13,6 +14,12 @@ export interface CalendarEvent {
   color: string;
   recurrence?: RecurrenceFrequency;
   recurrenceEnd?: string;
+  /** Home Assistant events: the event's uid — for a repeating event, the series'. */
+  uid?: string;
+  /** Home Assistant events: which occurrence of a repeating event this is. */
+  recurrenceId?: string;
+  /** Home Assistant events: the repeat rule (RFC 5545 RRULE), if any. */
+  rrule?: string;
   /**
    * Whether this event has a real, stable UID from its calendar provider
    * (HA's `uid` or `recurrence_id`), as opposed to a synthetic composite

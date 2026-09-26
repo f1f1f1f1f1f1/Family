@@ -87,3 +87,12 @@ stops a release numbered below config.yaml's version. If it fires: on main,
 set config.yaml's version above both, commit it as `chore(release): X` (that
 type doesn't release by itself), tag the commit `vX`, and push both together
 with `git push --atomic origin main vX`.
+
+### HA Calendar Events: Use `uid`, Not `id`
+Every occurrence of a repeating HA event has the series' `uid` plus its own
+`recurrence_id`, so `CalendarEvent.id` is `uid::recurrence_id` there — never
+send `id` to HA. Update/delete take `event.uid ?? event.id` and, for an
+occurrence, `occurrenceTarget()` (src/utils/calendar-edits.ts) for
+`recurrence_id`/`recurrence_range`; without them HA changes the whole series.
+`calendar/event/update` replaces the whole event and requires `summary`, so
+send the full event (`formToPayload`/`movedPayload`), not just changed fields.

@@ -1,4 +1,5 @@
-import { CalendarEvent, CalendarInfo, WeatherData, CalendarColorMember, resolveCalendarColor } from '../types';
+import { WeatherData } from '../types';
+import type { EventPayload, OccurrenceTarget } from '../utils/calendar-edits';
 
 type MessageHandler = (message: HAMessage) => void;
 
@@ -29,6 +30,18 @@ export function toWsEventPayload(event: {
   if (dtstart !== undefined) payload.dtstart = dtstart;
   if (dtend !== undefined) payload.dtend = dtend;
   return payload;
+}
+
+/**
+ * The occurrence fields of HA's calendar/event/update and /delete commands:
+ * without them an edit or delete applies to every occurrence of a
+ * repeating event.
+ */
+export function toWsTarget(target?: OccurrenceTarget): { recurrence_id?: string; recurrence_range?: string } {
+  if (!target) return {};
+  return target.recurrenceRange
+    ? { recurrence_id: target.recurrenceId, recurrence_range: target.recurrenceRange }
+    : { recurrence_id: target.recurrenceId };
 }
 
 interface HAMessage {
@@ -175,67 +188,6 @@ export class HomeAssistantClient {
     });
   }
 
-  private getRestUrl(): string {
-    return this.url.replace(/\/api\/websocket$/, '').replace(/^ws/, 'http');
-  }
-
-  async getCalendars(colorOptions?: {
-    calendarColors?: Record<string, string>;
-    members?: CalendarColorMember[];
-  }): Promise<CalendarInfo[]> {
-    const baseUrl = this.getRestUrl();
-    const response = await fetch(`${baseUrl}/api/calendars`, {
-      headers: { Authorization: `Bearer ${this.token}` },
-    });
-    if (!response.ok) throw new Error(`Failed to fetch calendars: ${response.status}`);
-    const data = await response.json() as Array<{ entity_id: string; name: string }>;
-
-    return data.map((cal, index) => ({
-      id: cal.entity_id,
-      name: cal.name,
-      color: resolveCalendarColor(cal.entity_id, index, colorOptions),
-    }));
-  }
-
-  async getEvents(calendarId: string, start: string, end: string): Promise<CalendarEvent[]> {
-    const baseUrl = this.getRestUrl();
-    const params = new URLSearchParams({ start, end });
-    const response = await fetch(`${baseUrl}/api/calendars/${calendarId}?${params}`, {
-      headers: { Authorization: `Bearer ${this.token}` },
-    });
-    if (!response.ok) throw new Error(`Failed to fetch events: ${response.status}`);
-    const result = await response.json() as Array<{
-      uid?: string;
-      summary: string;
-      start: string | { dateTime: string; date: string };
-      end: string | { dateTime: string; date: string };
-      description?: string;
-      location?: string;
-      recurrence_id?: string;
-    }>;
-
-    return (result || []).map((ev, i) => {
-      const startStr = typeof ev.start === 'string' ? ev.start : (ev.start.dateTime || ev.start.date);
-      const endStr = typeof ev.end === 'string' ? ev.end : (ev.end.dateTime || ev.end.date);
-      const allDay = typeof ev.start === 'string'
-        ? ev.start.length === 10
-        : !!ev.start.date && !ev.start.dateTime;
-
-      return {
-        id: ev.uid || ev.recurrence_id || `${calendarId}-${i}`,
-        title: ev.summary,
-        start: startStr,
-        end: endStr,
-        allDay,
-        description: ev.description,
-        location: ev.location,
-        calendarId,
-        calendarName: calendarId,
-        color: '', // will be set by consumer
-      };
-    });
-  }
-
   /**
    * Create a new calendar event. HA requires the calendar/event/create WS
    * command (not calendar.create_event REST service) to support recurring
@@ -269,18 +221,12 @@ export class HomeAssistantClient {
    * should catch that and fall back to delete+recreate or show a clear
    * "this calendar doesn't support editing" message.
    */
-  async updateEvent(calendarId: string, uid: string, event: {
-    summary?: string;
-    start_date_time?: string;
-    end_date_time?: string;
-    start_date?: string;
-    end_date?: string;
-    description?: string;
-  }): Promise<void> {
+  async updateEvent(calendarId: string, uid: string, event: EventPayload, target?: OccurrenceTarget): Promise<void> {
     await this.sendMessage({
       type: 'calendar/event/update',
       entity_id: calendarId,
       uid,
+      ...toWsTarget(target),
       event: toWsEventPayload(event),
     });
   }
@@ -290,11 +236,12 @@ export class HomeAssistantClient {
    * service) to the WS-only `calendar/event/delete` command — see note on
    * updateEvent above.
    */
-  async deleteEvent(calendarId: string, uid: string): Promise<void> {
+  async deleteEvent(calendarId: string, uid: string, target?: OccurrenceTarget): Promise<void> {
     await this.sendMessage({
       type: 'calendar/event/delete',
       entity_id: calendarId,
       uid,
+      ...toWsTarget(target),
     });
   }
 

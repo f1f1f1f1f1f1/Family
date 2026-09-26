@@ -11,6 +11,13 @@ export interface OverlapEvent {
   end: string;
 }
 
+/** An event's place in the day column, in minutes from midnight. */
+export interface OverlapRange {
+  id: string;
+  top: number;
+  bottom: number;
+}
+
 export interface OverlapLayout {
   /** Left edge as a 0–1 fraction of the day column width */
   left: number;
@@ -98,15 +105,25 @@ function computeCoords(seg: Seg, seriesBackPressure: number, seriesBackCoord: nu
   for (const fwd of forwardSegs) computeCoords(fwd, 0, seg.forwardCoord);
 }
 
+/** Layout for events given by their start and end times. */
 export function computeOverlapLayout(events: OverlapEvent[]): Map<string, OverlapLayout> {
-  const result = new Map<string, OverlapLayout>();
-  if (events.length === 0) return result;
+  return computeRangeLayout(events.map((e) => ({ id: e.id, top: toMinutes(e.start), bottom: toMinutes(e.end) })));
+}
 
-  const segs: Seg[] = events
+/**
+ * Layout for events given by where they're drawn. The calendar passes these
+ * rather than start and end times: it clips events to its hours, pins ones
+ * outside them to an edge, and draws short ones taller than their times.
+ */
+export function computeRangeLayout(ranges: OverlapRange[]): Map<string, OverlapLayout> {
+  const result = new Map<string, OverlapLayout>();
+  if (ranges.length === 0) return result;
+
+  const segs: Seg[] = ranges
     .map((e) => ({
       id: e.id,
-      top: toMinutes(e.start),
-      bottom: toMinutes(e.end),
+      top: e.top,
+      bottom: e.bottom,
       level: 0,
       forwardSegs: [] as Seg[],
       forwardPressure: NOT_COMPUTED,

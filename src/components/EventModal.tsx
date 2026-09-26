@@ -1,6 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
 import { format, parseISO, addMonths } from 'date-fns';
 import { lastDayOfAllDayEvent } from '../utils/event-dates';
+import type { EditScope } from '../utils/calendar-edits';
+import { LOCAL_CALENDAR } from '../hooks/useLocalCalendar';
 import { CalendarEvent, CalendarInfo, RecurrenceFrequency } from '../types';
 
 interface EventModalProps {
@@ -11,8 +13,11 @@ interface EventModalProps {
    *  an existing event (which keeps the event's own calendar). Falls back
    *  to the first calendar in the list if unset/not a valid calendar id. */
   defaultCalendarId?: string;
+  /** Length of a new event (Settings > Default Event Duration). */
+  defaultDurationMinutes?: number;
   onSave: (calendarId: string, data: EventFormData) => void | Promise<void>;
-  onDelete: (calendarId: string, eventId: string) => void | Promise<void>;
+  /** `scope` matters for an occurrence of a repeating event. */
+  onDelete: (event: CalendarEvent, scope: EditScope) => void | Promise<void>;
   onClose: () => void;
   prefillDate?: string | null;
   prefillTime?: string | null;
@@ -28,7 +33,12 @@ export interface EventFormData {
   endTime: string;
   allDay: boolean;
   recurrence: RecurrenceFrequency;
+  /** Last day it repeats on; '' for no end. */
   recurrenceEnd: string;
+  /** The rule as set elsewhere, kept when `recurrence` is 'custom'. */
+  rrule: string;
+  /** For an occurrence of a repeating event: which occurrences a change applies to. */
+  scope: EditScope;
 }
 
 function toLocalDate(isoStr: string): string {
@@ -45,12 +55,6 @@ function toLocalTime(isoStr: string): string {
   } catch {
     return '09:00';
   }
-}
-
-function addHour(time: string): string {
-  const [h, m] = time.split(':').map(Number);
-  const newH = Math.min(h + 1, 23);
-  return `${String(newH).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
 }
 
 /** Combine a yyyy-MM-dd date + HH:mm time into a Date for comparison/arithmetic. */
@@ -92,6 +96,7 @@ export function EventModal({
   event,
   calendars,
   defaultCalendarId,
+  defaultDurationMinutes = 60,
   onSave,
   onDelete,
   onClose,
@@ -103,7 +108,7 @@ export function EventModal({
   const defaultCalendar = (isValidDefault ? defaultCalendarId : calendars[0]?.id) || '';
   const defaultDate = prefillDate || format(new Date(), 'yyyy-MM-dd');
   const defaultStartTime = prefillTime || '09:00';
-  const defaultEndTime = addHour(defaultStartTime);
+  const defaultEnd = new Date(combineDateTime(defaultDate, defaultStartTime).getTime() + defaultDurationMinutes * 60_000);
 
   const defaultRecurrenceEnd = format(addMonths(new Date(), 3), 'yyyy-MM-dd');
 
@@ -113,11 +118,13 @@ export function EventModal({
     calendarId: defaultCalendar,
     startDate: defaultDate,
     startTime: defaultStartTime,
-    endDate: defaultDate,
-    endTime: defaultEndTime,
+    endDate: format(defaultEnd, 'yyyy-MM-dd'),
+    endTime: format(defaultEnd, 'HH:mm'),
     allDay: false,
     recurrence: 'none',
     recurrenceEnd: defaultRecurrenceEnd,
+    rrule: '',
+    scope: 'this',
   });
 
   const [error, setError] = useState<string | null>(null);
@@ -144,7 +151,11 @@ export function EventModal({
         endTime: event.allDay ? '10:00' : toLocalTime(event.end),
         allDay: event.allDay,
         recurrence: event.recurrence || 'none',
-        recurrenceEnd: event.recurrenceEnd || defaultRecurrenceEnd,
+        // A repeating event's own end (none, if it repeats forever); a
+        // suggestion for one that doesn't repeat yet.
+        recurrenceEnd: event.recurrence && event.recurrence !== 'none' ? event.recurrenceEnd ?? '' : defaultRecurrenceEnd,
+        rrule: event.rrule ?? '',
+        scope: 'this',
       });
     }
     setError(null);
@@ -216,6 +227,17 @@ export function EventModal({
     return null;
   }
 
+  // Repeating events: the built-in calendar can't repeat events, and a
+  // change to one occurrence on its own can't change how the series repeats.
+  const isOccurrence = !!event?.recurrenceId;
+  const onBuiltInCalendar = form.calendarId === LOCAL_CALENDAR.id;
+  const repeatLockedReason = onBuiltInCalendar
+    ? 'Repeating events need a Home Assistant calendar.'
+    : isOccurrence && form.scope === 'this'
+    ? 'To change how it repeats, choose “This and following events”.'
+    : null;
+  const recurrence: RecurrenceFrequency = onBuiltInCalendar ? 'none' : form.recurrence;
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!form.summary.trim()) {
@@ -237,7 +259,7 @@ export function EventModal({
     setError(null);
     setSubmitting(true);
     try {
-      await onSave(form.calendarId, form);
+      await onSave(form.calendarId, { ...form, recurrence });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save event. Please try again.');
     } finally {
@@ -254,7 +276,7 @@ export function EventModal({
     setError(null);
     setSubmitting(true);
     try {
-      await onDelete(event.calendarId, event.id);
+      await onDelete(event, form.scope);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to delete event. Please try again.');
     } finally {
@@ -367,22 +389,40 @@ export function EventModal({
               )}
             </div>
 
+            {isOccurrence && (
+              <div className="form-field">
+                <label className="form-label" htmlFor="event-scope">Change</label>
+                <select
+                  id="event-scope"
+                  className="form-select"
+                  value={form.scope}
+                  onChange={(e) => updateField('scope', e.target.value as EditScope)}
+                >
+                  <option value="this">This event</option>
+                  <option value="following">This and following events</option>
+                </select>
+              </div>
+            )}
+
             <div className="form-field">
               <label className="form-label" htmlFor="event-recurrence">Repeats</label>
               <select
                 id="event-recurrence"
                 className="form-select"
-                value={form.recurrence}
+                value={recurrence}
+                disabled={!!repeatLockedReason}
                 onChange={(e) => updateField('recurrence', e.target.value as RecurrenceFrequency)}
               >
                 <option value="none">Does not repeat</option>
                 <option value="daily">Daily</option>
                 <option value="weekly">Weekly</option>
                 <option value="monthly">Monthly</option>
+                {form.recurrence === 'custom' && <option value="custom">Custom (set in another app)</option>}
               </select>
+              {repeatLockedReason && <span className="form-hint">{repeatLockedReason}</span>}
             </div>
 
-            {form.recurrence !== 'none' && (
+            {recurrence !== 'none' && recurrence !== 'custom' && (
               <div className="form-field">
                 <label className="form-label" htmlFor="event-recurrence-end">Repeat until</label>
                 <input
@@ -390,8 +430,10 @@ export function EventModal({
                   className="form-input"
                   type="date"
                   value={form.recurrenceEnd}
+                  disabled={!!repeatLockedReason}
                   onChange={(e) => updateField('recurrenceEnd', e.target.value)}
                 />
+                <span className="form-hint">Leave empty to repeat with no end.</span>
               </div>
             )}
 
