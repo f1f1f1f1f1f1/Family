@@ -30,7 +30,7 @@ function loadEntityOptions(): Promise<EntityOption[]> {
   return entityOptionsRequest;
 }
 
-export function useEntityOptions(): EntityOption[] {
+function useEntityOptions(): EntityOption[] {
   const [options, setOptions] = useState<EntityOption[]>([]);
 
   useEffect(() => {
@@ -46,7 +46,7 @@ export function useEntityOptions(): EntityOption[] {
   return options;
 }
 
-export function filterEntityOptions(options: EntityOption[], search: string, domain: string): EntityOption[] {
+function filterEntityOptions(options: EntityOption[], search: string, domain: string): EntityOption[] {
   const term = search.trim().toLowerCase();
   return options.filter((option) => {
     if (domain && option.domain !== domain) return false;

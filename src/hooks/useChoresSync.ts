@@ -471,14 +471,19 @@ export function useChoresSync(
   const runSyncRef = useRef(runSync);
   runSyncRef.current = runSync;
 
+  // Sync straight away (and restart the interval) when the member -> list
+  // mapping or the number of members changes. The mapping is compared by
+  // content, so a settings object rebuilt with the same lists doesn't
+  // trigger an extra sync.
+  const hasAnyList = Object.keys(listByMember).length > 0;
+  const listByMemberKey = JSON.stringify(listByMember);
+  const memberCount = members.length;
   useEffect(() => {
-    const hasAnyList = Object.keys(listByMember).length > 0;
     if (!enabled || !hasAnyList) return;
     void runSyncRef.current();
     const interval = setInterval(() => void runSyncRef.current(), 60_000);
     return () => clearInterval(interval);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [enabled, JSON.stringify(listByMember), members.length]);
+  }, [enabled, hasAnyList, listByMemberKey, memberCount]);
 
   return { runSync };
 }

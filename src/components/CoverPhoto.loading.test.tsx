@@ -1,6 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { render, waitFor } from '@testing-library/react';
-import { CoverPhoto, loadPhoto, preloadPhoto, clearLoadedPhotos, readExifOrientation } from './CoverPhoto';
+import { CoverPhoto } from './CoverPhoto';
+import { loadPhoto, preloadPhoto, clearLoadedPhotos } from '../utils/photo-loader';
+import { readExifOrientation } from '../utils/cover-photo';
 
 /*
  * jsdom doesn't download or decode images, so fetch, Image and blob URLs

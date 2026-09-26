@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { render, act } from '@testing-library/react';
 import { media, resetMedia, addPhotos } from '../test/fake-media-source';
 import { clearPhotoCaches } from '../api/photos';
-import { clearLoadedPhotos } from './CoverPhoto';
+import { clearLoadedPhotos } from '../utils/photo-loader';
 import { ScreenSaver } from './ScreenSaver';
 
 vi.mock('../api/ha-rest', async () => (await import('../test/fake-media-source')).haRestMock);

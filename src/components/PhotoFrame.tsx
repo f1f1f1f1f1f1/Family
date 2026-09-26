@@ -11,7 +11,8 @@ import {
 import { usePhotos } from '../hooks/usePhotos';
 import { requestFullBleed } from '../utils/ha-kiosk';
 import { NowPlayingBar } from './NowPlayingBar';
-import { PhotoDiagnostics, testPatternUrl } from './PhotoDiagnostics';
+import { PhotoDiagnostics } from './PhotoDiagnostics';
+import { testPatternUrl } from '../utils/test-pattern';
 import { CoverPhoto } from './CoverPhoto';
 import { MediaPlayer } from '../types/music';
 

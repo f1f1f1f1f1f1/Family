@@ -2,7 +2,8 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { format } from 'date-fns';
 import { usePhotos } from '../hooks/usePhotos';
 import { requestFullBleed } from '../utils/ha-kiosk';
-import { CoverPhoto, preloadPhoto } from './CoverPhoto';
+import { CoverPhoto } from './CoverPhoto';
+import { preloadPhoto } from '../utils/photo-loader';
 
 const POSITION_INTERVAL = 30_000; // move clock every 30s
 
