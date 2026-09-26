@@ -1,3 +1,20 @@
+## [1.52.6](https://github.com/f1f1f1f1f1f1/Family/compare/v1.52.5...v1.52.6) (2026-09-26)
+
+
+### Bug Fixes
+
+* clear yesterday's chore ticks at midnight on every screen ([aed1fe2](https://github.com/f1f1f1f1f1f1/Family/commit/aed1fe23a9a12b6193ed65fcd1f21b6a3b7562eb))
+* edit, delete and drag single occurrences of repeating events safely ([103ddaa](https://github.com/f1f1f1f1f1f1/Family/commit/103ddaa9fd217fb3277533882c780e4b1426c8e6))
+* say when a change to family data couldn't be saved ([1fe7862](https://github.com/f1f1f1f1f1f1/Family/commit/1fe78626a2301676f77934ece28511ba0cfc8be8))
+* stop pretending to install the voice commands; document installing them ([657ff9b](https://github.com/f1f1f1f1f1f1/Family/commit/657ff9b4c5e68b4dd4039e2495fe7f7f5c579814))
+* tick the to-do item that was tapped, and undo a tick HA rejects ([4099150](https://github.com/f1f1f1f1f1f1/Family/commit/40991500db047d99adc97debf1afe844e4c4234a))
+
+
+### Performance Improvements
+
+* download only recent chore history ([78bbae6](https://github.com/f1f1f1f1f1f1/Family/commit/78bbae620d66f65e83f59300070669a078bdeec6))
+* stop downloading every entity's state once a minute ([0a1ce53](https://github.com/f1f1f1f1f1f1/Family/commit/0a1ce5357d3bcf82f02f9544d03a2c06f4147b36))
+
 ## [1.52.5](https://github.com/f1f1f1f1f1f1/Family/compare/v1.52.4...v1.52.5) (2026-09-26)
 
 
