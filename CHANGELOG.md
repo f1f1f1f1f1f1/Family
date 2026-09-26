@@ -1,3 +1,20 @@
+## [1.52.5](https://github.com/f1f1f1f1f1f1/Family/compare/v1.52.4...v1.52.5) (2026-09-26)
+
+
+### Bug Fixes
+
+* calendar, list and layout bugs found in an end-to-end pass ([6f9e4ee](https://github.com/f1f1f1f1f1f1/Family/commit/6f9e4ee7888a3078faed8cd423935c71308a7107))
+* keep overnight events in the calendar's time grid ([9d88fef](https://github.com/f1f1f1f1f1f1/Family/commit/9d88fef28d9a3ef169b8bb8ebb77c6bc3b463919))
+* name the built-in calendar "Family (built-in)" and remember the last one used ([da0267d](https://github.com/f1f1f1f1f1f1/Family/commit/da0267deb661617789ab9bd735d6c02fea760523))
+* show the whole event list on the phone and tablet dashboard ([be9548a](https://github.com/f1f1f1f1f1f1/Family/commit/be9548a13f71fcde0316ec2aba51c983e9455036))
+
+
+### Performance Improvements
+
+* load on-demand screens' styles with the screen ([93e653e](https://github.com/f1f1f1f1f1f1/Family/commit/93e653effc47f6d60d38b0a9bef312ceb6681d61))
+* pause background refreshes while the screen saver is up ([f8d5b2a](https://github.com/f1f1f1f1f1f1/Family/commit/f8d5b2ab26ab55eca66fdd1367ba8147da1a9590))
+* reuse the list of HA calendars and load calendars in parallel ([4ad5eb1](https://github.com/f1f1f1f1f1f1/Family/commit/4ad5eb1465a557d677056b1b1a8c6ed216fdfd6b))
+
 ## [1.52.4](https://github.com/f1f1f1f1f1f1/Family/compare/v1.52.3...v1.52.4) (2026-09-26)
 
 
