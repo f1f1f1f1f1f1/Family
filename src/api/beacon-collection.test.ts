@@ -2,7 +2,10 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { addToCollection, getCollection, removeFromCollection, updateInCollection } from './beacon-collection';
 import { onSaveFailed, saveThen, SaveFailedError } from '../utils/save-errors';
 
-vi.mock('../utils/ha-env', () => ({ isAddOn: () => true }));
+vi.mock('../utils/ha-env', async (importOriginal) => ({
+  ...await importOriginal<typeof import('../utils/ha-env')>(),
+  isAddOn: () => true,
+}));
 
 /*
  * Add-on mode: the server's copy is the real one. A write the server didn't
@@ -45,15 +48,29 @@ describe('collection writes in add-on mode', () => {
     expect(failures).toEqual([]);
   });
 
-  it('asks the server for recent completions only, keeping the full local copy', async () => {
-    localStorage.setItem('beacon_completions', JSON.stringify([{ id: 'old' }, { id: 'new' }]));
+  it('asks the server for recent completions only', async () => {
     const fetchMock = vi.fn(async () => new Response(JSON.stringify([{ id: 'new', completed_at: '2026-09-26T09:00:00.000Z' }])));
     vi.stubGlobal('fetch', fetchMock);
 
     const since = new Date('2026-09-26T00:00:00.000Z');
     expect(await getCollection('beacon_completions', { since })).toEqual([{ id: 'new', completed_at: '2026-09-26T09:00:00.000Z' }]);
     expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining('/beacon-collection/beacon_completions?since=2026-09-26T00%3A00%3A00.000Z'));
-    expect(JSON.parse(localStorage.getItem('beacon_completions')!)).toHaveLength(2);
+  });
+
+  // Once every read asked for recent completions, this device's copy was
+  // never refreshed: offline it showed only its own ticks, and it grew.
+  it("refreshes this device's copy of recent completions, and drops old ones", async () => {
+    const daysAgo = (n: number) => new Date(Date.now() - n * 86400000).toISOString();
+    localStorage.setItem('beacon_completions', JSON.stringify([
+      { id: 'ancient', completed_at: daysAgo(100) },
+      { id: 'last-month', completed_at: daysAgo(40) },
+      { id: 'undone-elsewhere', completed_at: daysAgo(1) },
+    ]));
+    const fresh = { id: 'from-another-display', completed_at: daysAgo(2) };
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify([fresh]))));
+
+    await getCollection('beacon_completions', { since: new Date(Date.now() - 7 * 86400000) });
+    expect(JSON.parse(localStorage.getItem('beacon_completions')!).map((c: { id: string }) => c.id)).toEqual(['last-month', 'from-another-display']);
   });
 
   it('reads still fall back to the local copy when the server is unreachable', async () => {

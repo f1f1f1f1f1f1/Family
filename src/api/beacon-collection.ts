@@ -18,7 +18,7 @@
  * read replaced that cache with the server's copy, silently undoing it.
  */
 
-import { isAddOn } from '../utils/ha-env';
+import { getIngressBasePath, isAddOn } from '../utils/ha-env';
 import { SaveFailedError, reportSaveFailed } from '../utils/save-errors';
 
 function saveFailed(name: string): SaveFailedError {
@@ -29,10 +29,6 @@ function saveFailed(name: string): SaveFailedError {
 
 interface HasId {
   id?: string;
-}
-
-function getIngressBasePath(): string {
-  return window.location.pathname.replace(/\/$/, '');
 }
 
 function readLocal<T>(name: string): T[] {
@@ -60,6 +56,28 @@ function generateId(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
+/**
+ * How much completion history this device's copy keeps: more than the
+ * widest `since` the app asks for (the leaderboard's month).
+ */
+const CACHED_HISTORY_DAYS = 62;
+
+/**
+ * Puts the server's answer for `since` onto this device's copy: items from
+ * `since` on are replaced by the server's, and ones older than
+ * CACHED_HISTORY_DAYS dropped. Without this the copy was never refreshed
+ * once every read asked for `since`: offline it showed only this device's
+ * own ticks, and it grew forever.
+ */
+function cacheRecent<T>(name: string, fresh: T[], since: Date): void {
+  const keepFrom = Date.now() - CACHED_HISTORY_DAYS * 24 * 60 * 60 * 1000;
+  const older = readLocal<T>(name).filter((it) => {
+    const at = Date.parse(String((it as { completed_at?: unknown }).completed_at));
+    return at >= keepFrom && at < since.getTime();
+  });
+  writeLocal(name, [...older, ...fresh]);
+}
+
 /** Items with a `completed_at` at or after `since`. */
 function completedSince<T>(items: T[], since: Date): T[] {
   return items.filter((it) => {
@@ -74,8 +92,8 @@ function completedSince<T>(items: T[], since: Date): T[] {
  * getCollectionSync() has something to show on the next initial render.
  *
  * `since` (for completion collections): only items completed then or
- * later, filtered by the server so the whole history isn't downloaded.
- * A filtered result isn't cached, since the cache is the full collection.
+ * later, filtered by the server so the whole history isn't downloaded
+ * (see cacheRecent for this device's copy).
  */
 export async function getCollection<T>(name: string, options: { since?: Date } = {}): Promise<T[]> {
   const { since } = options;
@@ -87,7 +105,8 @@ export async function getCollection<T>(name: string, options: { since?: Date } =
       if (res.ok) {
         const data = await res.json();
         if (Array.isArray(data)) {
-          if (!since) writeLocal(name, data);
+          if (since) cacheRecent(name, data as T[], since);
+          else writeLocal(name, data);
           return data as T[];
         }
       }

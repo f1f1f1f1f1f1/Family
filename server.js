@@ -112,23 +112,41 @@ async function serveStatic(req, res) {
   }
 }
 
-/** Collect request body into a Buffer with size limit (default 1MB). */
+/**
+ * Collect request body into a Buffer with size limit (default 1MB). Null
+ * for a request that sent no body. A request that fails or closes before
+ * its end (the device lost power or Wi-Fi mid-upload) rejects: it used to
+ * resolve as an empty body, and a save then replaced the stored file with
+ * {} (every display's settings, say).
+ */
 const MAX_BODY_SIZE = 1024 * 1024; // 1 MB
 function collectBody(req, maxSize = MAX_BODY_SIZE) {
   return new Promise((resolve, reject) => {
     const chunks = [];
     let total = 0;
+    let settled = false;
+    const fail = (err) => {
+      if (settled) return;
+      settled = true;
+      reject(err);
+    };
     req.on('data', (c) => {
       total += c.length;
       if (total > maxSize) {
         req.destroy();
-        reject(new Error('Request body too large'));
+        fail(new Error('Request body too large'));
         return;
       }
       chunks.push(c);
     });
-    req.on('end', () => resolve(chunks.length > 0 ? Buffer.concat(chunks) : null));
-    req.on('error', () => resolve(null));
+    req.on('end', () => {
+      if (settled) return;
+      settled = true;
+      resolve(chunks.length > 0 ? Buffer.concat(chunks) : null);
+    });
+    req.on('error', () => fail(new Error('Request body incomplete')));
+    // 'close' also follows a normal 'end', when it's already settled.
+    req.on('close', () => fail(new Error('Request body incomplete')));
   });
 }
 
@@ -616,7 +634,8 @@ async function handleCollectionApi(req, res) {
 
     if (req.method === 'POST' && !itemId) {
       const bodyBuf = await collectBody(req);
-      const item = JSON.parse((bodyBuf || '{}').toString('utf8'));
+      if (!bodyBuf) throw new Error('Missing request body');
+      const item = JSON.parse(bodyBuf.toString('utf8'));
       const created = await collectionAdd(name, item);
       if (CHORES_SYNC_TRIGGER_COLLECTIONS.has(name)) choresSync.requestSoon();
       res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -696,7 +715,9 @@ async function handleDataApi(req, res) {
   if (req.method === 'PUT' || req.method === 'POST') {
     try {
       const bodyBuf = await collectBody(req);
-      const body = (bodyBuf || '{}').toString('utf8');
+      // An empty save would replace the stored data with {}.
+      if (!bodyBuf) throw new Error('Missing request body');
+      const body = bodyBuf.toString('utf8');
       const parsed = JSON.parse(body); // validate JSON
       if (merge && (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed))) {
         throw new Error('merge body must be a JSON object');
@@ -877,6 +898,22 @@ function haRequest(method, apiPath, body, timeoutMs) {
 }
 
 /**
+ * The to-do list with an open item titled `title` (any case), and that
+ * item's uid — for "complete milk", which names no list.
+ */
+async function findOpenTodoItem(states, title) {
+  const wanted = title.trim().toLowerCase();
+  for (const e of states) {
+    if (typeof e.entity_id !== 'string' || !e.entity_id.startsWith('todo.') || e.state === 'unavailable') continue;
+    const resp = await haRequest('POST', '/api/services/todo/get_items?return_response', { entity_id: e.entity_id, status: ['needs_action'] }, 10_000);
+    const items = resp.data?.service_response?.[e.entity_id]?.items ?? [];
+    const item = items.find((it) => typeof it.summary === 'string' && it.summary.trim().toLowerCase() === wanted);
+    if (item) return { entityId: e.entity_id, item: item.uid || item.summary };
+  }
+  return null;
+}
+
+/**
  * POST /beacon-action/voice
  * Body: { "text": "add milk to the grocery list" }
  * Returns: { "response": "...", "action": "...", "success": true|false }
@@ -1017,8 +1054,9 @@ function handleVoiceAction(req, res) {
           const todoEntities = states.filter(
             (e) => typeof e.entity_id === 'string' && e.entity_id.startsWith('todo.')
           );
-          // Match by friendly name (case-insensitive, partial)
-          const hint = intent.entityHint.toLowerCase();
+          // Match by friendly name (case-insensitive, partial). "the grocery
+          // list" means the list called Grocery: drop the word "list".
+          const hint = intent.entityHint.toLowerCase().replace(/\s+list$/, '');
           const match = todoEntities.find((e) => {
             const name = (e.attributes?.friendly_name || '').toLowerCase();
             return name === hint || name.includes(hint) || e.entity_id.toLowerCase().includes(hint);
@@ -1042,11 +1080,36 @@ function handleVoiceAction(req, res) {
       }
 
       const serviceData = { ...intent.data };
+
+      // "Complete milk" names no list: use the one with an open "milk".
+      if (intent.name === 'complete_item') {
+        try {
+          const found = await findOpenTodoItem(await getStates(), intent.data.item);
+          if (found) {
+            entityId = found.entityId;
+            serviceData.item = found.item;
+          }
+        } catch { /* reported as not found below */ }
+      }
       if (entityId) serviceData.entity_id = entityId;
 
+      // To-do services need a list; without one HA only answers with an error.
+      if (intent.domain === 'todo' && !entityId) {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+          response: intent.name === 'add_item'
+            ? `I couldn't find a list called ${intent.entityHint}.`
+            : `I couldn't find ${intent.data.item} on any list.`,
+          action: intent.name,
+          success: false,
+        }));
+        return;
+      }
+
       try {
-        const qs = intent.domain === 'todo' ? '?return_response' : '';
-        let resp = await haRequest('POST', `/api/services/${intent.domain}/${intent.service}${qs}`, serviceData);
+        // No ?return_response: add_item and update_item return nothing, and
+        // HA rejects asking them for a response (every to-do intent failed).
+        let resp = await haRequest('POST', `/api/services/${intent.domain}/${intent.service}`, serviceData);
 
         // Fallback chain for media controls: try media_play_pause, then toggle
         if (resp.status >= 400 && intent.domain === 'media_player' &&
@@ -1299,6 +1362,13 @@ server.on('upgrade', (req, socket, head) => {
   };
 
   const proxyReq = http.request(options);
+  // HA answered with a plain HTTP response (401, or 502 while it restarts)
+  // instead of switching protocols: pass the status on and close, rather
+  // than leave the browser's socket hanging.
+  proxyReq.on('response', (proxyRes) => {
+    socket.end(`HTTP/1.1 ${proxyRes.statusCode} ${proxyRes.statusMessage || ''}\r\nConnection: close\r\nContent-Length: 0\r\n\r\n`);
+    proxyRes.resume();
+  });
   proxyReq.on('upgrade', (proxyRes, proxySocket, proxyHead) => {
     socket.write(
       `HTTP/1.1 101 Switching Protocols\r\n` +

@@ -13,7 +13,7 @@ import {
   updateInCollection,
   removeFromCollection,
 } from './beacon-collection';
-import { startOfDay, startOfToday, parseISO } from 'date-fns';
+import { startOfDay, startOfToday, parseISO, subDays } from 'date-fns';
 import { localDayKey } from './date-keys';
 
 const STORAGE_KEYS = {
@@ -193,7 +193,9 @@ export class FamilyStore {
   private async updateStreakForMember(memberId: string): Promise<void> {
     const streaks = await this.getStreaks();
     const today = localDayKey();
-    const yesterday = localDayKey(Date.now() - 86400000);
+    // By the calendar: after a 23-hour daylight-saving day, now minus 24
+    // hours is the day before yesterday just after midnight.
+    const yesterday = localDayKey(subDays(new Date(), 1));
 
     const existing = streaks.find((s) => s.member_id === memberId);
     // No record yet means "never completed". The '' matters: a bare

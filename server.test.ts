@@ -1,7 +1,8 @@
 // @vitest-environment node
 import { spawn, type ChildProcess } from 'node:child_process';
 import { copyFileSync, mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
-import { createServer } from 'node:net';
+import { connect, createServer } from 'node:net';
+import { createServer as createHttpServer, type Server } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -20,6 +21,44 @@ let dir: string;
 let server: ChildProcess;
 let base: string;
 let output = '';
+
+/*
+ * A small stand-in for Home Assistant's REST API, answering like HA where
+ * the tests rely on it: services that return nothing reject
+ * ?return_response with a 400.
+ */
+let fakeHa: Server;
+const haCalls: string[] = [];
+function startFakeHa(): Promise<string> {
+  const states = [
+    { entity_id: 'todo.grocery', state: '1', attributes: { friendly_name: 'Grocery' } },
+    { entity_id: 'todo.chores', state: '0', attributes: { friendly_name: 'Chores' } },
+  ];
+  const items: Record<string, object[]> = {
+    'todo.grocery': [{ uid: 'g1', summary: 'Milk', status: 'needs_action' }],
+    'todo.chores': [],
+  };
+  fakeHa = createHttpServer((req, res) => {
+    let body = '';
+    req.on('data', (c) => { body += c; });
+    req.on('end', () => {
+      haCalls.push(`${req.method} ${req.url} ${body}`);
+      const [path, query = ''] = (req.url ?? '').split('?');
+      const json = (status: number, data: unknown) => { res.writeHead(status, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(data)); };
+      if (path === '/api/states') return json(200, states);
+      if (path === '/api/services/todo/get_items') {
+        const id = JSON.parse(body).entity_id;
+        return json(200, { changed_states: [], service_response: { [id]: { items: items[id] ?? [] } } });
+      }
+      if (path === '/api/services/todo/add_item' || path === '/api/services/todo/update_item') {
+        if (query.includes('return_response')) return json(400, { message: 'Service does not support responses. Remove return_response from request.' });
+        return json(200, []);
+      }
+      json(404, { message: 'Not found' });
+    });
+  });
+  return new Promise((resolve) => fakeHa.listen(0, '127.0.0.1', () => resolve(`http://127.0.0.1:${(fakeHa.address() as { port: number }).port}`)));
+}
 
 function freePort(): Promise<number> {
   return new Promise((resolve, reject) => {
@@ -40,6 +79,7 @@ beforeAll(async () => {
   mkdirSync(join(dir, 'dist'));
   writeFileSync(join(dir, 'dist', 'index.html'), '<!doctype html><div id="root"></div>');
 
+  const haBase = await startFakeHa();
   const port = await freePort();
   base = `http://127.0.0.1:${port}`;
   server = spawn(process.execPath, [join(dir, 'server.cjs')], {
@@ -49,6 +89,8 @@ beforeAll(async () => {
       BEACON_PORT: String(port),
       BEACON_DIST: join(dir, 'dist'),
       BEACON_DATA: join(dir, 'data'),
+      HA_API_BASE_OVERRIDE: haBase,
+      SUPERVISOR_TOKEN: 'test-token', // the WebSocket proxy only runs with one
     },
   });
   server.stdout!.on('data', (chunk) => { output += chunk; });
@@ -68,6 +110,7 @@ beforeAll(async () => {
 
 afterAll(() => {
   server?.kill();
+  fakeHa?.close();
   if (dir) rmSync(dir, { recursive: true, force: true });
 });
 
@@ -109,5 +152,67 @@ describe('add-on server', () => {
     const since = encodeURIComponent('2026-09-26T00:00:00.000Z');
     expect(await fetch(`${base}/beacon-collection/test_completions?since=${since}`).then((r) => r.json())).toEqual([recent]);
     expect(await fetch(`${base}/beacon-collection/test_completions`).then((r) => r.json())).toHaveLength(2);
+  });
+
+  // A save cut off mid-upload (power or Wi-Fi lost) was taken as an empty
+  // body and replaced the stored data with {}.
+  it('keeps stored data when a save is cut off or empty', async () => {
+    const put = (body?: string) => fetch(`${base}/beacon-data/test_settings`, { method: 'PUT', body });
+    expect((await put('{"theme":"dark"}')).status).toBe(200);
+
+    await new Promise<void>((resolve) => {
+      const port = Number(new URL(base).port);
+      const socket = connect(port, '127.0.0.1', () => {
+        socket.write('PUT /beacon-data/test_settings HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Type: application/json\r\nContent-Length: 100\r\n\r\n{"the');
+        setTimeout(() => { socket.destroy(); resolve(); }, 100);
+      });
+    });
+    await new Promise((r) => setTimeout(r, 200));
+
+    expect((await put()).status).toBe(400);
+    expect(await fetch(`${base}/beacon-data/test_settings`).then((r) => r.json())).toEqual({ theme: 'dark' });
+  });
+
+  describe('voice to-do commands', () => {
+    const say = (text: string) => fetch(`${base}/beacon-action/voice`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text }),
+    }).then((r) => r.json());
+    const serviceCalls = (service: string) => haCalls.filter((c) => c.startsWith(`POST /api/services/todo/${service}`));
+
+    // They asked HA for a response that adding an item doesn't give, and
+    // HA answers that with a 400: every to-do voice command failed.
+    it('adds an item to the named list', async () => {
+      expect(await say('add eggs to the grocery list')).toMatchObject({ success: true, entity_id: 'todo.grocery' });
+      expect(serviceCalls('add_item')).toEqual(['POST /api/services/todo/add_item {"item":"eggs","entity_id":"todo.grocery"}']);
+    });
+
+    // "Complete milk" names no list, and was sent to HA without one.
+    it('completes an item on whichever list has it', async () => {
+      expect(await say('complete milk')).toMatchObject({ success: true, entity_id: 'todo.grocery' });
+      expect(serviceCalls('update_item')).toEqual(['POST /api/services/todo/update_item {"item":"g1","status":"completed","entity_id":"todo.grocery"}']);
+    });
+
+    it('says when there is no such list or item', async () => {
+      expect(await say('add eggs to the camping list')).toMatchObject({ success: false, response: "I couldn't find a list called camping list." });
+      expect(await say('complete kale')).toMatchObject({ success: false, response: "I couldn't find kale on any list." });
+    });
+  });
+
+  // HA answering the WebSocket upgrade with a plain HTTP error (a 502 while
+  // it restarts) left the browser's socket hanging, never answered.
+  it('passes on an HTTP answer to a WebSocket upgrade instead of hanging', async () => {
+    const answer = await new Promise<string>((resolve) => {
+      const socket = connect(Number(new URL(base).port), '127.0.0.1', () => {
+        socket.write('GET /api/websocket HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: Upgrade\r\nUpgrade: websocket\r\n'
+          + 'Sec-WebSocket-Version: 13\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n\r\n');
+      });
+      let data = '';
+      socket.on('data', (c) => { data += c; });
+      socket.on('close', () => resolve(data));
+      setTimeout(() => { socket.destroy(); resolve(data || 'no answer'); }, 2000);
+    });
+    expect(answer.split('\r\n')[0]).toBe('HTTP/1.1 404 Not Found');
   });
 });

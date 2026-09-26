@@ -49,4 +49,15 @@ describe('FamilyStore streaks', () => {
 
     expect(await store.getStreakForMember('kai')).toMatchObject({ current: 1, longest: 2 });
   });
+
+  // "Yesterday" was now minus 24 hours: just after midnight following a
+  // 23-hour daylight-saving day, that's the day before yesterday. (Only
+  // shows in a time zone with daylight saving, e.g. TZ=America/New_York.)
+  it('keeps a streak going across a daylight-saving change', async () => {
+    await completeOn(new Date(2026, 2, 7, 18, 0)); // 7 March
+    await completeOn(new Date(2026, 2, 8, 18, 0)); // 8 March: clocks go forward in the US
+    await completeOn(new Date(2026, 2, 9, 0, 30)); // 00:30 on 9 March
+
+    expect(await store.getStreakForMember('kai')).toMatchObject({ current: 3 });
+  });
 });

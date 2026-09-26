@@ -3,7 +3,6 @@
 
 # Read options from /data/options.json (populated by HA Supervisor)
 FAMILY_NAME="$(bashio::config 'family_name' 2>/dev/null || echo 'My Family')"
-HA_TOKEN="$(bashio::config 'ha_token' 2>/dev/null || echo '')"
 THEME="$(bashio::config 'theme' 2>/dev/null || echo 'skylight')"
 AUTO_DARK_MODE="$(bashio::config 'auto_dark_mode' 2>/dev/null || echo 'true')"
 WEATHER_ENTITY="$(bashio::config 'weather_entity' 2>/dev/null || echo 'weather.home')"
@@ -36,13 +35,12 @@ else
   bashio::log.info "Add-on slug resolved: ${ADDON_SLUG}"
 fi
 
-# Log token status
-if [ -n "${HA_TOKEN}" ]; then
-  bashio::log.info "HA token configured (user-provided)."
-elif [ -n "${SUPERVISOR_TOKEN:-}" ]; then
-  bashio::log.info "No user token — using API proxy with Supervisor token."
+# The server reaches Home Assistant with the Supervisor token (the browser
+# never holds one; see server.js).
+if [ -n "${SUPERVISOR_TOKEN:-}" ]; then
+  bashio::log.info "Using the API proxy with the Supervisor token."
 else
-  bashio::log.warning "No HA token and no Supervisor token. Calendar/list integrations will not work."
+  bashio::log.warning "No Supervisor token. Calendar/list integrations will not work."
 fi
 
 # The proxy server handles /api/* requests — the browser always uses same-origin.

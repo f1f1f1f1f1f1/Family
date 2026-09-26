@@ -25,6 +25,7 @@ const ha = {
   deleteReasons: [] as string[],
   calls: 0,
   broken: new Set<string>(), // lists whose get_items fails
+  failRemove: false, // remove_item fails (Google error)
   nextUid: 0,
 };
 
@@ -51,6 +52,7 @@ async function callService(domain: string, service: string, data: Record<string,
       return null;
     }
     case 'remove_item': {
+      if (ha.failRemove) throw new Error('remove_item failed (HTTP 500)');
       const it = find(data.item);
       if (!it) throw new Error('item_not_found');
       ha.deletes.push(it.uid);
@@ -136,6 +138,7 @@ beforeEach(() => {
   ha.deleteReasons = [];
   ha.calls = 0;
   ha.broken.clear();
+  ha.failRemove = false;
   db.collections.clear();
   db.unreadable.clear();
   coll('beacon_family_members').push({ id: 'kai', name: 'Kai', avatar: '', color: '#000', role: 'child' });
@@ -244,6 +247,53 @@ describe('chores sync (add-on)', () => {
     expect(ha.deleteReasons[0]).toMatch(/no longer matches an assigned chore/);
   });
 
+  // The link was dropped even when deleting the Google task failed, and
+  // the task then came back as a new chore.
+  it("keeps trying to delete a deleted chore's task until it's gone", async () => {
+    const { chore, run, task } = await setup();
+    await store.remove('beacon_chores', chore.id);
+
+    ha.failRemove = true;
+    await run();
+    ha.failRemove = false;
+    ha.broken.add('todo.kai');
+    await run();
+    expect(task()).toHaveLength(1);
+    expect(coll(LINKS)).toHaveLength(1);
+
+    ha.broken.clear();
+    await run();
+    await run();
+    expect(task()).toHaveLength(0);
+    expect(coll(LINKS)).toHaveLength(0);
+    expect(chores()).toHaveLength(0); // not imported back
+  });
+
+  // Dropping the link made the next pass create the task again.
+  it('leaves a task deleted in Google Tasks deleted, until the chore is reassigned', async () => {
+    const { chore, run, task } = await setup();
+    task().splice(0, 1);
+    await run();
+    await run();
+    expect(task()).toHaveLength(0);
+
+    await store.update('beacon_chores', chore.id, { assigned_to: [] });
+    await run();
+    await store.update('beacon_chores', chore.id, { assigned_to: ['kai'] });
+    await run();
+    expect(task().map((t) => t.summary)).toEqual(['Vacuum']);
+  });
+
+  it('syncs a task again when it comes back in Google Tasks', async () => {
+    const { chore, run, task } = await setup();
+    const [deleted] = task().splice(0, 1);
+    await run();
+    task().push(deleted);
+    await complete(chore.id);
+    await run();
+    expect(task()[0].status).toBe('completed');
+  });
+
   it('cleans up duplicate link records from earlier builds', async () => {
     const { run, task } = await setup();
     const links = coll(LINKS);
@@ -286,6 +336,18 @@ describe('chores sync (add-on)', () => {
     task()[0].status = 'completed';
     await run();
     expect(coll('beacon_streaks')[0]).toMatchObject({ current: 3, longest: 3 });
+  });
+
+  // "Yesterday" was now minus 24 hours: just after midnight following a
+  // 23-hour daylight-saving day, that's the day before yesterday.
+  it('advances a streak across a daylight-saving change', async () => {
+    timeZone = 'America/New_York';
+    clock = new Date('2026-03-09T04:30:00Z'); // 00:30 on 9 March, after 8 March lost an hour
+    const { run, task } = await setup();
+    coll('beacon_streaks').push({ id: 'kai', member_id: 'kai', current: 2, longest: 2, last_completed: '2026-03-08T17:00:00Z' });
+    task()[0].status = 'completed';
+    await run();
+    expect(coll('beacon_streaks')[0]).toMatchObject({ current: 3 });
   });
 
   it("starts a streak when a chore is ticked in Google by someone who doesn't have one yet", async () => {

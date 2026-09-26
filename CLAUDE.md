@@ -23,8 +23,13 @@ Upstream's `beacon/` subdirectory was removed: Supervisor treats every
 add-on store as a stale second "Beacon" add-on. Don't reintroduce a nested
 `config.yaml`.
 
-### HA Add-on Auth: Long-Lived Token in Config
-SUPERVISOR_TOKEN only works container-side (http://supervisor/core). postMessage auth doesn't work in HA companion app WKWebView. The `ha_token` config option (schema: password) with a user-provided long-lived access token is the only reliable browser-side auth approach.
+### HA Add-on Auth: Server-Side Proxy, No Browser Token
+In the add-on the browser never holds an HA token. SUPERVISOR_TOKEN only
+works container-side (http://supervisor/core), so server.js proxies
+/api/* and the /beacon-action/* bridges with it, and the page calls them
+same-origin through ingress (run.sh writes an empty `ha_token` into
+runtime-config.js). postMessage auth doesn't work in the HA companion
+app's WKWebView. There is no `ha_token` add-on option.
 
 ### HA Todo Items: Service Call with ?return_response
 Don't read `entity.attributes.items` — it doesn't exist. Use:
@@ -34,6 +39,8 @@ Body: {"entity_id": "todo.xxx"}
 Response: { service_response: { "todo.xxx": { items: [...] } } }
 ```
 Filter out `unavailable` entities during discovery. Calling get_items on unavailable entities returns HTTP 500.
+Only services that return data take `?return_response`: HA answers 400 to
+it on add_item, update_item and remove_item.
 
 ### HA Add-on Store Cache Busting
 HA aggressively caches add-on repos. To force update visibility: create a git tag + GitHub release. If that fails, user must remove and re-add the repo URL. The `update_entity` service does NOT trigger a repo refresh.

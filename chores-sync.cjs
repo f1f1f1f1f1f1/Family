@@ -57,7 +57,16 @@ const COLLECTIONS = {
 
 /** Tag earlier builds wrote into task notes; no longer written. */
 const LEGACY_MARKER_PREFIX = '[beacon-sync]';
-const DAY_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * The day before a "YYYY-MM-DD" key, by the calendar. Now minus 24 hours
+ * isn't always yesterday: after a 23-hour daylight-saving day, at 00:30
+ * it's the day before yesterday, and a streak restarted at 1.
+ */
+function previousDayKey(key) {
+  const [y, m, d] = key.split('-').map(Number);
+  return new Date(Date.UTC(y, m - 1, d - 1)).toISOString().slice(0, 10);
+}
 
 /**
  * Links are looked up by the chore and member they belong to. Their `id` is
@@ -239,6 +248,9 @@ function createChoresSync({
 
     // --- Family-side writes, matching FamilyStore in src/api/family.ts ---
 
+    // These re-read the completions rather than use the copy read at the
+    // start of the pass: a tick made in Family while the pass runs must be
+    // seen, or the chore would be completed (and paid) twice.
     const completeChore = async (choreId, memberId) => {
       const all = await store.list(COLLECTIONS.completions);
       const done = all.some((c) => c.chore_id === choreId && c.member_id === memberId && dayKey(c.completed_at) === today);
@@ -266,7 +278,7 @@ function createChoresSync({
       const existing = streaks.find((s) => s.member_id === memberId);
       const lastDate = dayKey(existing?.last_completed);
       if (lastDate === today) return;
-      const yesterday = dayKey(now().getTime() - DAY_MS);
+      const yesterday = previousDayKey(today);
       const current = lastDate === yesterday ? (existing?.current ?? 0) + 1 : 1;
       const patch = {
         member_id: memberId,
@@ -353,17 +365,30 @@ function createChoresSync({
         extraLinks.push(l);
       }
     }
+    // A link goes only once its Google task is gone: dropped any sooner, a
+    // task that's still there is imported as a new chore on the next pass.
+    let extraLinksRemoved = 0;
     for (const extra of extraLinks) {
       const kept = linksByKey.get(choreLinkKey(extra));
       const entityId = listByMember[extra.member_id];
-      if (entityId && extra.uid !== kept.uid && itemsByEntity.get(entityId)?.some((it) => it.uid === extra.uid)) {
-        change(`duplicate link for ${choreLinkKey(extra)}: deleting extra Google task ${extra.uid}`);
-        await callService('todo', 'remove_item', { entity_id: entityId, item: extra.uid }, { reason: `chores-sync: duplicate task for ${choreLinkKey(extra)}` }).catch(() => {});
-        itemsByEntity.set(entityId, itemsByEntity.get(entityId).filter((it) => it.uid !== extra.uid));
+      if (entityId && extra.uid !== kept.uid) {
+        const items = itemsByEntity.get(entityId);
+        if (!items) continue; // list unreadable: next pass
+        if (items.some((it) => it.uid === extra.uid)) {
+          change(`duplicate link for ${choreLinkKey(extra)}: deleting extra Google task ${extra.uid}`);
+          try {
+            await callService('todo', 'remove_item', { entity_id: entityId, item: extra.uid }, { reason: `chores-sync: duplicate task for ${choreLinkKey(extra)}` });
+          } catch (err) {
+            warn(`couldn't delete duplicate Google task ${extra.uid}, will try again: ${errorMessage(err)}`);
+            continue;
+          }
+          itemsByEntity.set(entityId, items.filter((it) => it.uid !== extra.uid));
+        }
       }
       await store.remove(COLLECTIONS.links, extra.id);
+      extraLinksRemoved++;
     }
-    if (extraLinks.length) change(`removed ${extraLinks.length} duplicate link record(s)`);
+    if (extraLinksRemoved) change(`removed ${extraLinksRemoved} duplicate link record(s)`);
 
     let choresChanged = false;
 
@@ -416,10 +441,25 @@ function createChoresSync({
     const reconcileLink = async (entityId, link, beaconStatus, itemsByUid, onPull) => {
       const task = itemsByUid.get(link.uid);
       if (!task) {
-        // Deleted on the Google Tasks side — drop the link rather than
-        // recreating it, so a deliberate delete doesn't just come back.
-        await store.remove(COLLECTIONS.links, link.id);
-        return { changed: false, action: `Google task ${link.uid} not found, link dropped` };
+        if (link.entity_id !== entityId) {
+          // Its task was in another list (the member's list was changed in
+          // Settings), or it's a link from before links recorded their
+          // list: drop it, and the next pass makes the task in this list.
+          await store.remove(COLLECTIONS.links, link.id);
+          return { changed: false, action: `Google task ${link.uid} isn't in ${entityId}, link dropped` };
+        }
+        // Deleted in Google Tasks: keep the link, marked, so the task isn't
+        // made again. (Dropping it had the next pass create the task again
+        // within a minute.) Unassigning the chore from this member removes
+        // the link; reassigning makes a new task.
+        if (link.deleted_in_google) return { changed: false, quiet: true, action: 'deleted in Google Tasks, left deleted' };
+        await store.update(COLLECTIONS.links, link.id, { deleted_in_google: true });
+        return { changed: false, action: `Google task ${link.uid} was deleted in Google Tasks; not making it again until the chore is reassigned` };
+      }
+      if (link.entity_id !== entityId || link.deleted_in_google) {
+        // Record which list the task is in (links from earlier builds
+        // don't say), and sync a task that's back (restored in Google Tasks).
+        await store.update(COLLECTIONS.links, link.id, { entity_id: entityId, deleted_in_google: false });
       }
 
       const setGoogleStatus = (status) => callService('todo', 'update_item', { entity_id: entityId, item: link.uid, status });
@@ -494,7 +534,7 @@ function createChoresSync({
             // push Family's "not done" over it. From this baseline a tick
             // on either side counts as a change, and done wins.
             await store.add(COLLECTIONS.links, {
-              chore_id: chore.id, member_id: memberId, uid: match.uid, last_synced_status: 'needs_action',
+              chore_id: chore.id, member_id: memberId, uid: match.uid, entity_id: entityId, last_synced_status: 'needs_action',
             });
             known.add(match.uid);
             change(`${label}: ${relinked ? 're-linked existing' : 'created'} Google task ${match.uid} (google=${match.status} family=${beaconStatus})`);
@@ -525,7 +565,7 @@ function createChoresSync({
         }
 
         const googleStatus = linkedTask?.status ?? 'missing';
-        const { changed, action } = await reconcileLink(
+        const { changed, action, quiet } = await reconcileLink(
           entityId, link, beaconStatus, itemsByUid,
           async (status) => {
             if (status === 'completed') await completeChore(chore.id, memberId);
@@ -533,7 +573,7 @@ function createChoresSync({
           },
         );
         const line = `${label}: family=${beaconStatus} google=${googleStatus} lastAgreed=${link.last_synced_status} -> ${action}`;
-        if (action === 'in sync') note(line);
+        if (action === 'in sync' || quiet) note(line);
         else change(line);
         if (changed) choresChanged = true;
       }
@@ -542,9 +582,18 @@ function createChoresSync({
     for (const link of linksByKey.values()) {
       if (desiredChoreKeys.has(choreLinkKey(link))) continue;
       const entityId = listByMember[link.member_id];
-      change(`link for ${choreLinkKey(link)} has no matching assigned chore: deleting Google task ${link.uid}`);
-      if (entityId) {
-        await callService('todo', 'remove_item', { entity_id: entityId, item: link.uid }, { reason: `chores-sync: chore link ${choreLinkKey(link)} no longer matches an assigned chore` }).catch(() => {});
+      if (entityId && !link.deleted_in_google) {
+        const items = itemsByEntity.get(entityId);
+        if (!items) continue; // list unreadable: next pass (see duplicate links above)
+        if (items.some((it) => it.uid === link.uid)) {
+          change(`link for ${choreLinkKey(link)} has no matching assigned chore: deleting Google task ${link.uid}`);
+          try {
+            await callService('todo', 'remove_item', { entity_id: entityId, item: link.uid }, { reason: `chores-sync: chore link ${choreLinkKey(link)} no longer matches an assigned chore` });
+          } catch (err) {
+            warn(`couldn't delete Google task ${link.uid}, will try again: ${errorMessage(err)}`);
+            continue;
+          }
+        }
       }
       await store.remove(COLLECTIONS.links, link.id);
     }
