@@ -38,6 +38,7 @@ import { getFocusMemberId, clearFocusMode, setDeviceFocusMember } from './focus'
 import { CalendarEvent, resolveCalendarColor } from './types';
 import { getConfig, patchConfig } from './config';
 import { setHaKioskMode } from './utils/ha-kiosk';
+import { applyFontScale } from './utils/font-scale';
 
 const config = getConfig();
 
@@ -152,6 +153,10 @@ export function App() {
   useEffect(() => {
     setTheme(settings.themeId);
   }, [settings.themeId, setTheme]);
+
+  useEffect(() => {
+    applyFontScale(settings.fontScale);
+  }, [settings.fontScale]);
 
   useEffect(() => {
     setHaKioskMode(settings.hideHaHeader);

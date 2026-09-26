@@ -118,11 +118,19 @@
 /* --- Row: label + control --- */
 .settings-row {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: 16px;
   padding: 14px 20px;
   min-height: 52px;
+}
+
+/* The label takes whatever the control leaves, so a row only wraps (control
+   below the label) when the control won't fit beside the label's longest
+   word — e.g. button groups on a phone or at a larger Font Size. */
+.settings-row > :first-child:not(:only-child) {
+  flex: 1 1 0;
 }
 
 .settings-row + .settings-row {
@@ -288,6 +296,7 @@
 /* --- Segmented control --- */
 .settings-segment {
   display: inline-flex;
+  flex-shrink: 0; /* never squeeze (and cut off) a button; the row wraps instead */
   background: var(--bg-primary);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
