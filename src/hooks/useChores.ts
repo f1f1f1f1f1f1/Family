@@ -1,5 +1,6 @@
 import { useState, useCallback, useMemo, useEffect } from 'react';
 import { FamilyStore, notifyFamilyDataChanged, onFamilyDataChanged } from '../api/family';
+import { saveThen } from '../utils/save-errors';
 import { Chore, ChoreCompletion, Streak, MemberEarnings } from '../types/family';
 
 /**
@@ -32,45 +33,50 @@ export function useChores(enabled = true) {
 
   const addChore = useCallback(
     async (chore: Omit<Chore, 'id'>) => {
-      await store.addChore(chore);
-      await refresh();
-      notifyFamilyDataChanged(store);
+      await saveThen(() => store.addChore(chore), async () => {
+        await refresh();
+        notifyFamilyDataChanged(store);
+      });
     },
     [store, refresh]
   );
 
   const updateChore = useCallback(
     async (id: string, data: Partial<Omit<Chore, 'id'>>) => {
-      await store.updateChore(id, data);
-      await refresh();
-      notifyFamilyDataChanged(store);
+      await saveThen(() => store.updateChore(id, data), async () => {
+        await refresh();
+        notifyFamilyDataChanged(store);
+      });
     },
     [store, refresh]
   );
 
   const removeChore = useCallback(
     async (id: string) => {
-      await store.removeChore(id);
-      await refresh();
-      notifyFamilyDataChanged(store);
+      await saveThen(() => store.removeChore(id), async () => {
+        await refresh();
+        notifyFamilyDataChanged(store);
+      });
     },
     [store, refresh]
   );
 
   const completeChore = useCallback(
     async (choreId: string, memberId: string) => {
-      await store.completeChore(choreId, memberId);
-      await refresh();
-      notifyFamilyDataChanged(store);
+      await saveThen(() => store.completeChore(choreId, memberId), async () => {
+        await refresh();
+        notifyFamilyDataChanged(store);
+      });
     },
     [store, refresh]
   );
 
   const uncompleteChore = useCallback(
     async (choreId: string, memberId: string) => {
-      await store.uncompleteChore(choreId, memberId);
-      await refresh();
-      notifyFamilyDataChanged(store);
+      await saveThen(() => store.uncompleteChore(choreId, memberId), async () => {
+        await refresh();
+        notifyFamilyDataChanged(store);
+      });
     },
     [store, refresh]
   );

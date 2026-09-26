@@ -96,3 +96,10 @@ occurrence, `occurrenceTarget()` (src/utils/calendar-edits.ts) for
 `recurrence_id`/`recurrence_range`; without them HA changes the whole series.
 `calendar/event/update` replaces the whole event and requires `summary`, so
 send the full event (`formToPayload`/`movedPayload`), not just changed fields.
+
+### Family Data Writes Fail Loudly
+In add-on mode `addToCollection`/`updateInCollection`/`removeFromCollection`
+throw `SaveFailedError` (and report it, for the "Couldn't save" notice) when
+the server doesn't take a write. Don't fall back to writing localStorage:
+the next read replaces that cache with the server's copy. Hooks wrap writes
+in `saveThen()` (src/utils/save-errors.ts), which refreshes either way.

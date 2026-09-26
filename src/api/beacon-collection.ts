@@ -11,9 +11,21 @@
  * read-modify-write pattern against localStorage directly — there's only
  * one "device" in that context, so the race this API exists to prevent
  * doesn't apply there.
+ *
+ * In add-on mode a write the server didn't take throws SaveFailedError
+ * (and reports it, for App's notice). It used to be written to this
+ * device's local cache instead and reported as saved — until the next
+ * read replaced that cache with the server's copy, silently undoing it.
  */
 
 import { isAddOn } from '../utils/ha-env';
+import { SaveFailedError, reportSaveFailed } from '../utils/save-errors';
+
+function saveFailed(name: string): SaveFailedError {
+  const err = new SaveFailedError(`a change to ${name}`);
+  reportSaveFailed(err);
+  return err;
+}
 
 interface HasId {
   id?: string;
@@ -106,8 +118,9 @@ export async function addToCollection<T extends HasId>(
         return created;
       }
     } catch {
-      /* fall through to optimistic local add */
+      /* network error */
     }
+    throw saveFailed(name);
   }
   const items = readLocal<T>(name);
   const created = { ...item, id: (item as HasId).id || generateId() } as T;
@@ -141,8 +154,9 @@ export async function updateInCollection<T extends HasId>(
         return updated;
       }
     } catch {
-      /* fall through to optimistic local update */
+      /* network error */
     }
+    throw saveFailed(name);
   }
   const items = readLocal<T>(name);
   const idx = items.findIndex((it) => it.id === id);
@@ -169,8 +183,9 @@ export async function removeFromCollection(name: string, id: string): Promise<bo
         return !!result.ok;
       }
     } catch {
-      /* fall through to optimistic local remove */
+      /* network error */
     }
+    throw saveFailed(name);
   }
   const items = readLocal<HasId>(name);
   const filtered = items.filter((it) => it.id !== id);

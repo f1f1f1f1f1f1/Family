@@ -11,6 +11,7 @@ import { RoutineCard } from './RoutineCard';
 import { FocusChores } from './FocusChores';
 import { pickRoutine, getTimeOfDay } from './period';
 import '../../styles/focus.css';
+import { SaveFailedNotice } from '../SaveFailedNotice';
 
 interface FocusViewProps {
   memberId: string;
@@ -179,6 +180,8 @@ export function FocusView({ memberId, settings, onExit }: FocusViewProps) {
           </div>
         </div>
       )}
+
+      <SaveFailedNotice />
 
       <ScreenSaver
         enabled={settings.screenSaverEnabled}

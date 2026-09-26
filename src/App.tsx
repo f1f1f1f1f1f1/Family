@@ -36,6 +36,7 @@ import { getConfig, patchConfig } from './config';
 import { setHaKioskMode } from './utils/ha-kiosk';
 import { applyFontScale } from './utils/font-scale';
 import { formToPayload, movedPayload, occurrenceTarget, type EditScope, type EventPayload, type OccurrenceTarget } from './utils/calendar-edits';
+import { SaveFailedNotice } from './components/SaveFailedNotice';
 
 const config = getConfig();
 
@@ -825,6 +826,8 @@ export function App() {
           onExpand={() => setActiveView('music')}
         />
       )}
+
+      <SaveFailedNotice />
 
       {/* Screen saver / dim mode */}
       <ScreenSaver
