@@ -3,7 +3,9 @@ import { format } from 'date-fns';
 import { useFamily } from '../../hooks/useFamily';
 import { useChores } from '../../hooks/useChores';
 import { useRoutines } from '../../hooks/useRoutines';
+import { useClock } from '../../hooks/useClock';
 import { BeaconSettings } from '../../hooks/useSettings';
+import { localDayKey } from '../../api/date-keys';
 import { ScreenSaver } from '../ScreenSaver';
 import { RoutineCard } from './RoutineCard';
 import { FocusChores } from './FocusChores';
@@ -21,6 +23,20 @@ const GREETINGS = {
   evening: 'Good evening',
 } as const;
 
+/** Changes when the greeting and routine do: at noon, 5pm and midnight. */
+const byPeriod = (d: Date) => `${localDayKey(d)} ${getTimeOfDay(d)}`;
+
+/** The clock keeps its own time, so the lists below don't re-render every minute. */
+function FocusClock({ timeFormat, onTap }: { timeFormat: BeaconSettings['timeFormat']; onTap: () => void }) {
+  const now = useClock();
+  return (
+    <button type="button" className="focus-clock" onClick={onTap} aria-label="Clock">
+      <div className="focus-time">{format(now, timeFormat === '24h' ? 'HH:mm' : 'h:mm a')}</div>
+      <div className="focus-date">{format(now, 'EEEE, MMMM d')}</div>
+    </button>
+  );
+}
+
 export function FocusView({ memberId, settings, onExit }: FocusViewProps) {
   const { members } = useFamily();
   const routinesApi = useRoutines(memberId);
@@ -28,11 +44,7 @@ export function FocusView({ memberId, settings, onExit }: FocusViewProps) {
 
   const member = members.find((m) => m.id === memberId);
 
-  const [now, setNow] = useState(new Date());
-  useEffect(() => {
-    const t = setInterval(() => setNow(new Date()), 1000);
-    return () => clearInterval(t);
-  }, []);
+  const now = useClock(byPeriod);
 
   // Periodic data refresh so a wall display picks up edits made elsewhere
   const { refresh: refreshRoutines } = routinesApi;
@@ -44,6 +56,17 @@ export function FocusView({ memberId, settings, onExit }: FocusViewProps) {
     }, 5 * 60 * 1000);
     return () => clearInterval(t);
   }, [refreshRoutines, refreshChores]);
+
+  // At midnight, reload so yesterday's ticks clear straight away rather
+  // than at the next 5-minute refresh.
+  const day = localDayKey(now);
+  const loadedDay = useRef(day);
+  useEffect(() => {
+    if (loadedDay.current === day) return;
+    loadedDay.current = day;
+    refreshRoutines();
+    refreshChores();
+  }, [day, refreshRoutines, refreshChores]);
 
   // Exit gesture: 5 taps on the clock within 3 seconds
   const taps = useRef<number[]>([]);
@@ -99,12 +122,7 @@ export function FocusView({ memberId, settings, onExit }: FocusViewProps) {
             <div className="focus-name">{member.name}</div>
           </div>
         </div>
-        <button type="button" className="focus-clock" onClick={handleClockTap} aria-label="Clock">
-          <div className="focus-time">
-            {format(now, settings.timeFormat === '24h' ? 'HH:mm' : 'h:mm a')}
-          </div>
-          <div className="focus-date">{format(now, 'EEEE, MMMM d')}</div>
-        </button>
+        <FocusClock timeFormat={settings.timeFormat} onTap={handleClockTap} />
       </header>
 
       <main className="focus-body">

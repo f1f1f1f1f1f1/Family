@@ -24,9 +24,14 @@ interface UseMusicReturn {
   selectPlayer: (entityId: string) => void;
 }
 
+/**
+ * `enabled: false` stops listening for player changes and polling; turning
+ * it back on re-reads the players.
+ */
 export function useMusic(
   getClient: () => HomeAssistantClient | null,
   connected: boolean,
+  enabled = true,
 ): UseMusicReturn {
   const [players, setPlayers] = useState<MediaPlayer[]>([]);
   const [selectedPlayerId, setSelectedPlayerId] = useState<string | null>(null);
@@ -39,7 +44,7 @@ export function useMusic(
 
   // Fetch players and subscribe to state changes (or poll in REST mode)
   useEffect(() => {
-    if (!connected) return;
+    if (!connected || !enabled) return;
     const client = getClient();
     let cancelled = false;
 
@@ -105,7 +110,7 @@ export function useMusic(
       }
       if (pollInterval) clearInterval(pollInterval);
     };
-  }, [connected, getClient]);
+  }, [connected, enabled, getClient]);
 
   const resolveEntityId = useCallback(
     (entityId?: string) => entityId || activePlayer?.entity_id || selectedPlayerId,

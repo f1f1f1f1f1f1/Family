@@ -1,10 +1,12 @@
 import { format } from 'date-fns';
 import { DashboardCardProps } from '../../types/dashboard-cards';
 import { weatherIcon, conditionLabel } from '../../types/weather-icons';
+import { useClock } from '../../hooks/useClock';
 
 export function ClockWeatherCard({ context }: DashboardCardProps) {
+  // Its own clock, so only this card re-renders when the minute changes.
+  const now = useClock();
   const {
-    now,
     timeFormat,
     weather,
     onWeatherClick,
