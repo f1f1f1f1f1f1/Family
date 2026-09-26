@@ -304,7 +304,7 @@
   border-radius: 12px;
   background: rgba(0, 0, 0, 0.82);
   color: #fff;
-  font-size: 12px;
+  font-size: 0.75rem;
   line-height: 1.35;
   z-index: 11;
   user-select: text;
@@ -317,7 +317,7 @@
   justify-content: space-between;
   align-items: center;
   margin-bottom: 8px;
-  font-size: 13px;
+  font-size: 0.8125rem;
 }
 
 .photo-diagnostics-header button {
@@ -355,7 +355,7 @@
   border-radius: 8px;
   background: rgba(255, 255, 255, 0.15);
   color: #fff;
-  font-size: 13px;
+  font-size: 0.8125rem;
   font-weight: 600;
 }
 

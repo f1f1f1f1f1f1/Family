@@ -19,7 +19,7 @@
   justify-content: center;
   height: 100%;
   color: var(--text-muted);
-  font-size: 16px;
+  font-size: 1rem;
   gap: 16px;
 }
 
@@ -29,7 +29,7 @@
   border: none;
   border-radius: 8px;
   padding: 8px 20px;
-  font-size: 14px;
+  font-size: 0.875rem;
   cursor: pointer;
 }
 
@@ -71,7 +71,7 @@
 }
 
 .weather-current-condition {
-  font-size: 20px;
+  font-size: 1.25rem;
   color: var(--text-secondary);
   font-weight: 400;
 }
@@ -89,7 +89,7 @@
 }
 
 .weather-detail-label {
-  font-size: 12px;
+  font-size: 0.75rem;
   text-transform: uppercase;
   letter-spacing: 0.5px;
   color: var(--text-muted);
@@ -97,7 +97,7 @@
 }
 
 .weather-detail-value {
-  font-size: 18px;
+  font-size: 1.125rem;
   font-weight: 600;
   color: var(--text-primary);
 }
@@ -129,7 +129,7 @@
 
 .weather-forecast-title {
   font-family: var(--font-display);
-  font-size: 20px;
+  font-size: 1.25rem;
   font-weight: 600;
   color: var(--text-primary);
   margin: 0;
@@ -185,13 +185,13 @@
 }
 
 .weather-forecast-day {
-  font-size: 14px;
+  font-size: 0.875rem;
   font-weight: 600;
   color: var(--text-primary);
 }
 
 .weather-forecast-date {
-  font-size: 12px;
+  font-size: 0.75rem;
   color: var(--text-muted);
 }
 
@@ -207,18 +207,18 @@
 }
 
 .weather-forecast-high {
-  font-size: 16px;
+  font-size: 1rem;
   font-weight: 600;
   color: var(--text-primary);
 }
 
 .weather-forecast-low {
-  font-size: 14px;
+  font-size: 0.875rem;
   color: var(--text-muted);
 }
 
 .weather-forecast-precip {
-  font-size: 11px;
+  font-size: 0.6875rem;
   color: var(--accent);
   font-weight: 500;
 }
@@ -256,7 +256,7 @@
 
 .weather-hourly-title {
   font-family: var(--font-display);
-  font-size: 16px;
+  font-size: 1rem;
   font-weight: 600;
   color: var(--text-primary);
   margin: 0;
@@ -267,7 +267,7 @@
   border: 1px solid var(--text-muted);
   border-radius: 6px;
   color: var(--text-muted);
-  font-size: 12px;
+  font-size: 0.75rem;
   padding: 4px 12px;
   cursor: pointer;
   transition: color 0.15s, border-color 0.15s;
@@ -281,7 +281,7 @@
 .weather-hourly-loading,
 .weather-hourly-empty {
   color: var(--text-muted);
-  font-size: 14px;
+  font-size: 0.875rem;
   text-align: center;
   padding: 12px 0;
 }
@@ -321,7 +321,7 @@
 }
 
 .weather-hourly-time {
-  font-size: 12px;
+  font-size: 0.75rem;
   font-weight: 600;
   color: var(--text-secondary);
   white-space: nowrap;
@@ -333,7 +333,7 @@
 }
 
 .weather-hourly-temp {
-  font-size: 16px;
+  font-size: 1rem;
   font-weight: 700;
   color: var(--text-primary);
 }
@@ -342,7 +342,7 @@
   display: flex;
   align-items: center;
   gap: 3px;
-  font-size: 11px;
+  font-size: 0.6875rem;
   color: var(--accent);
   font-weight: 500;
 }
@@ -351,7 +351,7 @@
   display: flex;
   align-items: center;
   gap: 3px;
-  font-size: 11px;
+  font-size: 0.6875rem;
   color: var(--text-muted);
   font-weight: 500;
 }
@@ -376,7 +376,7 @@
   }
 
   .weather-current-condition {
-    font-size: 16px;
+    font-size: 1rem;
   }
 
   .weather-current-details {
@@ -384,7 +384,7 @@
   }
 
   .weather-detail-value {
-    font-size: 16px;
+    font-size: 1rem;
   }
 
   .weather-forecast-card {
