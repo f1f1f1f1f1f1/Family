@@ -4,6 +4,7 @@ import { WeatherData } from '../types';
 import { getConfig } from '../config';
 import { hasToken } from '../api/ha-rest';
 import { findWeatherEntity } from '../api/ha-services';
+import { refreshWhileAwake } from '../utils/display-sleep';
 
 const REFRESH_INTERVAL = 10 * 60 * 1000; // 10 minutes
 
@@ -53,8 +54,7 @@ export function useWeather(getClient: () => HomeAssistantClient | null, enabled 
   useEffect(() => {
     if (!enabled) return;
     fetchWeather();
-    const interval = setInterval(fetchWeather, REFRESH_INTERVAL);
-    return () => clearInterval(interval);
+    return refreshWhileAwake(fetchWeather, REFRESH_INTERVAL);
   }, [fetchWeather, enabled]);
 
   return { weather, error, refresh: fetchWeather };

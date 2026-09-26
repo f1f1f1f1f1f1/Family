@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
-import { parseISO, isSameDay, startOfDay } from 'date-fns';
 import { CalendarEvent } from '../types';
+import { eventOccursOnDay } from '../utils/event-dates';
 import { FamilyMember } from '../types/family';
 
 export interface FamilyEventsMap {
@@ -11,7 +11,8 @@ export interface FamilyEventsMap {
 }
 
 /**
- * Groups a given day's calendar events by family member using their
+ * Groups a given day's calendar events (including ones that started on an
+ * earlier day and are still going) by family member using their
  * calendar_entity field. Unmatched events go into `other`.
  */
 export function useFamilyEvents(
@@ -20,10 +21,7 @@ export function useFamilyEvents(
   referenceDate: Date = new Date(),
 ): FamilyEventsMap {
   return useMemo(() => {
-    const day = startOfDay(referenceDate);
-    const todayEvents = events.filter((e) =>
-      isSameDay(startOfDay(parseISO(e.start)), day),
-    );
+    const todayEvents = events.filter((e) => eventOccursOnDay(e, referenceDate));
 
     // Build a calendarId → memberId lookup (primary + additional calendars)
     const calToMember = new Map<string, string>();

@@ -24,11 +24,33 @@ interface WeekCalendarProps {
   onSlotClick: (date: string, hour: number) => void;
   onEventReschedule?: (event: CalendarEvent, newDate: string, newHour: number) => void;
   onVisibleWeekChange?: (weekStart: Date) => void;
+  /** First day of the week: 0 = Sunday, 1 = Monday. */
+  weekStartsOn?: 0 | 1;
 }
 
 const START_HOUR = 7;
 const END_HOUR = 21; // 9 PM
 const HOURS = Array.from({ length: END_HOUR - START_HOUR }, (_, i) => START_HOUR + i);
+
+/** Height of an event pinned to the top or bottom edge of the hour grid. */
+const PINNED_EVENT_PX = 22;
+
+/**
+ * The hours of `day` (0–24, wall clock) a timed event takes up. The event
+ * must overlap the day; one that started earlier counts from 0, one that
+ * runs on past midnight up to 24.
+ */
+function hoursOnDay(event: CalendarEvent, day: Date): { from: number; to: number } {
+  const start = parseISO(event.start);
+  const end = parseISO(event.end);
+  return {
+    from: isSameDay(start, day) ? getHours(start) + getMinutes(start) / 60 : 0,
+    to: isSameDay(end, day) ? getHours(end) + getMinutes(end) / 60 : 24,
+  };
+}
+
+/** Timed events this long or longer show as bars in the all-day row. */
+const TIMED_BAR_MIN_MS = 24 * 60 * 60 * 1000;
 
 /** Number of days to show in mobile 3-day view */
 const MOBILE_DAYS = 3;
@@ -67,9 +89,9 @@ interface MultiDaySpan {
   lane: number;
 }
 
-export function WeekCalendar({ events, hiddenCalendars, onEventClick, onSlotClick, onEventReschedule, onVisibleWeekChange }: WeekCalendarProps) {
+export function WeekCalendar({ events, hiddenCalendars, onEventClick, onSlotClick, onEventReschedule, onVisibleWeekChange, weekStartsOn = 0 }: WeekCalendarProps) {
   const today = new Date();
-  const todayWeekStart = startOfWeek(today, { weekStartsOn: 0 });
+  const todayWeekStart = startOfWeek(today, { weekStartsOn });
   const scrollRef = useRef<HTMLDivElement>(null);
   const isMobile = useIsMobile();
   const forecast = useWeatherForecast();
@@ -192,18 +214,20 @@ export function WeekCalendar({ events, hiddenCalendars, onEventClick, onSlotClic
             }
           }
         }
+      } else if (eventEnd.getTime() - eventStart.getTime() >= TIMED_BAR_MIN_MS) {
+        multiDayEvents.push(event);
       } else {
-        // Check if timed event spans multiple days
-        const spanDays = differenceInCalendarDays(eventEnd, eventStart);
-        if (spanDays >= 1) {
-          multiDayEvents.push(event);
-        } else {
-          for (const day of days) {
-            const dayKey = format(day, 'yyyy-MM-dd');
-            const dayEnd = addDays(day, 1);
-            if (eventStart < dayEnd && eventEnd > day) {
-              timed.get(dayKey)?.push(event);
-            }
+        // Shorter timed events stay in the hour grid, overnight ones too:
+        // on each day whose visible hours they reach, or — when they reach
+        // none, like a 10pm–1am movie — on the day they start, pinned to
+        // the grid's edge.
+        for (const day of days) {
+          const dayKey = format(day, 'yyyy-MM-dd');
+          const dayEnd = addDays(day, 1);
+          if (!(eventStart < dayEnd && eventEnd > day)) continue;
+          const { from, to } = hoursOnDay(event, day);
+          if ((to > START_HOUR && from < END_HOUR) || isSameDay(eventStart, day)) {
+            timed.get(dayKey)?.push(event);
           }
         }
       }
@@ -226,13 +250,16 @@ export function WeekCalendar({ events, hiddenCalendars, onEventClick, onSlotClic
       const eventStart = parseISO(event.start);
       const eventEnd = parseISO(event.end);
 
-      // Clamp to visible week
-      const visStart = eventStart < days[0] ? days[0] : eventStart;
-      const weekEndDate = addDays(days[6], 1);
+      // Clamp to the week. Columns count from the week's first day even on
+      // mobile, where `days` is only a slice of it — the bars below map
+      // them onto the visible slice.
+      const weekStartDate = allDays[0];
+      const visStart = eventStart < weekStartDate ? weekStartDate : eventStart;
+      const weekEndDate = addDays(allDays[6], 1);
       const visEnd = eventEnd > weekEndDate ? weekEndDate : eventEnd;
 
-      const startCol = Math.max(0, differenceInCalendarDays(visStart, days[0]));
-      const endCol = Math.min(7, differenceInCalendarDays(visEnd, days[0]));
+      const startCol = Math.max(0, differenceInCalendarDays(visStart, weekStartDate));
+      const endCol = Math.min(7, differenceInCalendarDays(visEnd, weekStartDate));
       const span = endCol - startCol;
 
       if (span <= 0) continue;
@@ -268,7 +295,7 @@ export function WeekCalendar({ events, hiddenCalendars, onEventClick, onSlotClic
       timedByDay: timed,
       allDayLaneCount: maxLane,
     };
-  }, [days, visibleEvents]);
+  }, [days, allDays, visibleEvents]);
 
   const hasAnyAllDay = useMemo(() => {
     if (multiDaySpans.length > 0) return true;
@@ -283,7 +310,7 @@ export function WeekCalendar({ events, hiddenCalendars, onEventClick, onSlotClic
     if (scrollRef.current) {
       const currentHour = getHours(new Date());
       const scrollToHour = Math.max(currentHour - 1, START_HOUR);
-      const hourHeight = 72; // matches --hour-height
+      const hourHeight = parseFloat(getComputedStyle(scrollRef.current).getPropertyValue('--hour-height')) || 72;
       scrollRef.current.scrollTop = (scrollToHour - START_HOUR) * hourHeight;
     }
   }, []);
@@ -331,23 +358,28 @@ export function WeekCalendar({ events, hiddenCalendars, onEventClick, onSlotClic
 
   const isCurrentWeek = weekOffset === 0;
 
-  // Calculate position and height for a timed event
-  function getEventStyle(event: CalendarEvent, layout?: OverlapLayout): React.CSSProperties {
-    const start = parseISO(event.start);
-    const end = parseISO(event.end);
-    const startHour = getHours(start) + getMinutes(start) / 60;
-    const endHour = getHours(end) + getMinutes(end) / 60;
+  // Calculate position and height for a timed event on `day`
+  function getEventStyle(event: CalendarEvent, day: Date, layout?: OverlapLayout): React.CSSProperties {
+    const { from, to } = hoursOnDay(event, day);
 
-    const clampedStart = Math.max(startHour, START_HOUR);
-    const clampedEnd = Math.min(endHour, END_HOUR);
-
-    const topOffset = (clampedStart - START_HOUR) * 72;
-    const height = Math.max((clampedEnd - clampedStart) * 72, 22);
-
-    const style: React.CSSProperties = {
-      top: `${topOffset}px`,
-      height: `${height}px`,
-    };
+    // Hour rows are var(--hour-height) tall, which the stylesheet shrinks
+    // on smaller screens (72px down to 52px), so place events in units of
+    // it rather than a fixed pixel height. Events wholly outside the grid's
+    // hours are pinned to its top or bottom edge.
+    let style: React.CSSProperties;
+    if (from >= END_HOUR) {
+      style = {
+        top: `calc(var(--hour-height) * ${END_HOUR - START_HOUR} - ${PINNED_EVENT_PX}px)`,
+        height: `${PINNED_EVENT_PX}px`,
+      };
+    } else {
+      const clampedStart = Math.max(from, START_HOUR);
+      const clampedEnd = Math.min(to, END_HOUR);
+      style = {
+        top: `calc(var(--hour-height) * ${clampedStart - START_HOUR})`,
+        height: `max(${PINNED_EVENT_PX}px, calc(var(--hour-height) * ${Math.max(clampedEnd - clampedStart, 0)}))`,
+      };
+    }
 
     // Side-by-side columns for overlapping events
     if (layout && layout.width < 1) {
@@ -359,19 +391,20 @@ export function WeekCalendar({ events, hiddenCalendars, onEventClick, onSlotClic
     return style;
   }
 
-  // Current time indicator position — updates every 30s so the red line moves
-  const [currentTimeTop, setCurrentTimeTop] = useState<number | null>(() => {
+  // Current time indicator position (in hours below the grid's top) —
+  // updates every 30s so the red line moves
+  const [currentTimeOffset, setCurrentTimeOffset] = useState<number | null>(() => {
     const now = new Date();
     const h = getHours(now) + getMinutes(now) / 60;
     if (h < START_HOUR || h > END_HOUR) return null;
-    return (h - START_HOUR) * 72;
+    return h - START_HOUR;
   });
 
   useEffect(() => {
     const tick = () => {
       const now = new Date();
       const h = getHours(now) + getMinutes(now) / 60;
-      setCurrentTimeTop(h < START_HOUR || h > END_HOUR ? null : (h - START_HOUR) * 72);
+      setCurrentTimeOffset(h < START_HOUR || h > END_HOUR ? null : h - START_HOUR);
     };
     const interval = setInterval(tick, 30_000);
     return () => clearInterval(interval);
@@ -671,7 +704,7 @@ export function WeekCalendar({ events, hiddenCalendars, onEventClick, onSlotClic
                     key={`${event.id}-${key}`}
                     event={event}
                     onClick={handleEventBlockClick}
-                    style={getEventStyle(event, overlapLayout.get(event.id))}
+                    style={getEventStyle(event, day, overlapLayout.get(event.id))}
                     draggable
                     expanded={expandedEventId === event.id}
                     onDragStart={(e) => handleDragStart(event, e)}
@@ -680,10 +713,10 @@ export function WeekCalendar({ events, hiddenCalendars, onEventClick, onSlotClic
                 ))}
 
                 {/* Current time indicator */}
-                {isToday && currentTimeTop !== null && (
+                {isToday && currentTimeOffset !== null && (
                   <div
                     className="current-time-line"
-                    style={{ top: `${currentTimeTop}px` }}
+                    style={{ top: `calc(var(--hour-height) * ${currentTimeOffset})` }}
                   />
                 )}
               </div>

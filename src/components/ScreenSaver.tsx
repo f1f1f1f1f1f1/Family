@@ -5,6 +5,7 @@ import { useClock } from '../hooks/useClock';
 import { requestFullBleed } from '../utils/ha-kiosk';
 import { CoverPhoto } from './CoverPhoto';
 import { preloadPhoto } from '../utils/photo-loader';
+import { setDisplayAsleep } from '../utils/display-sleep';
 
 const POSITION_INTERVAL = 30_000; // move clock every 30s
 
@@ -41,6 +42,13 @@ export function ScreenSaver({
   // A photo screensaver fills the whole screen, under the iPhone notch too.
   const fullBleed = enabled && showPhotos && phase === 'screensaver';
   useEffect(() => (fullBleed ? requestFullBleed() : undefined), [fullBleed]);
+
+  // Background refreshes pause while the screensaver covers the app.
+  const covering = enabled && phase === 'screensaver';
+  useEffect(() => {
+    setDisplayAsleep(covering);
+    return () => setDisplayAsleep(false);
+  }, [covering]);
   const [position, setPosition] = useState({ x: 50, y: 50 });
   const lastActivityRef = useRef(Date.now());
 

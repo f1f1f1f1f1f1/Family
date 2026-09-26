@@ -4,6 +4,7 @@ import { media, resetMedia, addPhotos } from '../test/fake-media-source';
 import { clearPhotoCaches } from '../api/photos';
 import { clearLoadedPhotos } from '../utils/photo-loader';
 import { ScreenSaver } from './ScreenSaver';
+import { isDisplayAsleep } from '../utils/display-sleep';
 
 vi.mock('../api/ha-rest', async () => (await import('../test/fake-media-source')).haRestMock);
 vi.mock('../utils/ha-env', () => ({ isAddOn: () => true }));
@@ -66,5 +67,26 @@ describe('ScreenSaver photos', () => {
     await wait(5 * MIN); // screensaver showing
     expect(downloads).toHaveLength(1); // shown from the download above
     expect(document.querySelector('.screensaver-photo')).not.toBeNull();
+  });
+});
+
+describe('ScreenSaver and background refreshes', () => {
+  // Refreshes (music, lists, weather...) pause while the screensaver covers
+  // the app, and not while the screen is only dimmed and still readable.
+  it('reports the display asleep only while the screensaver shows', async () => {
+    const { container, unmount } = render(<ScreenSaver enabled dimTimeoutMin={5} screenSaverTimeoutMin={10} />);
+    await wait(6 * MIN); // dimmed
+    expect(isDisplayAsleep()).toBe(false);
+
+    await wait(5 * MIN); // screensaver showing
+    expect(isDisplayAsleep()).toBe(true);
+
+    act(() => (container.querySelector('.screensaver-overlay') as HTMLElement).click());
+    expect(isDisplayAsleep()).toBe(false);
+
+    await wait(11 * MIN);
+    expect(isDisplayAsleep()).toBe(true);
+    unmount();
+    expect(isDisplayAsleep()).toBe(false);
   });
 });

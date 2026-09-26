@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { MediaPlayer } from '../types/music';
 import { HomeAssistantClient } from '../api/homeassistant';
+import { refreshWhileAwake } from '../utils/display-sleep';
 import {
   getMediaPlayers,
   refreshMediaPlayers,
@@ -90,17 +91,15 @@ export function useMusic(
 
     init().catch(console.error);
 
-    // In REST-only mode, poll every 10s (skip when tab is hidden)
-    let pollInterval: ReturnType<typeof setInterval> | null = null;
-    if (!client?.isConnected) {
-      pollInterval = setInterval(async () => {
-        if (document.hidden || cancelled) return;
-        try {
-          const updated = await refreshMediaPlayers();
-          if (!cancelled) setPlayers(updated);
-        } catch { /* ignore poll errors */ }
-      }, 10_000);
-    }
+    // In REST-only mode, poll every 10s (not while hidden or under the
+    // screensaver)
+    const stopPolling = client?.isConnected ? null : refreshWhileAwake(async () => {
+      if (cancelled) return;
+      try {
+        const updated = await refreshMediaPlayers();
+        if (!cancelled) setPlayers(updated);
+      } catch { /* ignore poll errors */ }
+    }, 10_000);
 
     return () => {
       cancelled = true;
@@ -108,7 +107,7 @@ export function useMusic(
         client.unsubscribe(subscriptionRef.current);
         subscriptionRef.current = null;
       }
-      if (pollInterval) clearInterval(pollInterval);
+      stopPolling?.();
     };
   }, [connected, enabled, getClient]);
 

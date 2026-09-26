@@ -9,7 +9,9 @@ import { useStoredData } from './useStoredData';
 
 const EVENTS_KEY = 'beacon-local-events';
 const LOCAL_CAL_ID = 'beacon-local';
-const LOCAL_CAL_NAME = 'Family';
+// "(built-in)": an HA calendar is often called Family too, and events here
+// stay in the app rather than reaching Home Assistant or phones.
+const LOCAL_CAL_NAME = 'Family (built-in)';
 
 export const LOCAL_CALENDAR: CalendarInfo = {
   id: LOCAL_CAL_ID,
@@ -17,7 +19,7 @@ export const LOCAL_CALENDAR: CalendarInfo = {
   color: '#6366f1', // indigo accent
 };
 
-/** Events saved before the rename still carry the old calendar name. */
+/** Events saved before a rename still carry an old calendar name. */
 function withLocalCalName(events: CalendarEvent[]): CalendarEvent[] {
   return events.map((e) => (e.calendarName === LOCAL_CAL_NAME ? e : { ...e, calendarName: LOCAL_CAL_NAME }));
 }

@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { format, parseISO, addMonths } from 'date-fns';
+import { lastDayOfAllDayEvent } from '../utils/event-dates';
 import { CalendarEvent, CalendarInfo, RecurrenceFrequency } from '../types';
 
 interface EventModalProps {
@@ -139,7 +140,7 @@ export function EventModal({
         calendarId: event.calendarId,
         startDate: toLocalDate(event.start),
         startTime: event.allDay ? '09:00' : toLocalTime(event.start),
-        endDate: toLocalDate(event.end),
+        endDate: event.allDay ? lastDayOfAllDayEvent(event.start, event.end) : toLocalDate(event.end),
         endTime: event.allDay ? '10:00' : toLocalTime(event.end),
         allDay: event.allDay,
         recurrence: event.recurrence || 'none',

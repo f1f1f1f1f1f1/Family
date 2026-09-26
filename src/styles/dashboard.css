@@ -737,9 +737,10 @@
     padding-top: 16px;
   }
 
+  /* The whole dashboard scrolls here, so the event list shows in full
+     rather than scrolling inside it (it was a 220–280px box). */
   .dashboard-events-scroll {
-    max-height: 280px;
-    overflow-y: auto;
+    overflow-y: visible;
   }
 
   .event-card { padding: 12px 14px; }
@@ -782,8 +783,6 @@
     font-size: 0.8125rem;
     margin-bottom: 10px;
   }
-
-  .dashboard-events-scroll { max-height: 220px; }
 
   .event-card { padding: 10px 12px; }
   .event-card-title { font-size: 0.8125rem; }

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { notifyFamilyDataChanged } from '../api/family';
 import { callBeaconAction } from '../api/ha-rest';
 import { getIngressBasePath, isAddOn } from '../utils/ha-env';
+import { refreshWhileAwake } from '../utils/display-sleep';
 
 /**
  * The Google Tasks chores sync runs in the add-on server (chores-sync.cjs),
@@ -56,20 +57,14 @@ export function useChoresSync(enabled: boolean) {
     if (!enabled || !available) return;
     let cancelled = false;
     const poll = async () => {
-      if (document.hidden) return;
       const next = await fetchStatus();
       if (next && !cancelled) apply(next);
     };
-    void poll();
-    const interval = setInterval(() => void poll(), POLL_MS);
-    const onVisible = () => {
-      if (!document.hidden) void poll();
-    };
-    document.addEventListener('visibilitychange', onVisible);
+    if (!document.hidden) void poll();
+    const stopPolling = refreshWhileAwake(() => void poll(), POLL_MS);
     return () => {
       cancelled = true;
-      clearInterval(interval);
-      document.removeEventListener('visibilitychange', onVisible);
+      stopPolling();
     };
   }, [enabled, available, apply]);
 

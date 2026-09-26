@@ -27,6 +27,10 @@ declare global {
 
 let cached: BeaconConfig | null = null;
 
+function positiveOr(value: number | undefined, fallback: number): number {
+  return typeof value === 'number' && value > 0 ? value : fallback;
+}
+
 export function getConfig(): BeaconConfig {
   if (cached) return cached;
 
@@ -41,7 +45,9 @@ export function getConfig(): BeaconConfig {
     weather_entity: runtime.weather_entity || import.meta.env.VITE_HA_WEATHER_ENTITY || 'weather.home',
     photo_directory: runtime.photo_directory || import.meta.env.VITE_PHOTO_DIRECTORY || '/media/beacon/photos',
     photo_interval: runtime.photo_interval ?? (Number(import.meta.env.VITE_PHOTO_INTERVAL) || 30),
-    screen_saver_timeout: runtime.screen_saver_timeout ?? (Number(import.meta.env.VITE_SCREEN_SAVER_TIMEOUT) || 5),
+    // The add-on schema allows any int; 0 or less would start the screen
+    // saver within seconds of every touch, so those get the default.
+    screen_saver_timeout: positiveOr(runtime.screen_saver_timeout ?? Number(import.meta.env.VITE_SCREEN_SAVER_TIMEOUT), 5),
     addon_slug: runtime.addon_slug || import.meta.env.VITE_ADDON_SLUG || '',
   };
 

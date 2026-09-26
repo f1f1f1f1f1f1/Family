@@ -6,6 +6,7 @@ import { hasToken } from '../api/ha-rest';
 import { getTodoItems } from '../api/ha-services';
 import { isGroceryListName } from '../utils/grocery';
 import { useLocalTasks } from '../hooks/useLocalTasks';
+import { refreshWhileAwake } from '../utils/display-sleep';
 
 interface TodoItem {
   uid: string;
@@ -88,6 +89,9 @@ export function GroceryView({ defaultListId, mode = 'grocery', groceryListIds = 
 
   const selectedList = allLists.find(l => l.id === selectedListId);
   const isLocal = selectedList?.source === 'local';
+  // Only lists this screen offers — a list id left over from elsewhere isn't
+  // an HA entity, and asking HA for its items fails.
+  const haListId = selectedList?.source === 'ha' ? selectedList.id : '';
 
   // Items for current list
   const items = useMemo<TodoItem[]>(() => {
@@ -153,19 +157,19 @@ export function GroceryView({ defaultListId, mode = 'grocery', groceryListIds = 
 
   // Reload when selected list changes (HA lists only)
   useEffect(() => {
-    if (!selectedListId || isLocal) {
+    if (!haListId) {
       setLoading(false);
       return;
     }
-    loadHaItems(selectedListId);
-  }, [selectedListId, isLocal, loadHaItems]);
+    loadHaItems(haListId);
+  }, [haListId, loadHaItems]);
 
-  // Refresh HA lists every 30 seconds
+  // Refresh HA lists every 30 seconds (not while hidden or under the
+  // screensaver)
   useEffect(() => {
-    if (!selectedListId || isLocal) return;
-    const interval = setInterval(() => loadHaItems(selectedListId), 30_000);
-    return () => clearInterval(interval);
-  }, [selectedListId, isLocal, loadHaItems]);
+    if (!haListId) return;
+    return refreshWhileAwake(() => loadHaItems(haListId), 30_000);
+  }, [haListId, loadHaItems]);
 
   // Split items
   const uncheckedItems = useMemo(

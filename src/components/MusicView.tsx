@@ -10,6 +10,7 @@ import {
   ChevronDown,
 } from 'lucide-react';
 import { MediaPlayer } from '../types/music';
+import '../styles/music.css';
 
 interface MusicViewProps {
   players: MediaPlayer[];
