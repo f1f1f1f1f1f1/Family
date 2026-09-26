@@ -1,3 +1,10 @@
+## [1.1.1](https://github.com/f1f1f1f1f1f1/Family/compare/v1.1.0...v1.1.1) (2026-09-26)
+
+
+### Performance Improvements
+
+* load screens on demand so the dashboard starts faster ([287b8f7](https://github.com/f1f1f1f1f1f1/Family/commit/287b8f793bbc390acd0ee9dd4c79ce9a17b4f8d5))
+
 # [1.1.0](https://github.com/f1f1f1f1f1f1/Family/compare/v1.0.1...v1.1.0) (2026-09-26)
 
 
