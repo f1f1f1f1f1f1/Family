@@ -14,6 +14,9 @@ root `config.yaml` has no `image:` line, so the root `Dockerfile` builds
 from `src/`, `server.js`, `run.sh` etc. at the root. The Supervisor only
 rebuilds when `version` in `config.yaml` changes; semantic-release sets it
 on every release, so don't bump it by hand (see Release Versions Only Go Up).
+With no `build.yaml`, the Supervisor passes no `BUILD_FROM`, so the
+Dockerfile's own default base image is what installs use. Nothing publishes
+an image; CI's `docker` job builds it (amd64, not pushed) on every PR.
 
 Upstream's `beacon/` subdirectory was removed: Supervisor treats every
 `config.yaml` in a repository as a separate add-on, so it showed up in the
@@ -79,5 +82,4 @@ v1.0.0–v1.1.2 tags: the highest tag wins, and CHANGELOG.md links to them.
 stops a release numbered below config.yaml's version. If it fires: on main,
 set config.yaml's version above both, commit it as `chore(release): X` (that
 type doesn't release by itself), tag the commit `vX`, and push both together
-with `git push --atomic origin main vX`. Pushing a `v*` tag also starts
-build-addon.yml, which fails on this fork, so cancel that run.
+with `git push --atomic origin main vX`.

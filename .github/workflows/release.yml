@@ -9,11 +9,11 @@ permissions:
   issues: write
   pull-requests: write
 
+# No image to publish: config.yaml has no `image:` line, so Home Assistant
+# builds the add-on itself from the Dockerfile (ci.yml checks that it builds).
 jobs:
   release:
     runs-on: ubuntu-latest
-    outputs:
-      released: ${{ steps.semantic.outputs.released }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -27,29 +27,6 @@ jobs:
       - run: npm ci
 
       - name: Release
-        id: semantic
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          npx semantic-release
-          # semantic-release doesn't set a step output itself; detect whether
-          # it actually cut a release by checking if HEAD gained a new tag.
-          if git describe --tags --exact-match HEAD >/dev/null 2>&1; then
-            echo "released=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "released=false" >> "$GITHUB_OUTPUT"
-          fi
-
-  # semantic-release creates GitHub releases using the default GITHUB_TOKEN,
-  # and GitHub deliberately does not fire downstream `release`/`push: tags`
-  # workflow events for GITHUB_TOKEN-authored activity (loop prevention).
-  # That silently starved build-addon.yml of its trigger for every release
-  # since ~v1.3.0 — the Docker image hasn't been rebuilt in months. Calling
-  # it directly here closes that gap without needing a PAT.
-  build-addon:
-    needs: release
-    if: needs.release.outputs.released == 'true'
-    uses: ./.github/workflows/build-addon.yml
-    permissions:
-      contents: write
-      packages: write
+        run: npx semantic-release
