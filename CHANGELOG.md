@@ -1,3 +1,10 @@
+## [1.0.1](https://github.com/f1f1f1f1f1f1/Family/compare/v1.0.0...v1.0.1) (2026-09-26)
+
+
+### Bug Fixes
+
+* load photos lazily and download each one once ([3f040b4](https://github.com/f1f1f1f1f1f1/Family/commit/3f040b4e0f3e7e0251a841162892f33469ab134f))
+
 # 1.0.0 (2026-09-26)
 
 
