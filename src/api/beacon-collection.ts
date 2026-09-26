@@ -71,18 +71,20 @@ const CACHED_HISTORY_DAYS = 62;
  */
 function cacheRecent<T>(name: string, fresh: T[], since: Date): void {
   const keepFrom = Date.now() - CACHED_HISTORY_DAYS * 24 * 60 * 60 * 1000;
+  const freshIds = new Set(fresh.map((it) => (it as { id?: unknown }).id));
   const older = readLocal<T>(name).filter((it) => {
     const at = Date.parse(String((it as { completed_at?: unknown }).completed_at));
-    return at >= keepFrom && at < since.getTime();
+    return at >= keepFrom && at < since.getTime() && !freshIds.has((it as { id?: unknown }).id);
   });
   writeLocal(name, [...older, ...fresh]);
 }
 
-/** Items with a `completed_at` at or after `since`. */
-function completedSince<T>(items: T[], since: Date): T[] {
+/** Items with a `completed_at` at or after `since`, or for one of `choreIds`. */
+function completedSince<T>(items: T[], since: Date, choreIds: string[] = []): T[] {
   return items.filter((it) => {
-    const at = (it as { completed_at?: unknown }).completed_at;
-    return typeof at === 'string' && Date.parse(at) >= since.getTime();
+    const { completed_at: at, chore_id: choreId } = it as { completed_at?: unknown; chore_id?: unknown };
+    return (typeof at === 'string' && Date.parse(at) >= since.getTime())
+      || (typeof choreId === 'string' && choreIds.includes(choreId));
   });
 }
 
@@ -92,15 +94,18 @@ function completedSince<T>(items: T[], since: Date): T[] {
  * getCollectionSync() has something to show on the next initial render.
  *
  * `since` (for completion collections): only items completed then or
- * later, filtered by the server so the whole history isn't downloaded
+ * later — and, with `choreIds`, any for those chores (one-off chores stay
+ * done) — filtered by the server so the whole history isn't downloaded
  * (see cacheRecent for this device's copy).
  */
-export async function getCollection<T>(name: string, options: { since?: Date } = {}): Promise<T[]> {
-  const { since } = options;
+export async function getCollection<T>(name: string, options: { since?: Date; choreIds?: string[] } = {}): Promise<T[]> {
+  const { since, choreIds = [] } = options;
   if (isAddOn()) {
     try {
       const base = getIngressBasePath();
-      const query = since ? `?since=${encodeURIComponent(since.toISOString())}` : '';
+      const query = since
+        ? `?since=${encodeURIComponent(since.toISOString())}${choreIds.length ? `&chore_ids=${choreIds.map(encodeURIComponent).join(',')}` : ''}`
+        : '';
       const res = await fetch(`${base}/beacon-collection/${name}${query}`);
       if (res.ok) {
         const data = await res.json();
@@ -115,7 +120,7 @@ export async function getCollection<T>(name: string, options: { since?: Date } =
     }
   }
   const local = readLocal<T>(name);
-  return since ? completedSince(local, since) : local;
+  return since ? completedSince(local, since, choreIds) : local;
 }
 
 /** Synchronous, localStorage-only read for instant initial render. */

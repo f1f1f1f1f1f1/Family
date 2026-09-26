@@ -626,9 +626,14 @@ async function handleCollectionApi(req, res) {
       // ?since=<ISO time>: only items completed then or later. Completion
       // history grows every day and displays reload it on every change;
       // they need today's, or this month's for the leaderboard.
-      const since = Date.parse(new URLSearchParams(req.url.split('?')[1] || '').get('since') || '');
+      // &chore_ids=a,b: also those chores' items, whenever completed (a
+      // one-off chore stays done).
+      const query = new URLSearchParams(req.url.split('?')[1] || '');
+      const since = Date.parse(query.get('since') || '');
       if (!Number.isNaN(since)) {
-        items = items.filter((it) => typeof it?.completed_at === 'string' && Date.parse(it.completed_at) >= since);
+        const choreIds = new Set((query.get('chore_ids') || '').split(',').filter(Boolean));
+        items = items.filter((it) => (typeof it?.completed_at === 'string' && Date.parse(it.completed_at) >= since)
+          || choreIds.has(it?.chore_id));
       }
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify(items));
