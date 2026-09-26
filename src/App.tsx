@@ -421,6 +421,8 @@ export function App() {
         }
       } else {
         await createEvent(calendarId, eventData);
+        // With no default calendar set, the next new event starts here.
+        if (calendarId !== settings.lastEventCalendar) updateSettings({ lastEventCalendar: calendarId });
       }
 
       await refetchEventsForWeek(visibleWeekStart);
@@ -432,7 +434,7 @@ export function App() {
       // instead of the save silently appearing to do nothing.
       throw err;
     }
-  }, [selectedEvent, createEvent, updateEvent, deleteEvent, refetchEventsForWeek, visibleWeekStart, handleCloseModal]);
+  }, [selectedEvent, createEvent, updateEvent, deleteEvent, refetchEventsForWeek, visibleWeekStart, handleCloseModal, settings.lastEventCalendar, updateSettings]);
 
   const handleDeleteEvent = useCallback(async (calendarId: string, eventId: string) => {
     try {
@@ -820,7 +822,7 @@ export function App() {
         <EventModal
           event={selectedEvent}
           calendars={calendars}
-          defaultCalendarId={settings.defaultCalendar}
+          defaultCalendarId={settings.defaultCalendar || settings.lastEventCalendar}
           onSave={handleSaveEvent}
           onDelete={handleDeleteEvent}
           onClose={handleCloseModal}

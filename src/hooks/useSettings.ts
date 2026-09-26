@@ -25,6 +25,8 @@ export interface BeaconSettings {
 
   // Calendar
   defaultCalendar: string;
+  /** Calendar the last new event went in; new events start there when no default is set. */
+  lastEventCalendar: string;
   permanentlyHiddenCalendars: string[];
   calendarColors: Record<string, string>;
   defaultEventDuration: 30 | 60 | 120;
@@ -93,6 +95,7 @@ function buildDefaults(): BeaconSettings {
     sidebarPosition: 'left',
 
     defaultCalendar: '',
+    lastEventCalendar: '',
     permanentlyHiddenCalendars: [],
     calendarColors: {},
     defaultEventDuration: 60,
