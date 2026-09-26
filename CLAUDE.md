@@ -11,8 +11,9 @@
 ### Single Add-on at Repo Root (this fork)
 This fork (add-on slug `family`) is built by Supervisor from the repo root:
 root `config.yaml` has no `image:` line, so the root `Dockerfile` builds
-from `src/`, `server.js`, `run.sh` etc. at the root. Bump `version` in
-`config.yaml` on every change or Supervisor may reuse a cached build.
+from `src/`, `server.js`, `run.sh` etc. at the root. The Supervisor only
+rebuilds when `version` in `config.yaml` changes; semantic-release sets it
+on every release, so don't bump it by hand (see Release Versions Only Go Up).
 
 Upstream's `beacon/` subdirectory was removed: Supervisor treats every
 `config.yaml` in a repository as a separate add-on, so it showed up in the
@@ -35,7 +36,7 @@ Filter out `unavailable` entities during discovery. Calling get_items on unavail
 HA aggressively caches add-on repos. To force update visibility: create a git tag + GitHub release. If that fails, user must remove and re-add the repo URL. The `update_entity` service does NOT trigger a repo refresh.
 
 ### Semantic Release
-`.releaserc.json` and `.github/workflows/release.yml` handle automated versioning. Uses conventional commits (`fix:` → patch, `feat:` → minor, `BREAKING CHANGE:` → major). Bumps both config.yaml files, syncs changelogs, creates GitHub releases.
+`.releaserc.json` and `.github/workflows/release.yml` handle automated versioning. Uses conventional commits (`fix:`/`perf:` → patch, `feat:` → minor, `BREAKING CHANGE:` → major; other types don't release, so they reach displays only with the next release). Writes the version into config.yaml, prepends CHANGELOG.md (shown by HA as the add-on's changelog), creates GitHub releases.
 
 ## Learnings - 2026-09-26
 
@@ -61,3 +62,22 @@ libraries) back into the main bundle, so check `npm run build` output.
 all of node_modules, or GridStack/dnd-kit end up in the startup download.
 After an add-on update a running display asks for old file names and
 server.js answers with index.html; `lazyNamed` reloads the page once.
+
+### Release Versions Only Go Up
+HA Core's update entity (Settings → Updates) offers an add-on update only
+when the repo's version is higher than the installed one (AwesomeVersion
+`>`). The Supervisor, which now calls add-ons "apps", only checks `!=`
+(`need_update` in supervisor/apps/app.py), so its own page and auto-update
+would follow a lower number. semantic-release numbers releases from the
+highest `v*` tag reachable from main, never from config.yaml. This fork had
+no v1.50.x tags, so its first run restarted at 1.0.0, and 1.0.0–1.1.2 never
+reached installs on 1.50.x. That was fixed by a `chore(release): 1.51.5`
+commit setting config.yaml to 1.51.5, tagged v1.51.5. Keep the wrong
+v1.0.0–v1.1.2 tags: the highest tag wins, and CHANGELOG.md links to them.
+
+`scripts/check-release-version.cjs` (`verifyReleaseCmd` in .releaserc.json)
+stops a release numbered below config.yaml's version. If it fires: on main,
+set config.yaml's version above both, commit it as `chore(release): X` (that
+type doesn't release by itself), tag the commit `vX`, and push both together
+with `git push --atomic origin main vX`. Pushing a `v*` tag also starts
+build-addon.yml, which fails on this fork, so cancel that run.
