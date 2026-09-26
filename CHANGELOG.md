@@ -1,3 +1,15 @@
+## [1.52.7](https://github.com/f1f1f1f1f1f1/Family/compare/v1.52.6...v1.52.7) (2026-09-26)
+
+
+### Bug Fixes
+
+* answer the browser when Home Assistant refuses a WebSocket upgrade ([ec308b9](https://github.com/f1f1f1f1f1f1/Family/commit/ec308b923d25278aea62baeece539fb13e1d6103))
+* don't let a save cut off mid-upload wipe the stored data ([d4e4a91](https://github.com/f1f1f1f1f1f1/Family/commit/d4e4a919664c903aa89c494d8c3b7402cc2dbb97))
+* Google Tasks sync: deleted tasks stay deleted, deleted chores don't come back ([477f760](https://github.com/f1f1f1f1f1f1/Family/commit/477f760f85d9f766bd65e1781ce9f17fb630b3cf))
+* keep streaks going across daylight-saving changes ([198479a](https://github.com/f1f1f1f1f1f1/Family/commit/198479aa703b4fb04d5ff74d1e7efb23acf89e58))
+* keep this display's copy of recent chore history current ([67c603e](https://github.com/f1f1f1f1f1f1/Family/commit/67c603e5ae39b5199c1e5f31595778c7654be47a))
+* make the voice API's to-do commands work ([04991b9](https://github.com/f1f1f1f1f1f1/Family/commit/04991b920ce68b26c5a38797288d7fa4f3b09589))
+
 ## [1.52.6](https://github.com/f1f1f1f1f1f1/Family/compare/v1.52.5...v1.52.6) (2026-09-26)
 
 
