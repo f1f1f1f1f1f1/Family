@@ -11,7 +11,7 @@ import { AgendaWeekCard } from './cards/AgendaWeekCard';
 import { MenuCard } from './cards/MenuCard';
 import { TasksCard } from './cards/TasksCard';
 import { LazyBoundary } from './LazyBoundary';
-import { lazyNamed } from '../utils/lazy-screen';
+import { AdvancedDashboard } from './lazy-advanced-dashboard';
 import type { TaskmateUser } from '../types/taskmate';
 import { DashboardCardContext, TodoItem } from '../types/dashboard-cards';
 
@@ -37,9 +37,6 @@ interface DashboardViewProps {
   /** HA to-do list for shopping cards that don't pick their own. */
   defaultShoppingList?: string;
 }
-
-// Only needed when Advanced Dashboard is switched on; brings GridStack along.
-export const AdvancedDashboard = lazyNamed(() => import('./AdvancedDashboard'), 'AdvancedDashboard');
 
 export function DashboardView({
   events,

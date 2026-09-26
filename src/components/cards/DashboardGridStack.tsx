@@ -103,6 +103,7 @@ export function DashboardGridStack({ region, cards, context, editMode, onChange 
   // Mount GridStack once.
   useEffect(() => {
     if (!containerRef.current) return;
+    const madeIds = madeWidgetIds.current;
     const grid = GridStack.init(
       {
         column: columnCount,
@@ -139,10 +140,10 @@ export function DashboardGridStack({ region, cards, context, editMode, onChange 
       resizeObserver?.disconnect();
       grid.destroy(false);
       gridRef.current = null;
-      madeWidgetIds.current.clear();
+      madeIds.clear();
     };
     // Only ever set up once — editMode/card changes are handled by the effects below.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- region (and the sizes derived from it) is fixed per instance; editMode is applied via setStatic below
   }, []);
 
   // Lock/unlock dragging & resizing.

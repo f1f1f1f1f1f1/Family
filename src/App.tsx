@@ -8,7 +8,8 @@ import { useChores } from './hooks/useChores';
 import { useChoresSync } from './hooks/useChoresSync';
 import { Clock } from './components/Clock';
 import { WeekCalendar } from './components/WeekCalendar';
-import { DashboardView, AdvancedDashboard } from './components/DashboardView';
+import { DashboardView } from './components/DashboardView';
+import { AdvancedDashboard } from './components/lazy-advanced-dashboard';
 import { EventModal, EventFormData } from './components/EventModal';
 import { FamilyFilter } from './components/FamilyFilter';
 import { useSettings } from './hooks/useSettings';
@@ -157,11 +158,11 @@ export function App() {
     uncompleteChore,
   } = useChores();
 
-  const { runSync: runChoresSync } = useChoresSync(
-    settings.choresSyncEnabled,
-    settings.choresSyncListByMember,
-    members,
-  );
+  const {
+    status: choresSyncStatus,
+    runSync: runChoresSync,
+    available: choresSyncAvailable,
+  } = useChoresSync(settings.choresSyncEnabled);
 
   // Lists mirrored as chores by the Google Tasks sync already show on the
   // Chores screen, so keep them out of the Tasks screen and dashboard.
@@ -236,8 +237,7 @@ export function App() {
     else if (activeView === 'dashboard' && settings.advancedDashboard) AdvancedDashboard.preload();
     else if (activeView === 'music') MusicView.preload();
     else if (activeView === 'photos') PhotoFrame.preload();
-    // Only the screen shown at startup.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only the screen shown at startup
   }, []);
 
   const handleExitFocus = useCallback(() => {
@@ -698,7 +698,8 @@ export function App() {
               settings={settings}
               onUpdateSettings={updateSettings}
               onResetSettings={resetSettings}
-              onRunChoresSync={() => runChoresSync(true)}
+              onRunChoresSync={choresSyncAvailable ? runChoresSync : undefined}
+              choresSyncStatus={choresSyncStatus}
               onExportSettings={exportSettings}
               onImportSettings={importSettings}
               onClearLocalStorage={clearLocalStorage}
