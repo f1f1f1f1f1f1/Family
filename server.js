@@ -601,7 +601,14 @@ async function handleCollectionApi(req, res) {
 
   try {
     if (req.method === 'GET' && !itemId) {
-      const items = await readCollectionArray(name);
+      let items = await readCollectionArray(name);
+      // ?since=<ISO time>: only items completed then or later. Completion
+      // history grows every day and displays reload it on every change;
+      // they need today's, or this month's for the leaderboard.
+      const since = Date.parse(new URLSearchParams(req.url.split('?')[1] || '').get('since') || '');
+      if (!Number.isNaN(since)) {
+        items = items.filter((it) => typeof it?.completed_at === 'string' && Date.parse(it.completed_at) >= since);
+      }
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify(items));
       return;
