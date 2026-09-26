@@ -339,7 +339,7 @@ function haWsCommand(command, timeoutMs = 10000) {
 
 /**
  * POST /beacon-action/calendar-event
- * Body: { op: 'create'|'update'|'delete', entity_id, uid?, event? }
+ * Body: { op: 'create'|'update'|'delete', entity_id, uid?, event?, recurrence_id?, recurrence_range? }
  * Bridges calendar event create/update/delete to HA's WS-only commands
  * (calendar/event/create, calendar/event/update, calendar/event/delete)
  * since those are no longer exposed as REST-callable services in current
@@ -354,7 +354,7 @@ function handleCalendarEventAction(req, res) {
 
   collectBody(req).then(async (bodyBuf) => {
     try {
-      const { op, entity_id, uid, event } = JSON.parse((bodyBuf || '{}').toString('utf8'));
+      const { op, entity_id, uid, event, recurrence_id, recurrence_range } = JSON.parse((bodyBuf || '{}').toString('utf8'));
       if (!op || !entity_id) {
         res.writeHead(400, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ error: 'Missing op or entity_id' }));
@@ -376,11 +376,16 @@ function handleCalendarEventAction(req, res) {
         return;
       }
 
+      // recurrence_id (and recurrence_range "THISANDFUTURE") pick
+      // occurrences of a repeating event; without them HA changes them all.
+      const occurrence = {};
+      if (typeof recurrence_id === 'string' && recurrence_id) occurrence.recurrence_id = recurrence_id;
+      if (typeof recurrence_range === 'string' && recurrence_range) occurrence.recurrence_range = recurrence_range;
       const command = op === 'create'
         ? { type: 'calendar/event/create', entity_id, event }
         : op === 'update'
-        ? { type: 'calendar/event/update', entity_id, uid, event }
-        : { type: 'calendar/event/delete', entity_id, uid };
+        ? { type: 'calendar/event/update', entity_id, uid, ...occurrence, event }
+        : { type: 'calendar/event/delete', entity_id, uid, ...occurrence };
 
       const result = await haWsCommand(command);
       res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -596,7 +601,14 @@ async function handleCollectionApi(req, res) {
 
   try {
     if (req.method === 'GET' && !itemId) {
-      const items = await readCollectionArray(name);
+      let items = await readCollectionArray(name);
+      // ?since=<ISO time>: only items completed then or later. Completion
+      // history grows every day and displays reload it on every change;
+      // they need today's, or this month's for the leaderboard.
+      const since = Date.parse(new URLSearchParams(req.url.split('?')[1] || '').get('since') || '');
+      if (!Number.isNaN(since)) {
+        items = items.filter((it) => typeof it?.completed_at === 'string' && Date.parse(it.completed_at) >= since);
+      }
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify(items));
       return;

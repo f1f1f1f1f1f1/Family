@@ -219,9 +219,9 @@ export function GroceryView({ defaultListId, mode = 'grocery', groceryListIds = 
 
     try {
       if (newStatus === 'completed') {
-        await anylistRef.current.checkItem(selectedListId, item.summary);
+        await anylistRef.current.checkItem(selectedListId, item);
       } else {
-        await anylistRef.current.uncheckItem(selectedListId, item.summary);
+        await anylistRef.current.uncheckItem(selectedListId, item);
       }
       setTimeout(() => loadHaItems(selectedListId), 500);
     } catch (err) {

@@ -163,6 +163,34 @@ describe('WeekCalendar', () => {
       expect(blocksIn(thursday)[0].style.height).toBe('max(22px, calc(var(--hour-height) * 1.5))'); // to 8:30
     });
 
+    // Layout used the events' own times: a 20:00–08:00 event (drawn 7–8am
+    // on its second day) looked clear of a 7:30 event and was drawn on top
+    // of it, and two late events were both pinned to the same spot.
+    it('puts events drawn over each other side by side', () => {
+      vi.setSystemTime(new Date(2026, 8, 23, 10, 0));
+      const ev = (id: string, start: string, end: string) => ({
+        id, title: id, start, end, allDay: false, calendarId: 'c', calendarName: 'C', color: '#22c55e',
+      });
+      const container = render(
+        <WeekCalendar
+          events={[
+            ev('overnight', '2026-09-23T20:00:00', '2026-09-24T08:00:00'),
+            ev('breakfast', '2026-09-24T07:30:00', '2026-09-24T08:30:00'),
+            ev('late-a', '2026-09-24T22:00:00', '2026-09-24T23:00:00'),
+            ev('late-b', '2026-09-24T22:30:00', '2026-09-24T23:30:00'),
+          ]}
+          hiddenCalendars={new Set()}
+          onEventClick={vi.fn()}
+          onSlotClick={vi.fn()}
+        />,
+      ).container;
+      const thursday = dayColumns(container)[4];
+      const lefts = Object.fromEntries(blocksIn(thursday).map((b) => [b.textContent?.replace(/\d.*$/, ''), b.style.left]));
+      // The earlier of each pair spans the column behind; the later one is
+      // inset beside it (was: both full width, one hiding the other).
+      expect(lefts).toEqual({ overnight: '', breakfast: expect.stringContaining('50%'), 'late-a': '', 'late-b': expect.stringContaining('50%') });
+    });
+
     it('keeps timed events of a day or longer as bars', () => {
       const container = renderWith('2026-09-23T09:00:00', '2026-09-25T17:00:00');
       expect(container.querySelectorAll('.event-block--multiday')).toHaveLength(1);

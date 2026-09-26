@@ -80,9 +80,9 @@ export function ShoppingCard({ config, context }: DashboardCardProps) {
 
     try {
       if (newStatus === 'completed') {
-        await anylistRef.current.checkItem(shoppingEntity, item.summary);
+        await anylistRef.current.checkItem(shoppingEntity, item);
       } else {
-        await anylistRef.current.uncheckItem(shoppingEntity, item.summary);
+        await anylistRef.current.uncheckItem(shoppingEntity, item);
       }
       setTimeout(loadItems, 500);
     } catch (err) {

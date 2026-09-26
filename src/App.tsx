@@ -35,7 +35,8 @@ import { CalendarEvent, resolveCalendarColor } from './types';
 import { getConfig, patchConfig } from './config';
 import { setHaKioskMode } from './utils/ha-kiosk';
 import { applyFontScale } from './utils/font-scale';
-import { allDayEndAfter, moveAllDayEvent } from './utils/event-dates';
+import { formToPayload, movedPayload, occurrenceTarget, type EditScope, type EventPayload, type OccurrenceTarget } from './utils/calendar-edits';
+import { SaveFailedNotice } from './components/SaveFailedNotice';
 
 const config = getConfig();
 
@@ -170,19 +171,21 @@ export function App() {
     }
   }, [localCal, createHaEvent]);
 
-  const updateEvent = useCallback(async (calendarId: string, uid: string, eventData: Parameters<typeof updateHaEvent>[2]) => {
+  // `target` picks occurrences of a repeating HA event (the built-in
+  // calendar has no repeating events).
+  const updateEvent = useCallback(async (calendarId: string, uid: string, eventData: EventPayload, target?: OccurrenceTarget) => {
     if (calendarId === localCal.calendar.id) {
       localCal.updateEvent(uid, eventData);
     } else {
-      await updateHaEvent(calendarId, uid, eventData);
+      await updateHaEvent(calendarId, uid, eventData, target);
     }
   }, [localCal, updateHaEvent]);
 
-  const deleteEvent = useCallback(async (calendarId: string, uid: string) => {
+  const deleteEvent = useCallback(async (calendarId: string, uid: string, target?: OccurrenceTarget) => {
     if (calendarId === localCal.calendar.id) {
       localCal.deleteEvent(uid);
     } else {
-      await deleteHaEvent(calendarId, uid);
+      await deleteHaEvent(calendarId, uid, target);
     }
   }, [localCal, deleteHaEvent]);
 
@@ -285,7 +288,7 @@ export function App() {
   );
 
   // Event notifications (browser + HA mobile_app)
-  useNotifications(events, client, fullAppShown);
+  useNotifications(events, client, fullAppShown, settings.notificationMinutes);
 
   // Leaderboard is still a slide-over panel (not a full view); Chores is now
   // a real full-screen activeView (see PRD: dedicated chores screen).
@@ -365,58 +368,31 @@ export function App() {
   }, []);
 
   const handleSaveEvent = useCallback(async (calendarId: string, data: EventFormData) => {
-    const eventData = data.allDay
-      ? {
-          summary: data.summary,
-          start_date: data.startDate,
-          // The form's end date is the event's last day; HA's is the day
-          // after it (and it rejects an end equal to the start).
-          end_date: allDayEndAfter(data.startDate, data.endDate),
-          description: data.description || undefined,
-        }
-      : {
-          summary: data.summary,
-          start_date_time: `${data.startDate}T${data.startTime}:00`,
-          end_date_time: `${data.endDate}T${data.endTime}:00`,
-          description: data.description || undefined,
-        };
-
-    // Build rrule if recurrence is set
-    if (data.recurrence && data.recurrence !== 'none') {
-      const freqMap = { daily: 'DAILY', weekly: 'WEEKLY', monthly: 'MONTHLY' } as const;
-      const freq = freqMap[data.recurrence];
-      const until = data.recurrenceEnd.replace(/-/g, '') + 'T235959Z';
-      (eventData as Record<string, unknown>).rrule = `FREQ=${freq};UNTIL=${until}`;
-    }
+    const eventData = formToPayload(data, selectedEvent);
 
     try {
       if (selectedEvent) {
-        // Editing an existing event — update in place rather than creating
-        // a duplicate. `selectedEvent.calendarId` is the event's original
-        // calendar; if the user changed the calendar in the form, move it
-        // by deleting from the old calendar and creating on the new one
-        // (HA's update_event can't move an event across entities).
         if (selectedEvent.hasStableId === false) {
           throw new Error("This event can't be edited — it has no stable ID from its calendar provider.");
         }
-        if (calendarId !== selectedEvent.calendarId) {
-          await deleteEvent(selectedEvent.calendarId, selectedEvent.id);
+        const uid = selectedEvent.uid ?? selectedEvent.id;
+        const target = occurrenceTarget(selectedEvent, data.scope);
+        // HA's update can't move an event to another calendar, and many
+        // calendars (Google via HA, several CalDAV backends) can't update
+        // events at all: both are done as create + delete. Create first, so
+        // a failure leaves the original where it was.
+        const replace = async () => {
           await createEvent(calendarId, eventData);
+          await deleteEvent(selectedEvent.calendarId, uid, target);
+        };
+        if (calendarId !== selectedEvent.calendarId) {
+          await replace();
         } else {
           try {
-            await updateEvent(calendarId, selectedEvent.id, eventData);
+            await updateEvent(calendarId, uid, eventData, target);
           } catch (err) {
-            // Many calendar providers (Google Calendar via HA, several
-            // CalDAV backends, etc.) don't support in-place event updates
-            // at all. Fall back to delete + recreate so editing still
-            // works — the event gets a new id, but that's invisible to
-            // the user since we refetch right after.
-            if (err instanceof CalendarNotSupportedError) {
-              await deleteEvent(calendarId, selectedEvent.id);
-              await createEvent(calendarId, eventData);
-            } else {
-              throw err;
-            }
+            if (!(err instanceof CalendarNotSupportedError)) throw err;
+            await replace();
           }
         }
       } else {
@@ -436,12 +412,12 @@ export function App() {
     }
   }, [selectedEvent, createEvent, updateEvent, deleteEvent, refetchEventsForWeek, visibleWeekStart, handleCloseModal, settings.lastEventCalendar, updateSettings]);
 
-  const handleDeleteEvent = useCallback(async (calendarId: string, eventId: string) => {
+  const handleDeleteEvent = useCallback(async (event: CalendarEvent, scope: EditScope) => {
     try {
-      if (selectedEvent && selectedEvent.id === eventId && selectedEvent.hasStableId === false) {
+      if (event.hasStableId === false) {
         throw new Error("This event can't be deleted — it has no stable ID from its calendar provider.");
       }
-      await deleteEvent(calendarId, eventId);
+      await deleteEvent(event.calendarId, event.uid ?? event.id, occurrenceTarget(event, scope));
 
       await refetchEventsForWeek(visibleWeekStart);
 
@@ -452,35 +428,26 @@ export function App() {
         ? new Error('This calendar does not support deleting events.')
         : err;
     }
-  }, [selectedEvent, deleteEvent, refetchEventsForWeek, visibleWeekStart, handleCloseModal]);
+  }, [deleteEvent, refetchEventsForWeek, visibleWeekStart, handleCloseModal]);
 
   const handleEventReschedule = useCallback(async (event: CalendarEvent, newDate: string, newHour: number) => {
     try {
-      const oldStart = new Date(event.start);
-      const oldEnd = new Date(event.end);
-      const durationMs = oldEnd.getTime() - oldStart.getTime();
-
-      const patch = event.allDay
-        ? moveAllDayEvent(event, newDate)
-        : (() => {
-            const pad = (n: number) => String(n).padStart(2, '0');
-            const newStartDt = `${newDate}T${pad(newHour)}:00:00`;
-            const newEndTime = new Date(new Date(newStartDt).getTime() + durationMs);
-            const newEndDt = `${format(newEndTime, 'yyyy-MM-dd')}T${pad(newEndTime.getHours())}:${pad(newEndTime.getMinutes())}:00`;
-            return { start_date_time: newStartDt, end_date_time: newEndDt };
-          })();
+      if (event.hasStableId === false) {
+        throw new Error('it has no stable ID from its calendar provider');
+      }
+      const payload = movedPayload(event, newDate, newHour);
+      const uid = event.uid ?? event.id;
+      // A dragged occurrence of a repeating event moves on its own.
+      const target = occurrenceTarget(event, 'this');
 
       try {
-        await updateEvent(event.calendarId, event.id, patch);
+        await updateEvent(event.calendarId, uid, payload, target);
       } catch (err) {
         // Same fallback as handleSaveEvent: calendars without update
-        // support need delete + recreate to move an event via drag.
-        if (err instanceof CalendarNotSupportedError) {
-          await deleteEvent(event.calendarId, event.id);
-          await createEvent(event.calendarId, { ...patch, summary: event.title, description: event.description });
-        } else {
-          throw err;
-        }
+        // support need create + delete, creating first so nothing is lost.
+        if (!(err instanceof CalendarNotSupportedError)) throw err;
+        await createEvent(event.calendarId, payload);
+        await deleteEvent(event.calendarId, uid, target);
       }
 
       await refetchEventsForWeek(visibleWeekStart);
@@ -823,6 +790,7 @@ export function App() {
           event={selectedEvent}
           calendars={calendars}
           defaultCalendarId={settings.defaultCalendar || settings.lastEventCalendar}
+          defaultDurationMinutes={settings.defaultEventDuration}
           onSave={handleSaveEvent}
           onDelete={handleDeleteEvent}
           onClose={handleCloseModal}
@@ -858,6 +826,8 @@ export function App() {
           onExpand={() => setActiveView('music')}
         />
       )}
+
+      <SaveFailedNotice />
 
       {/* Screen saver / dim mode */}
       <ScreenSaver

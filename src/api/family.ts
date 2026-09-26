@@ -13,6 +13,7 @@ import {
   updateInCollection,
   removeFromCollection,
 } from './beacon-collection';
+import { startOfDay, startOfToday, parseISO } from 'date-fns';
 import { localDayKey } from './date-keys';
 
 const STORAGE_KEYS = {
@@ -114,8 +115,9 @@ export class FamilyStore {
 
   // --- Completions ---
 
-  async getCompletions(): Promise<ChoreCompletion[]> {
-    return getCollection<ChoreCompletion>(STORAGE_KEYS.completions);
+  /** Chore completions; with `since`, only those from then on (see getCollection). */
+  async getCompletions(since?: Date): Promise<ChoreCompletion[]> {
+    return getCollection<ChoreCompletion>(STORAGE_KEYS.completions, { since });
   }
 
   getCompletionsSync(): ChoreCompletion[] {
@@ -124,14 +126,14 @@ export class FamilyStore {
 
   async getCompletionsToday(): Promise<ChoreCompletion[]> {
     const today = localDayKey();
-    const completions = await this.getCompletions();
+    const completions = await this.getCompletions(startOfToday());
     return completions.filter(
       (c) => localDayKey(c.completed_at) === today
     );
   }
 
   async getCompletionsForPeriod(startDate: string, endDate: string): Promise<ChoreCompletion[]> {
-    const completions = await this.getCompletions();
+    const completions = await this.getCompletions(startOfDay(parseISO(startDate)));
     return completions.filter((c) => {
       const date = localDayKey(c.completed_at);
       return date >= startDate && date <= endDate;
@@ -140,7 +142,7 @@ export class FamilyStore {
 
   async completeChore(choreId: string, memberId: string, verifiedBy?: string): Promise<ChoreCompletion> {
     const today = localDayKey();
-    const completions = await this.getCompletions();
+    const completions = await this.getCompletions(startOfToday());
     const existing = completions.find(
       (c) =>
         c.chore_id === choreId &&
@@ -164,7 +166,7 @@ export class FamilyStore {
 
   async uncompleteChore(choreId: string, memberId: string): Promise<boolean> {
     const today = localDayKey();
-    const completions = await this.getCompletions();
+    const completions = await this.getCompletions(startOfToday());
     const match = completions.find(
       (c) =>
         c.chore_id === choreId &&
@@ -246,19 +248,19 @@ export class FamilyStore {
 
   // --- Routine task completions ---
 
-  async getRoutineTaskCompletions(): Promise<RoutineTaskCompletion[]> {
-    return getCollection<RoutineTaskCompletion>(STORAGE_KEYS.routine_completions);
+  async getRoutineTaskCompletions(since?: Date): Promise<RoutineTaskCompletion[]> {
+    return getCollection<RoutineTaskCompletion>(STORAGE_KEYS.routine_completions, { since });
   }
 
   async getRoutineTaskCompletionsToday(): Promise<RoutineTaskCompletion[]> {
     const today = localDayKey();
-    const completions = await this.getRoutineTaskCompletions();
+    const completions = await this.getRoutineTaskCompletions(startOfToday());
     return completions.filter((c) => localDayKey(c.completed_at) === today);
   }
 
   async completeRoutineTask(routineId: string, taskId: string, memberId: string): Promise<void> {
     const today = localDayKey();
-    const completions = await this.getRoutineTaskCompletions();
+    const completions = await this.getRoutineTaskCompletions(startOfToday());
     const exists = completions.some(
       (c) =>
         c.routine_id === routineId &&
@@ -277,7 +279,7 @@ export class FamilyStore {
 
   async uncompleteRoutineTask(routineId: string, taskId: string, memberId: string): Promise<boolean> {
     const today = localDayKey();
-    const completions = await this.getRoutineTaskCompletions();
+    const completions = await this.getRoutineTaskCompletions(startOfToday());
     const match = completions.find(
       (c) =>
         c.routine_id === routineId &&

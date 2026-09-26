@@ -95,4 +95,19 @@ describe('add-on server', () => {
     const items = await fetch(`${base}/beacon-collection/test_items`).then((r) => r.json());
     expect(items).toEqual([created]);
   });
+
+  // Displays reloaded the whole completion history on every change.
+  it('returns only items completed since a given time', async () => {
+    const add = (completed_at: string) => fetch(`${base}/beacon-collection/test_completions`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ chore_id: 'c1', completed_at }),
+    }).then((r) => r.json());
+    await add('2025-01-10T09:00:00.000Z');
+    const recent = await add('2026-09-26T09:00:00.000Z');
+
+    const since = encodeURIComponent('2026-09-26T00:00:00.000Z');
+    expect(await fetch(`${base}/beacon-collection/test_completions?since=${since}`).then((r) => r.json())).toEqual([recent]);
+    expect(await fetch(`${base}/beacon-collection/test_completions`).then((r) => r.json())).toHaveLength(2);
+  });
 });

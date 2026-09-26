@@ -87,3 +87,19 @@ stops a release numbered below config.yaml's version. If it fires: on main,
 set config.yaml's version above both, commit it as `chore(release): X` (that
 type doesn't release by itself), tag the commit `vX`, and push both together
 with `git push --atomic origin main vX`.
+
+### HA Calendar Events: Use `uid`, Not `id`
+Every occurrence of a repeating HA event has the series' `uid` plus its own
+`recurrence_id`, so `CalendarEvent.id` is `uid::recurrence_id` there — never
+send `id` to HA. Update/delete take `event.uid ?? event.id` and, for an
+occurrence, `occurrenceTarget()` (src/utils/calendar-edits.ts) for
+`recurrence_id`/`recurrence_range`; without them HA changes the whole series.
+`calendar/event/update` replaces the whole event and requires `summary`, so
+send the full event (`formToPayload`/`movedPayload`), not just changed fields.
+
+### Family Data Writes Fail Loudly
+In add-on mode `addToCollection`/`updateInCollection`/`removeFromCollection`
+throw `SaveFailedError` (and report it, for the "Couldn't save" notice) when
+the server doesn't take a write. Don't fall back to writing localStorage:
+the next read replaces that cache with the server's copy. Hooks wrap writes
+in `saveThen()` (src/utils/save-errors.ts), which refreshes either way.

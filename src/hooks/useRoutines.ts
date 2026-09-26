@@ -1,5 +1,7 @@
 import { useState, useCallback, useMemo, useEffect } from 'react';
 import { FamilyStore, notifyFamilyDataChanged, onFamilyDataChanged } from '../api/family';
+import { saveThen } from '../utils/save-errors';
+import { byDay, useClock } from './useClock';
 import { Routine, RoutineTaskCompletion } from '../types/family';
 
 export function useRoutines(memberId?: string) {
@@ -16,34 +18,39 @@ export function useRoutines(memberId?: string) {
     setCompletionsToday(ct);
   }, [store, memberId]);
 
+  // Loads again when the day changes, so yesterday's ticks clear at midnight.
+  const today = useClock(byDay);
   useEffect(() => {
     refresh();
     return onFamilyDataChanged(store, () => void refresh());
-  }, [refresh, store]);
+  }, [refresh, store, today]);
 
   const addRoutine = useCallback(
     async (routine: Omit<Routine, 'id'>) => {
-      await store.addRoutine(routine);
-      await refresh();
-      notifyFamilyDataChanged(store);
+      await saveThen(() => store.addRoutine(routine), async () => {
+        await refresh();
+        notifyFamilyDataChanged(store);
+      });
     },
     [store, refresh]
   );
 
   const updateRoutine = useCallback(
     async (id: string, data: Partial<Omit<Routine, 'id'>>) => {
-      await store.updateRoutine(id, data);
-      await refresh();
-      notifyFamilyDataChanged(store);
+      await saveThen(() => store.updateRoutine(id, data), async () => {
+        await refresh();
+        notifyFamilyDataChanged(store);
+      });
     },
     [store, refresh]
   );
 
   const removeRoutine = useCallback(
     async (id: string) => {
-      await store.removeRoutine(id);
-      await refresh();
-      notifyFamilyDataChanged(store);
+      await saveThen(() => store.removeRoutine(id), async () => {
+        await refresh();
+        notifyFamilyDataChanged(store);
+      });
     },
     [store, refresh]
   );
@@ -62,13 +69,16 @@ export function useRoutines(memberId?: string) {
 
   const toggleTask = useCallback(
     async (routine: Routine, taskId: string) => {
-      if (isTaskCompletedToday(routine.id, taskId, routine.member_id)) {
-        await store.uncompleteRoutineTask(routine.id, taskId, routine.member_id);
-      } else {
-        await store.completeRoutineTask(routine.id, taskId, routine.member_id);
-      }
-      await refresh();
-      notifyFamilyDataChanged(store);
+      const done = isTaskCompletedToday(routine.id, taskId, routine.member_id);
+      await saveThen(
+        () => done
+          ? store.uncompleteRoutineTask(routine.id, taskId, routine.member_id)
+          : store.completeRoutineTask(routine.id, taskId, routine.member_id),
+        async () => {
+          await refresh();
+          notifyFamilyDataChanged(store);
+        },
+      );
     },
     [store, refresh, isTaskCompletedToday]
   );

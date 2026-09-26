@@ -11,6 +11,7 @@ import { RoutineCard } from './RoutineCard';
 import { FocusChores } from './FocusChores';
 import { pickRoutine, getTimeOfDay } from './period';
 import '../../styles/focus.css';
+import { SaveFailedNotice } from '../SaveFailedNotice';
 
 interface FocusViewProps {
   memberId: string;
@@ -57,17 +58,6 @@ export function FocusView({ memberId, settings, onExit }: FocusViewProps) {
     }, 5 * 60 * 1000);
     return () => clearInterval(t);
   }, [refreshRoutines, refreshChores]);
-
-  // At midnight, reload so yesterday's ticks clear straight away rather
-  // than at the next 5-minute refresh.
-  const day = localDayKey(now);
-  const loadedDay = useRef(day);
-  useEffect(() => {
-    if (loadedDay.current === day) return;
-    loadedDay.current = day;
-    refreshRoutines();
-    refreshChores();
-  }, [day, refreshRoutines, refreshChores]);
 
   // Exit gesture: 5 taps on the clock within 3 seconds
   const taps = useRef<number[]>([]);
@@ -179,6 +169,8 @@ export function FocusView({ memberId, settings, onExit }: FocusViewProps) {
           </div>
         </div>
       )}
+
+      <SaveFailedNotice />
 
       <ScreenSaver
         enabled={settings.screenSaverEnabled}

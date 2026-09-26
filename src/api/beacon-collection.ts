@@ -11,9 +11,21 @@
  * read-modify-write pattern against localStorage directly — there's only
  * one "device" in that context, so the race this API exists to prevent
  * doesn't apply there.
+ *
+ * In add-on mode a write the server didn't take throws SaveFailedError
+ * (and reports it, for App's notice). It used to be written to this
+ * device's local cache instead and reported as saved — until the next
+ * read replaced that cache with the server's copy, silently undoing it.
  */
 
 import { isAddOn } from '../utils/ha-env';
+import { SaveFailedError, reportSaveFailed } from '../utils/save-errors';
+
+function saveFailed(name: string): SaveFailedError {
+  const err = new SaveFailedError(`a change to ${name}`);
+  reportSaveFailed(err);
+  return err;
+}
 
 interface HasId {
   id?: string;
@@ -48,20 +60,34 @@ function generateId(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
+/** Items with a `completed_at` at or after `since`. */
+function completedSince<T>(items: T[], since: Date): T[] {
+  return items.filter((it) => {
+    const at = (it as { completed_at?: unknown }).completed_at;
+    return typeof at === 'string' && Date.parse(at) >= since.getTime();
+  });
+}
+
 /**
- * Fetch the full collection. In add-on mode, reads from the server
- * (the authoritative copy); the result is cached to localStorage so
+ * Fetch the collection. In add-on mode, reads from the server (the
+ * authoritative copy); the result is cached to localStorage so
  * getCollectionSync() has something to show on the next initial render.
+ *
+ * `since` (for completion collections): only items completed then or
+ * later, filtered by the server so the whole history isn't downloaded.
+ * A filtered result isn't cached, since the cache is the full collection.
  */
-export async function getCollection<T>(name: string): Promise<T[]> {
+export async function getCollection<T>(name: string, options: { since?: Date } = {}): Promise<T[]> {
+  const { since } = options;
   if (isAddOn()) {
     try {
       const base = getIngressBasePath();
-      const res = await fetch(`${base}/beacon-collection/${name}`);
+      const query = since ? `?since=${encodeURIComponent(since.toISOString())}` : '';
+      const res = await fetch(`${base}/beacon-collection/${name}${query}`);
       if (res.ok) {
         const data = await res.json();
         if (Array.isArray(data)) {
-          writeLocal(name, data);
+          if (!since) writeLocal(name, data);
           return data as T[];
         }
       }
@@ -69,7 +95,8 @@ export async function getCollection<T>(name: string): Promise<T[]> {
       /* fall through to localStorage */
     }
   }
-  return readLocal<T>(name);
+  const local = readLocal<T>(name);
+  return since ? completedSince(local, since) : local;
 }
 
 /** Synchronous, localStorage-only read for instant initial render. */
@@ -106,8 +133,9 @@ export async function addToCollection<T extends HasId>(
         return created;
       }
     } catch {
-      /* fall through to optimistic local add */
+      /* network error */
     }
+    throw saveFailed(name);
   }
   const items = readLocal<T>(name);
   const created = { ...item, id: (item as HasId).id || generateId() } as T;
@@ -141,8 +169,9 @@ export async function updateInCollection<T extends HasId>(
         return updated;
       }
     } catch {
-      /* fall through to optimistic local update */
+      /* network error */
     }
+    throw saveFailed(name);
   }
   const items = readLocal<T>(name);
   const idx = items.findIndex((it) => it.id === id);
@@ -169,8 +198,9 @@ export async function removeFromCollection(name: string, id: string): Promise<bo
         return !!result.ok;
       }
     } catch {
-      /* fall through to optimistic local remove */
+      /* network error */
     }
+    throw saveFailed(name);
   }
   const items = readLocal<HasId>(name);
   const filtered = items.filter((it) => it.id !== id);

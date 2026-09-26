@@ -11,7 +11,7 @@ import {
   getMinutes,
 } from 'date-fns';
 import { CalendarEvent } from '../types';
-import { computeOverlapLayout, type OverlapLayout } from '../utils/overlap-layout';
+import { computeRangeLayout, type OverlapLayout } from '../utils/overlap-layout';
 import { EventBlock } from './EventBlock';
 import { EventDetailsPopover } from './EventDetailsPopover';
 import { useWeatherForecast } from '../hooks/useWeatherForecast';
@@ -47,6 +47,26 @@ function hoursOnDay(event: CalendarEvent, day: Date): { from: number; to: number
     from: isSameDay(start, day) ? getHours(start) + getMinutes(start) / 60 : 0,
     to: isSameDay(end, day) ? getHours(end) + getMinutes(end) / 60 : 24,
   };
+}
+
+/**
+ * The least an event takes up in the hour grid, in hours: PINNED_EVENT_PX
+ * at the shortest hour rows (52px, on phones).
+ */
+const MIN_DRAWN_HOURS = PINNED_EVENT_PX / 52;
+
+/**
+ * Where a timed event is drawn on `day`, in hours from midnight: its part
+ * of the day clipped to the grid's hours, pinned to the grid's edge when
+ * wholly outside them, and never shorter than it's drawn. Side-by-side
+ * layout uses this; using the event's own times put events that are drawn
+ * over each other (an overnight one, two pinned ones) in one column.
+ */
+function drawnHours(event: CalendarEvent, day: Date): { top: number; bottom: number } {
+  const { from, to } = hoursOnDay(event, day);
+  if (from >= END_HOUR) return { top: END_HOUR - MIN_DRAWN_HOURS, bottom: END_HOUR };
+  const top = Math.max(from, START_HOUR);
+  return { top, bottom: Math.max(Math.min(to, END_HOUR), top + MIN_DRAWN_HOURS) };
 }
 
 /** Timed events this long or longer show as bars in the all-day row. */
@@ -664,7 +684,10 @@ export function WeekCalendar({ events, hiddenCalendars, onEventClick, onSlotClic
             const key = format(day, 'yyyy-MM-dd');
             const isToday = isSameDay(day, today);
             const dayEvents = timedByDay.get(key) || [];
-            const overlapLayout = computeOverlapLayout(dayEvents);
+            const overlapLayout = computeRangeLayout(dayEvents.map((event) => {
+              const { top, bottom } = drawnHours(event, day);
+              return { id: event.id, top: top * 60, bottom: bottom * 60 };
+            }));
 
             return (
               <div

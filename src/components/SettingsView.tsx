@@ -1770,34 +1770,6 @@ export function SettingsView({
       {settings.choresEnabled && (
         <>
           <div className="settings-group">
-            <div className="settings-row">
-              <div>
-                <div className="settings-row-label">Daily Reset Time</div>
-                <div className="settings-row-sublabel">When daily chores reset</div>
-              </div>
-              <input
-                type="time"
-                className="settings-time-input"
-                value={settings.choresResetTime}
-                onChange={(e) => onUpdateSettings({ choresResetTime: e.target.value })}
-              />
-            </div>
-            <div className="settings-row">
-              <div>
-                <div className="settings-row-label">Streak Duration</div>
-                <div className="settings-row-sublabel">Days needed to maintain a streak</div>
-              </div>
-              <Slider
-                value={settings.streakDays}
-                min={3}
-                max={30}
-                unit=" days"
-                onChange={(v) => onUpdateSettings({ streakDays: v })}
-              />
-            </div>
-          </div>
-
-          <div className="settings-group">
             <div className="settings-group-title">Rewards</div>
             <div className="settings-row">
               <div className="settings-row-label">Currency Symbol</div>

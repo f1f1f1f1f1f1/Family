@@ -313,17 +313,20 @@ Beacon ships with custom sentence and intent handler files for [Home Assistant A
 
 ### Installation
 
-Run the included install script:
+Copy the two files from this repository into your Home Assistant config folder (with the File editor or Samba add-on, or over SSH):
 
-```bash
-# Auto-detect the HA config directory
-beacon/scripts/install-voice-intents.sh
+- [`custom_sentences/en/beacon.yaml`](https://github.com/f1f1f1f1f1f1/Family/blob/main/custom_sentences/en/beacon.yaml) to `/config/custom_sentences/en/beacon.yaml` — sentence patterns that HA Assist will recognize
+- [`custom_intents/beacon.yaml`](https://github.com/f1f1f1f1f1f1/Family/blob/main/custom_intents/beacon.yaml) to `/config/custom_intents/beacon.yaml` — intent handlers that call HA services in response
 
-# Or specify it
-beacon/scripts/install-voice-intents.sh /config
+HA loads `custom_sentences/` by itself, but not the intent handlers: add this line to `/config/configuration.yaml`:
+
+```yaml
+intent_script: !include custom_intents/beacon.yaml
 ```
 
-Then reload the Conversation integration: **Developer Tools > YAML > Conversation**.
+Then restart Home Assistant (**Settings > System > Restart**).
+
+The add-on doesn't install these for you: it has no access to Home Assistant's config folder.
 
 ### Prerequisites
 

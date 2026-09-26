@@ -160,6 +160,25 @@ a:focus:not(:focus-visible) {
   border-bottom: 1px solid var(--border);
 }
 
+
+/* "Couldn't save that change" (SaveFailedNotice): bottom centre, above
+   the tab bar and Now Playing bar, clear of the add button. */
+.save-failed-notice {
+  position: fixed;
+  left: 50%;
+  bottom: calc(16px + var(--mobile-tab-bar-height, 0px) + var(--now-playing-height, 0px));
+  transform: translateX(-50%);
+  z-index: 95;
+  max-width: min(90vw, 480px);
+  padding: 10px 16px;
+  border-radius: var(--radius-sm, 8px);
+  background: var(--color-error, #ef4444);
+  color: #fff;
+  font-size: 0.9rem;
+  box-shadow: var(--shadow-md);
+  cursor: pointer;
+}
+
 .beacon-main {
   grid-row: 2;
 }
@@ -1499,6 +1518,11 @@ a:focus:not(:focus-visible) {
   color: var(--text-secondary);
   text-transform: uppercase;
   letter-spacing: 0.5px;
+}
+
+.form-hint {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
 }
 
 .form-input,

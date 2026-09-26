@@ -6,7 +6,7 @@ Beacon supports three approaches for voice and AI control, ranging from a simple
 |----------|----------|----------------|-------|
 | [Voice API](#voice-api) | Quick automations, custom UIs | No | None (built-in) |
 | [MCP Server](#mcp-server) | Claude Code, LLM agents | Yes | Config file |
-| [HA Custom Sentences](#ha-custom-sentences) | Home Assistant Assist voice | No | Script install |
+| [HA Custom Sentences](#ha-custom-sentences) | Home Assistant Assist voice | No | Copy two files |
 
 ---
 
@@ -280,22 +280,20 @@ Beacon ships with custom sentence and intent handler files for [Home Assistant A
 
 ### Installation
 
-Run the included install script on your HA machine:
+Copy the two files from this repository into your Home Assistant config folder (with the File editor or Samba add-on, or over SSH):
 
-```bash
-# Auto-detect HA config directory
-beacon/scripts/install-voice-intents.sh
+- [`custom_sentences/en/beacon.yaml`](https://github.com/f1f1f1f1f1f1/Family/blob/main/custom_sentences/en/beacon.yaml) to `/config/custom_sentences/en/beacon.yaml` -- sentence patterns that HA Assist will recognize
+- [`custom_intents/beacon.yaml`](https://github.com/f1f1f1f1f1f1/Family/blob/main/custom_intents/beacon.yaml) to `/config/custom_intents/beacon.yaml` -- intent handlers that call HA services in response
 
-# Or specify it explicitly
-beacon/scripts/install-voice-intents.sh /config
+HA loads `custom_sentences/` by itself, but not the intent handlers: add this line to `/config/configuration.yaml`:
+
+```yaml
+intent_script: !include custom_intents/beacon.yaml
 ```
 
-This copies two files into your HA config:
-- `custom_sentences/en/beacon.yaml` -- sentence patterns that HA Assist will recognize
-- `custom_intents/beacon.yaml` -- intent handlers that call HA services in response
+Then restart Home Assistant (**Settings > System > Restart**).
 
-After installing, reload the Conversation integration:
-**Developer Tools > YAML configuration reloading > Conversation**
+The add-on doesn't install these for you: it has no access to Home Assistant's config folder.
 
 ### Prerequisites
 

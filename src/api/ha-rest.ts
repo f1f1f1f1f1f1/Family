@@ -160,6 +160,14 @@ export function fetchAllStates(maxAgeMs = DEFAULT_STATES_MAX_AGE_MS): Promise<Ha
   return statesInFlight;
 }
 
+/**
+ * For finding which entities exist (to-do lists, TaskMate's sensors): a
+ * copy of all states up to this old will do, since those rarely change;
+ * what's in them is fetched fresh on its own. The dashboard used to
+ * download every entity's state once a minute just to find its lists.
+ */
+export const ENTITY_LIST_MAX_AGE_MS = 10 * 60 * 1000;
+
 /** Test hook: forget the shared copy. */
 export function resetStatesCache(): void {
   statesCache = null;

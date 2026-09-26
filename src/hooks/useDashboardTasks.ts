@@ -1,11 +1,12 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { hasToken, callHaService, fetchAllStates } from '../api/ha-rest';
+import { hasToken, callHaService, fetchAllStates, ENTITY_LIST_MAX_AGE_MS } from '../api/ha-rest';
 import { getTodoItems } from '../api/ha-services';
 import { isGroceryListName } from '../utils/grocery';
 import { localDayKey } from '../api/date-keys';
 import { useLocalTasks } from './useLocalTasks';
 import { useTaskmate } from './useTaskmate';
 import { refreshWhileAwake } from '../utils/display-sleep';
+import { todoItemRef } from '../api/anylist';
 
 export interface DashboardTodoItem {
   uid: string;
@@ -36,8 +37,8 @@ export function useDashboardTasks(
 
     async function fetchTasks() {
       try {
-        // Get the non-grocery HA todo entities
-        const states = await fetchAllStates();
+        // Get the non-grocery HA todo entities (their items are fetched fresh below)
+        const states = await fetchAllStates(ENTITY_LIST_MAX_AGE_MS);
 
         const todoEntities = states.filter(s => {
           if (!s.entity_id.startsWith('todo.') || s.state === 'unavailable') return false;
@@ -127,7 +128,7 @@ export function useDashboardTasks(
     try {
       await callHaService('todo', 'update_item', {
         entity_id: haItem.listId,
-        item: haItem.summary,
+        item: todoItemRef(haItem),
         status: newStatus,
       });
       setHaItems(prev => prev.map(i =>

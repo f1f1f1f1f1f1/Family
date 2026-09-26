@@ -2,6 +2,18 @@ import { GroceryItem, GroceryList } from '../types/grocery';
 import { callHaService, fetchAllStates } from './ha-rest';
 import { getTodoItems } from './ha-services';
 
+type TodoItemRef = { uid?: string | null; summary: string };
+
+/**
+ * How HA's todo services (update_item, remove_item) find an item: by uid,
+ * since two items can share a title and HA would change the first one with
+ * it. An item added moments ago and not reloaded yet has only a temporary
+ * id here ("temp-…"), so that one goes by title.
+ */
+export function todoItemRef(item: TodoItemRef): string {
+  return item.uid && !item.uid.startsWith('temp-') ? item.uid : item.summary;
+}
+
 /**
  * AnyList / Todo integration via Home Assistant's REST API.
  *
@@ -70,42 +82,30 @@ export class AnyListClient {
     }
   }
 
+  // add/check/uncheck throw when HA doesn't take the change, so the screens
+  // can undo what they showed (they used to show it as done regardless).
+
   async addItem(listId: string, name: string): Promise<void> {
-    const entityIds = await this.discoverEntities();
-    if (!entityIds.includes(listId)) return;
-
-    try {
-      await callHaService('todo', 'add_item', {
-        entity_id: listId,
-        item: name,
-      });
-    } catch (err) {
-      console.warn('Beacon: Failed to add item', err);
-    }
+    await callHaService('todo', 'add_item', {
+      entity_id: listId,
+      item: name,
+    });
   }
 
-  async checkItem(listId: string, itemName: string): Promise<void> {
-    try {
-      await callHaService('todo', 'update_item', {
-        entity_id: listId,
-        item: itemName,
-        status: 'completed',
-      });
-    } catch (err) {
-      console.warn('Beacon: Failed to check item', err);
-    }
+  async checkItem(listId: string, item: TodoItemRef): Promise<void> {
+    await callHaService('todo', 'update_item', {
+      entity_id: listId,
+      item: todoItemRef(item),
+      status: 'completed',
+    });
   }
 
-  async uncheckItem(listId: string, itemName: string): Promise<void> {
-    try {
-      await callHaService('todo', 'update_item', {
-        entity_id: listId,
-        item: itemName,
-        status: 'needs_action',
-      });
-    } catch (err) {
-      console.warn('Beacon: Failed to uncheck item', err);
-    }
+  async uncheckItem(listId: string, item: TodoItemRef): Promise<void> {
+    await callHaService('todo', 'update_item', {
+      entity_id: listId,
+      item: todoItemRef(item),
+      status: 'needs_action',
+    });
   }
 
   /** No-op now that entity discovery isn't cached — kept for API compatibility. */

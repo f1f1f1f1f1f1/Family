@@ -1,5 +1,6 @@
 import { useState, useCallback, useMemo, useEffect } from 'react';
 import { FamilyStore, notifyFamilyDataChanged, onFamilyDataChanged } from '../api/family';
+import { saveThen } from '../utils/save-errors';
 import { FamilyMember } from '../types/family';
 
 export function useFamily() {
@@ -19,27 +20,30 @@ export function useFamily() {
 
   const addMember = useCallback(
     async (member: Omit<FamilyMember, 'id'>) => {
-      await store.addMember(member);
-      await refresh();
-      notifyFamilyDataChanged(store);
+      await saveThen(() => store.addMember(member), async () => {
+        await refresh();
+        notifyFamilyDataChanged(store);
+      });
     },
     [store, refresh]
   );
 
   const updateMember = useCallback(
     async (id: string, data: Partial<Omit<FamilyMember, 'id'>>) => {
-      await store.updateMember(id, data);
-      await refresh();
-      notifyFamilyDataChanged(store);
+      await saveThen(() => store.updateMember(id, data), async () => {
+        await refresh();
+        notifyFamilyDataChanged(store);
+      });
     },
     [store, refresh]
   );
 
   const removeMember = useCallback(
     async (id: string) => {
-      await store.removeMember(id);
-      await refresh();
-      notifyFamilyDataChanged(store);
+      await saveThen(() => store.removeMember(id), async () => {
+        await refresh();
+        notifyFamilyDataChanged(store);
+      });
     },
     [store, refresh]
   );
