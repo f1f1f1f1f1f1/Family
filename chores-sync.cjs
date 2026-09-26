@@ -257,24 +257,25 @@ function createChoresSync({
       if (match?.id) await store.remove(COLLECTIONS.completions, match.id);
     };
 
-    // FamilyStore.updateStreakForMember treats a member with no streak
-    // record as already counted today (localDayKey(undefined) is today), so
-    // it only ever advances an existing record. Matched here, so a chore
-    // ticked in Google counts exactly like one ticked in Family.
+    // Matches FamilyStore.updateStreakForMember, so a chore ticked in Google
+    // counts exactly like one ticked in Family: a member with no streak
+    // record has never completed anything, and their first completion
+    // creates one, stored under their member id.
     const advanceStreak = async (memberId) => {
       const streaks = await store.list(COLLECTIONS.streaks);
       const existing = streaks.find((s) => s.member_id === memberId);
-      if (!existing) return;
-      const lastDate = dayKey(existing.last_completed);
+      const lastDate = dayKey(existing?.last_completed);
       if (lastDate === today) return;
       const yesterday = dayKey(now().getTime() - DAY_MS);
-      const current = lastDate === yesterday ? (existing.current ?? 0) + 1 : 1;
-      await store.update(COLLECTIONS.streaks, memberId, {
+      const current = lastDate === yesterday ? (existing?.current ?? 0) + 1 : 1;
+      const patch = {
         member_id: memberId,
         current,
-        longest: Math.max(existing.longest ?? 0, current),
+        longest: Math.max(existing?.longest ?? 0, current),
         last_completed: now().toISOString(),
-      });
+      };
+      if (existing) await store.update(COLLECTIONS.streaks, memberId, patch);
+      else await store.add(COLLECTIONS.streaks, { ...patch, id: memberId });
     };
 
     // --- Read every list, refreshing it from Google first ---

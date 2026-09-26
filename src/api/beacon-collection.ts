@@ -81,6 +81,10 @@ export function getCollectionSync<T>(name: string): T[] {
  * Add one item. In add-on mode the server assigns the id and performs
  * the write; the local cache is updated to match afterward so sync reads
  * stay reasonably current.
+ *
+ * An item that already carries an id keeps it, both on the server and in
+ * the local fallback: streaks are stored under their member_id and later
+ * updated by it.
  */
 export async function addToCollection<T extends HasId>(
   name: string,
@@ -106,7 +110,7 @@ export async function addToCollection<T extends HasId>(
     }
   }
   const items = readLocal<T>(name);
-  const created = { ...item, id: generateId() } as T;
+  const created = { ...item, id: (item as HasId).id || generateId() } as T;
   items.push(created);
   writeLocal(name, items);
   return created;

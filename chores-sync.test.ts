@@ -288,6 +288,15 @@ describe('chores sync (add-on)', () => {
     expect(coll('beacon_streaks')[0]).toMatchObject({ current: 3, longest: 3 });
   });
 
+  it("starts a streak when a chore is ticked in Google by someone who doesn't have one yet", async () => {
+    const { run, task } = await setup();
+    task()[0].status = 'completed';
+    await run();
+    expect(coll('beacon_streaks')).toEqual([
+      { id: 'kai', member_id: 'kai', current: 1, longest: 1, last_completed: clock.toISOString() },
+    ]);
+  });
+
   it("skips a list it can't read, without deleting or importing anything", async () => {
     const { sync, run, task } = await setup();
     await addChore('Dishes');

@@ -194,7 +194,11 @@ export class FamilyStore {
     const yesterday = localDayKey(Date.now() - 86400000);
 
     const existing = streaks.find((s) => s.member_id === memberId);
-    const lastDate = localDayKey(existing?.last_completed);
+    // No record yet means "never completed". The '' matters: a bare
+    // localDayKey(undefined) falls back to its default of now, so a
+    // member's first completion would look already counted today and
+    // their streak record would never be created.
+    const lastDate = localDayKey(existing?.last_completed ?? '');
 
     if (lastDate === today) {
       // Already counted today
