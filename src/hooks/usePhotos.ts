@@ -36,7 +36,8 @@ export function usePhotos(
     }).catch(console.error);
 
     return () => { cancelled = true; };
-  }, [sources.join(',')]); // eslint-disable-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- compare sources by content: callers (and the default value) pass a new array every render
+  }, [sources.join(',')]);
 
   // Preload the next photo for smooth transitions
   useEffect(() => {

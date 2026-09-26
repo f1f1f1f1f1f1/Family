@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { coverCrop, findExifOrientation, readExifOrientation } from './CoverPhoto';
+import { coverCrop, findExifOrientation, readExifOrientation } from './cover-photo';
 
 describe('coverCrop', () => {
   it('crops a portrait photo on a landscape screen equally top and bottom', () => {
