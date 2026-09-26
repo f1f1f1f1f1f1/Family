@@ -35,6 +35,15 @@ describe('dashboard "Family" layout renders members as columns, not stacked rows
     expect(body).not.toMatch(/flex-direction:\s*column/);
   });
 
+  it('member columns never push the sidebar off-screen', () => {
+    // A 960px-wide Echo Show with 4 members was ~110px too narrow for the
+    // member columns' minimum widths, so the main column grew past the
+    // screen edge and cut off the Tasks sidebar. The main column must be
+    // allowed to shrink, with members that don't fit scrolling sideways.
+    expect(ruleBodyFor('.dashboard')).toMatch(/grid-template-columns:\s*minmax\(0,\s*1fr\)/);
+    expect(ruleBodyFor('.dash-family-grid')).toMatch(/overflow-x:\s*auto/);
+  });
+
   it('.dash-member-col is a vertical flex column (content stacks top-to-bottom WITHIN each member column)', () => {
     // This one legitimately should be flex-direction: column — that's
     // correct for the events *inside* a single member's column. The bug
