@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { fetchAllStates, hasToken } from '../api/ha-rest';
+import { fetchAllStates, getEntityState, hasToken, ENTITY_LIST_MAX_AGE_MS } from '../api/ha-rest';
 import { TaskmateUser, TaskmateCompletion } from '../types/taskmate';
 import { refreshWhileAwake } from '../utils/display-sleep';
 
@@ -46,7 +46,10 @@ export function useTaskmate(connected: boolean, enabled = true): UseTaskmateResu
 
     async function fetchTaskmate() {
       try {
-        const states = (await fetchAllStates()) as HaState[];
+        // Which lists and sensors are TaskMate's comes from a copy of all
+        // states up to ENTITY_LIST_MAX_AGE_MS old; today's completions are
+        // read fresh from their sensor below.
+        const states = (await fetchAllStates(ENTITY_LIST_MAX_AGE_MS)) as HaState[];
         const byEntity = new Map(states.map((s) => [s.entity_id, s]));
 
         const overview = findOverview(states);
@@ -77,7 +80,8 @@ export function useTaskmate(connected: boolean, enabled = true): UseTaskmateResu
         resolved.sort((a, b) => a.name.localeCompare(b.name));
         setUsers(resolved);
 
-        const choresSensor = states.find((s) => Array.isArray(s.attributes.todays_completions));
+        const listed = states.find((s) => Array.isArray(s.attributes.todays_completions));
+        const choresSensor = listed ? (await getEntityState(listed.entity_id)) ?? listed : undefined;
         const raw = (choresSensor?.attributes.todays_completions as CompletionRaw[] | undefined) ?? [];
         const seenComp = new Set<string>();
         const done: TaskmateCompletion[] = [];
