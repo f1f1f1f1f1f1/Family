@@ -1359,50 +1359,13 @@ const server = http.createServer((req, res) => {
   serveStatic(req, res).catch(answerUnexpectedError(req, res));
 });
 
-// Handle WebSocket upgrades for /api/websocket
-server.on('upgrade', (req, socket, head) => {
-  if (!req.url.startsWith('/api/websocket') || !SUPERVISOR_TOKEN) {
-    socket.destroy();
-    return;
-  }
-
-  const url = new URL(`${HA_API_BASE}${req.url}`);
-  const options = {
-    hostname: url.hostname,
-    port: url.port || 80,
-    path: url.pathname + url.search,
-    method: 'GET',
-    headers: {
-      ...req.headers,
-      host: url.hostname,
-    },
-  };
-
-  const proxyReq = http.request(options);
-  // HA answered with a plain HTTP response (401, or 502 while it restarts)
-  // instead of switching protocols: pass the status on and close, rather
-  // than leave the browser's socket hanging.
-  proxyReq.on('response', (proxyRes) => {
-    socket.end(`HTTP/1.1 ${proxyRes.statusCode} ${proxyRes.statusMessage || ''}\r\nConnection: close\r\nContent-Length: 0\r\n\r\n`);
-    proxyRes.resume();
-  });
-  proxyReq.on('upgrade', (proxyRes, proxySocket, proxyHead) => {
-    socket.write(
-      `HTTP/1.1 101 Switching Protocols\r\n` +
-      Object.entries(proxyRes.headers).map(([k, v]) => `${k}: ${v}`).join('\r\n') +
-      '\r\n\r\n'
-    );
-    if (proxyHead.length > 0) socket.write(proxyHead);
-
-    proxySocket.pipe(socket);
-    socket.pipe(proxySocket);
-
-    proxySocket.on('error', () => socket.destroy());
-    socket.on('error', () => proxySocket.destroy());
-  });
-
-  proxyReq.on('error', () => socket.destroy());
-  proxyReq.end();
+// No WebSocket proxy: Family's pages talk to Home Assistant over REST
+// through this server (the browser holds no token in the add-on), so
+// nothing opens one. The proxy that was here only added risk: a client
+// resetting its connection mid-upgrade crashed the add-on.
+server.on('upgrade', (req, socket) => {
+  socket.on('error', () => {});
+  socket.end('HTTP/1.1 404 Not Found\r\nConnection: close\r\nContent-Length: 0\r\n\r\n');
 });
 
 server.listen(PORT, () => {
