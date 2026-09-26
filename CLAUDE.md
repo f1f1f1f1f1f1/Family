@@ -34,6 +34,8 @@ Body: {"entity_id": "todo.xxx"}
 Response: { service_response: { "todo.xxx": { items: [...] } } }
 ```
 Filter out `unavailable` entities during discovery. Calling get_items on unavailable entities returns HTTP 500.
+Only services that return data take `?return_response`: HA answers 400 to
+it on add_item, update_item and remove_item.
 
 ### HA Add-on Store Cache Busting
 HA aggressively caches add-on repos. To force update visibility: create a git tag + GitHub release. If that fails, user must remove and re-add the repo URL. The `update_entity` service does NOT trigger a repo refresh.

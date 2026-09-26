@@ -898,6 +898,22 @@ function haRequest(method, apiPath, body, timeoutMs) {
 }
 
 /**
+ * The to-do list with an open item titled `title` (any case), and that
+ * item's uid — for "complete milk", which names no list.
+ */
+async function findOpenTodoItem(states, title) {
+  const wanted = title.trim().toLowerCase();
+  for (const e of states) {
+    if (typeof e.entity_id !== 'string' || !e.entity_id.startsWith('todo.') || e.state === 'unavailable') continue;
+    const resp = await haRequest('POST', '/api/services/todo/get_items?return_response', { entity_id: e.entity_id, status: ['needs_action'] }, 10_000);
+    const items = resp.data?.service_response?.[e.entity_id]?.items ?? [];
+    const item = items.find((it) => typeof it.summary === 'string' && it.summary.trim().toLowerCase() === wanted);
+    if (item) return { entityId: e.entity_id, item: item.uid || item.summary };
+  }
+  return null;
+}
+
+/**
  * POST /beacon-action/voice
  * Body: { "text": "add milk to the grocery list" }
  * Returns: { "response": "...", "action": "...", "success": true|false }
@@ -1038,8 +1054,9 @@ function handleVoiceAction(req, res) {
           const todoEntities = states.filter(
             (e) => typeof e.entity_id === 'string' && e.entity_id.startsWith('todo.')
           );
-          // Match by friendly name (case-insensitive, partial)
-          const hint = intent.entityHint.toLowerCase();
+          // Match by friendly name (case-insensitive, partial). "the grocery
+          // list" means the list called Grocery: drop the word "list".
+          const hint = intent.entityHint.toLowerCase().replace(/\s+list$/, '');
           const match = todoEntities.find((e) => {
             const name = (e.attributes?.friendly_name || '').toLowerCase();
             return name === hint || name.includes(hint) || e.entity_id.toLowerCase().includes(hint);
@@ -1063,11 +1080,36 @@ function handleVoiceAction(req, res) {
       }
 
       const serviceData = { ...intent.data };
+
+      // "Complete milk" names no list: use the one with an open "milk".
+      if (intent.name === 'complete_item') {
+        try {
+          const found = await findOpenTodoItem(await getStates(), intent.data.item);
+          if (found) {
+            entityId = found.entityId;
+            serviceData.item = found.item;
+          }
+        } catch { /* reported as not found below */ }
+      }
       if (entityId) serviceData.entity_id = entityId;
 
+      // To-do services need a list; without one HA only answers with an error.
+      if (intent.domain === 'todo' && !entityId) {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+          response: intent.name === 'add_item'
+            ? `I couldn't find a list called ${intent.entityHint}.`
+            : `I couldn't find ${intent.data.item} on any list.`,
+          action: intent.name,
+          success: false,
+        }));
+        return;
+      }
+
       try {
-        const qs = intent.domain === 'todo' ? '?return_response' : '';
-        let resp = await haRequest('POST', `/api/services/${intent.domain}/${intent.service}${qs}`, serviceData);
+        // No ?return_response: add_item and update_item return nothing, and
+        // HA rejects asking them for a response (every to-do intent failed).
+        let resp = await haRequest('POST', `/api/services/${intent.domain}/${intent.service}`, serviceData);
 
         // Fallback chain for media controls: try media_play_pause, then toggle
         if (resp.status >= 400 && intent.domain === 'media_player' &&
