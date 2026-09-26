@@ -1,3 +1,10 @@
+## [1.52.4](https://github.com/f1f1f1f1f1f1/Family/compare/v1.52.3...v1.52.4) (2026-09-26)
+
+
+### Bug Fixes
+
+* give the dashboard's Other calendar column its own grid column ([908be4f](https://github.com/f1f1f1f1f1f1/Family/commit/908be4fc2a4930ae7d26fa3c23921ba8d196e2c1)), closes [#35](https://github.com/f1f1f1f1f1f1/Family/issues/35)
+
 ## [1.52.3](https://github.com/f1f1f1f1f1f1/Family/compare/v1.52.2...v1.52.3) (2026-09-26)
 
 
