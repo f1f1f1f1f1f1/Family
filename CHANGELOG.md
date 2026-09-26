@@ -1,3 +1,10 @@
+## [1.52.2](https://github.com/f1f1f1f1f1f1/Family/compare/v1.52.1...v1.52.2) (2026-09-26)
+
+
+### Performance Improvements
+
+* clocks tick once a minute; Kid Display pauses the full app's refreshes ([af6cc95](https://github.com/f1f1f1f1f1f1/Family/commit/af6cc95be7ea5f3f7b9fb64c14bc6830860de4a2))
+
 ## [1.52.1](https://github.com/f1f1f1f1f1f1/Family/compare/v1.52.0...v1.52.1) (2026-09-26)
 
 
