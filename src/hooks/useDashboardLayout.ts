@@ -141,7 +141,7 @@ export function useDashboardLayout(preset: DashboardPreset) {
   useEffect(() => {
     loadData(STORAGE_KEY, initialFor(preset)).then((data) => setStored(migrate(data, preset)));
     // Only re-fetch on mount — preset changes are handled below without a reload.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- mount-only load; preset is just the fallback for a missing saved layout
   }, []);
 
   const persist = (next: StoredDashboardLayoutV3) => {

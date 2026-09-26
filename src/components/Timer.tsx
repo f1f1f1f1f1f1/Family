@@ -191,9 +191,10 @@ export function Timer({ compact = false }: TimerProps) {
 
   // Cleanup all loops on unmount
   useEffect(() => {
+    const loopIntervals = loopIntervalsRef.current;
     return () => {
-      loopIntervalsRef.current.forEach((interval) => clearInterval(interval));
-      loopIntervalsRef.current.clear();
+      loopIntervals.forEach((interval) => clearInterval(interval));
+      loopIntervals.clear();
     };
   }, []);
 

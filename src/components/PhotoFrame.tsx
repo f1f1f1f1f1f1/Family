@@ -11,7 +11,8 @@ import {
 import { usePhotos } from '../hooks/usePhotos';
 import { requestFullBleed } from '../utils/ha-kiosk';
 import { NowPlayingBar } from './NowPlayingBar';
-import { PhotoDiagnostics, testPatternUrl } from './PhotoDiagnostics';
+import { PhotoDiagnostics } from './PhotoDiagnostics';
+import { testPatternUrl } from '../utils/test-pattern';
 import { CoverPhoto } from './CoverPhoto';
 import { MediaPlayer } from '../types/music';
 
@@ -59,10 +60,12 @@ export function PhotoFrame({
 }: PhotoFrameProps) {
   const {
     currentPhoto,
+    upcomingPhoto,
     nextPhoto,
     previousPhoto,
     isActive,
     setActive,
+    reportLoadError,
     photoCount,
   } = usePhotos(['ha_media', 'local'], intervalSeconds);
 
@@ -172,7 +175,9 @@ export function PhotoFrame({
         <CoverPhoto
           className="photo-frame-image"
           src={testPattern ? testPatternUrl(photoSize?.w, photoSize?.h) : currentPhoto?.url}
+          preloadSrc={testPattern ? undefined : upcomingPhoto?.url}
           label={currentPhoto?.caption || 'Photo'}
+          onError={testPattern ? undefined : reportLoadError}
         />
       </div>
 

@@ -4,19 +4,16 @@ import { CalendarEvent, WeatherData } from '../types';
 import { Chore, FamilyMember } from '../types/family';
 import { useFamilyEvents } from '../hooks/useFamilyEvents';
 import { useMealPlans } from '../hooks/useMealPlans';
-import { useDashboardLayout } from '../hooks/useDashboardLayout';
-import { cardRegistry } from './cards/registry';
-import { DashboardRegionEditor } from './cards/DashboardRegionEditor';
-import { DashboardGridStack } from './cards/DashboardGridStack';
-import { DashboardViewTabs } from './cards/DashboardViewTabs';
 import { ClockWeatherCard } from './cards/ClockWeatherCard';
 import { FamilyCalendarCard } from './cards/FamilyCalendarCard';
 import { AgendaTodayCard } from './cards/AgendaTodayCard';
 import { AgendaWeekCard } from './cards/AgendaWeekCard';
 import { MenuCard } from './cards/MenuCard';
 import { TasksCard } from './cards/TasksCard';
+import { LazyBoundary } from './LazyBoundary';
+import { AdvancedDashboard } from './lazy-advanced-dashboard';
 import type { TaskmateUser } from '../types/taskmate';
-import { DashboardCard, DashboardCardContext, DashboardRegionLayout, TodoItem } from '../types/dashboard-cards';
+import { DashboardCardContext, TodoItem } from '../types/dashboard-cards';
 
 export type { TodoItem } from '../types/dashboard-cards';
 
@@ -41,13 +38,6 @@ interface DashboardViewProps {
   defaultShoppingList?: string;
 }
 
-function renderCard(card: DashboardCard, context: DashboardCardContext) {
-  const definition = cardRegistry[card.type];
-  if (!definition) return null;
-  const Component = definition.component;
-  return <Component key={card.id} config={card.config} context={context} />;
-}
-
 export function DashboardView({
   events,
   weather,
@@ -69,7 +59,6 @@ export function DashboardView({
 }: DashboardViewProps) {
   const [now, setNow] = useState(new Date());
   const [selectedMemberFilter, setSelectedMemberFilter] = useState<string | null>(null);
-  const [editMode, setEditMode] = useState(false);
 
   const toggleMemberFilter = (memberId: string) => {
     setSelectedMemberFilter((prev) => (prev === memberId ? null : memberId));
@@ -91,11 +80,6 @@ export function DashboardView({
 
   const { byMember, other } = useFamilyEvents(events, members, selectedDate);
   const { todaysMenu } = useMealPlans();
-  const { layout: regions, updateLayout, views, activeViewId, setActiveViewId, addView, renameView, removeView } = useDashboardLayout(layout);
-
-  const updateRegion = (region: keyof DashboardRegionLayout, cards: DashboardCard[]) => {
-    updateLayout({ ...regions, [region]: cards });
-  };
 
   // Events for the currently selected day, used by the "other" / fallback view
   const todayEvents = useMemo(() => {
@@ -180,101 +164,9 @@ export function DashboardView({
     );
   }
 
-  // ─── Classic: clock + three agenda columns (Today | This Week | Tasks) ───
-  if (layout === 'classic') {
-    return (
-      <div className="dashboard dashboard--classic dashboard--advanced">
-        <button type="button" className="dash-edit-toggle" onClick={() => setEditMode((v) => !v)}>
-          {editMode ? 'Done' : '✎ Edit Dashboard'}
-        </button>
-        <div className="dash-topbar-region">
-          {(views.length > 1 || editMode) && (
-            <DashboardViewTabs
-              views={views}
-              activeViewId={activeViewId}
-              editMode={editMode}
-              onSelect={setActiveViewId}
-              onAdd={addView}
-              onRename={renameView}
-              onRemove={removeView}
-            />
-          )}
-            <DashboardGridStack
-              region="topbar"
-              cards={regions.topbar}
-              context={context}
-              editMode={editMode}
-              onChange={(c) => updateRegion('topbar', c)}
-            />
-        </div>
-        <main className="dash-classic">
-          {editMode ? (
-            <DashboardRegionEditor region="main" cards={regions.main} context={context} onChange={(c) => updateRegion('main', c)} resizable={false} />
-          ) : (
-            regions.main.map((card) => renderCard(card, context))
-          )}
-          <aside className="dash-classic-col dash-classic-sidebar">
-            <DashboardGridStack
-              region="sidebar"
-              cards={regions.sidebar}
-              context={context}
-              editMode={editMode}
-              onChange={(c) => updateRegion('sidebar', c)}
-            />
-          </aside>
-        </main>
-      </div>
-    );
-  }
-
   return (
-    <div className={`dashboard dashboard--${layout} dashboard--advanced`}>
-      {/* ─── TOP BAR: Time + Date + Weather ─── */}
-      <button type="button" className="dash-edit-toggle" onClick={() => setEditMode((v) => !v)}>
-        {editMode ? 'Done' : '✎ Edit Dashboard'}
-      </button>
-      <div className="dash-topbar-region">
-        {(views.length > 1 || editMode) && (
-          <DashboardViewTabs
-            views={views}
-            activeViewId={activeViewId}
-            editMode={editMode}
-            onSelect={setActiveViewId}
-            onAdd={addView}
-            onRename={renameView}
-            onRemove={removeView}
-          />
-        )}
-        <DashboardGridStack
-          region="topbar"
-          cards={regions.topbar}
-          context={context}
-          editMode={editMode}
-          onChange={(c) => updateRegion('topbar', c)}
-        />
-      </div>
-
-      {/* ─── MAIN: Per-member calendar columns ─── */}
-      <main className="dash-main">
-        <DashboardGridStack
-          region="main"
-          cards={regions.main}
-          context={context}
-          editMode={editMode}
-          onChange={(c) => updateRegion('main', c)}
-        />
-      </main>
-
-      {/* ─── SIDEBAR: Menu + Tasks + Chores ─── */}
-      <aside className="dash-sidebar">
-        <DashboardGridStack
-          region="sidebar"
-          cards={regions.sidebar}
-          context={context}
-          editMode={editMode}
-          onChange={(c) => updateRegion('sidebar', c)}
-        />
-      </aside>
-    </div>
+    <LazyBoundary>
+      <AdvancedDashboard layout={layout} context={context} />
+    </LazyBoundary>
   );
 }

@@ -36,3 +36,28 @@ HA aggressively caches add-on repos. To force update visibility: create a git ta
 
 ### Semantic Release
 `.releaserc.json` and `.github/workflows/release.yml` handle automated versioning. Uses conventional commits (`fix:` → patch, `feat:` → minor, `BREAKING CHANGE:` → major). Bumps both config.yaml files, syncs changelogs, creates GitHub releases.
+
+## Learnings - 2026-09-26
+
+### Google Tasks Chores Sync Runs in the Add-on Server
+The sync lives in `chores-sync.cjs` (required by `server.js`), not in the
+browser: one pass at a time, every 60s, ~5s after a write to the chores or
+completions collection, and on POST `/beacon-action/chores-sync` (Sync Now;
+GET returns status). `src/hooks/useChoresSync.ts` only polls that status and
+refreshes screens when `lastChangeAt` moves. Server tests are root-level
+`*.test.ts` files (vitest includes them). Any new server-side file needs its
+own `COPY` line in the `Dockerfile` — only `server.js` and the files listed
+there reach the container. Server-side files use `.cjs` because the root
+`package.json` is `"type": "module"`.
+
+### On-Demand Screens (code splitting)
+Screens not needed to show the dashboard (Settings, Music, Photos, Weather,
+Timer, Leaderboard, Onboarding, Kid Display, the Advanced Dashboard with
+GridStack, and its dnd-kit classic-layout editor) are loaded with
+`lazyNamed()` (src/utils/lazy-screen.ts) inside `<LazyBoundary>`. A plain
+`import { X } from './X'` anywhere on the startup path pulls X (and its
+libraries) back into the main bundle, so check `npm run build` output.
+`manualChunks` in vite.config.ts only splits React out; don't widen it to
+all of node_modules, or GridStack/dnd-kit end up in the startup download.
+After an add-on update a running display asks for old file names and
+server.js answers with index.html; `lazyNamed` reloads the page once.

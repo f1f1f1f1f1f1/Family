@@ -64,7 +64,7 @@ export function useLocalCalendar() {
     };
     setEvents(prev => [...prev, newEvent]);
     return newEvent;
-  }, []);
+  }, [setEvents]);
 
   const updateEvent = useCallback((uid: string, patch: {
     summary?: string;
@@ -85,11 +85,11 @@ export function useLocalCalendar() {
       if (patch.description !== undefined) updated.description = patch.description;
       return updated;
     }));
-  }, []);
+  }, [setEvents]);
 
   const deleteEvent = useCallback((uid: string) => {
     setEvents(prev => prev.filter(ev => ev.id !== uid));
-  }, []);
+  }, [setEvents]);
 
   return {
     calendar: LOCAL_CALENDAR,

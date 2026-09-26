@@ -76,17 +76,19 @@ export function WeekCalendar({ events, hiddenCalendars, onEventClick, onSlotClic
 
   // Week navigation: offset in weeks from today's week (0 = current, +1 = next, -1 = prev)
   const [weekOffset, setWeekOffset] = useState(0);
+  // Keyed on today's week (as a number, since `today` is a new Date every
+  // render) so a wall display left running past Saturday midnight moves on
+  // to the new week at its next re-render instead of staying on the old one.
+  const todayWeekStartMs = todayWeekStart.getTime();
   const weekStart = useMemo(
-    () => startOfWeek(addWeeks(today, weekOffset), { weekStartsOn: 0 }),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [weekOffset],
+    () => addWeeks(new Date(todayWeekStartMs), weekOffset),
+    [todayWeekStartMs, weekOffset],
   );
 
   // Notify parent so it can refetch events for the visible week if needed
   useEffect(() => {
     onVisibleWeekChange?.(weekStart);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [weekStart.toISOString()]);
+  }, [weekStart, onVisibleWeekChange]);
 
   // Drag state
   const [dragEvent, setDragEvent] = useState<CalendarEvent | null>(null);
@@ -111,8 +113,7 @@ export function WeekCalendar({ events, hiddenCalendars, onEventClick, onSlotClic
 
   const allDays = useMemo(() => {
     return Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [weekStart.toISOString()]);
+  }, [weekStart]);
 
   // On mobile show a 3-day slice, on desktop show all 7
   const days = useMemo(() => {
@@ -238,7 +239,6 @@ export function WeekCalendar({ events, hiddenCalendars, onEventClick, onSlotClic
 
       // Find first available lane
       let lane = 0;
-      // eslint-disable-next-line no-constant-condition
       while (true) {
         let conflict = false;
         for (let c = startCol; c < startCol + span; c++) {
@@ -281,12 +281,11 @@ export function WeekCalendar({ events, hiddenCalendars, onEventClick, onSlotClic
   // Scroll to current hour on mount
   useEffect(() => {
     if (scrollRef.current) {
-      const currentHour = getHours(today);
+      const currentHour = getHours(new Date());
       const scrollToHour = Math.max(currentHour - 1, START_HOUR);
       const hourHeight = 72; // matches --hour-height
       scrollRef.current.scrollTop = (scrollToHour - START_HOUR) * hourHeight;
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // --- Inline event-detail handlers ---

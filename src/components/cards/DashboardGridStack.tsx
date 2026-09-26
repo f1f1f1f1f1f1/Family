@@ -2,8 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import { GridStack, GridStackNode, GridStackWidget } from 'gridstack';
 import 'gridstack/dist/gridstack.min.css';
 import { cardRegistry } from './registry';
-import { CardPickerModal } from './CardPickerModal';
-import { CardConfigModal } from './CardConfigModal';
+import { CardPickerModal, CardConfigModal } from './card-modals';
+import { LazyBoundary } from '../LazyBoundary';
 import { DashboardCard, DashboardCardContext, DashboardRegion } from '../../types/dashboard-cards';
 
 interface DashboardGridStackProps {
@@ -103,6 +103,7 @@ export function DashboardGridStack({ region, cards, context, editMode, onChange 
   // Mount GridStack once.
   useEffect(() => {
     if (!containerRef.current) return;
+    const madeIds = madeWidgetIds.current;
     const grid = GridStack.init(
       {
         column: columnCount,
@@ -139,10 +140,10 @@ export function DashboardGridStack({ region, cards, context, editMode, onChange 
       resizeObserver?.disconnect();
       grid.destroy(false);
       gridRef.current = null;
-      madeWidgetIds.current.clear();
+      madeIds.clear();
     };
     // Only ever set up once — editMode/card changes are handled by the effects below.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- region (and the sizes derived from it) is fixed per instance; editMode is applied via setStatic below
   }, []);
 
   // Lock/unlock dragging & resizing.
@@ -264,12 +265,14 @@ export function DashboardGridStack({ region, cards, context, editMode, onChange 
           + Add Card
         </button>
       )}
-      {pickerOpen && (
-        <CardPickerModal region={region} onPick={handleAdd} onClose={() => setPickerOpen(false)} />
-      )}
-      {configuringCard && (
-        <CardConfigModal card={configuringCard} onSave={handleConfigSave} onClose={() => setConfiguringId(null)} />
-      )}
+      <LazyBoundary fallback={null}>
+        {pickerOpen && (
+          <CardPickerModal region={region} onPick={handleAdd} onClose={() => setPickerOpen(false)} />
+        )}
+        {configuringCard && (
+          <CardConfigModal card={configuringCard} onSave={handleConfigSave} onClose={() => setConfiguringId(null)} />
+        )}
+      </LazyBoundary>
     </div>
   );
 }
