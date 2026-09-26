@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react';
-import { isSameDay, startOfDay, addDays, parseISO } from 'date-fns';
+import { isSameDay, startOfDay, addDays } from 'date-fns';
 import { CalendarEvent, WeatherData } from '../types';
+import { eventOccursOnDay } from '../utils/event-dates';
 import { Chore, FamilyMember } from '../types/family';
 import { useFamilyEvents } from '../hooks/useFamilyEvents';
 import { useMealPlans } from '../hooks/useMealPlans';
@@ -81,7 +82,7 @@ export function DashboardView({
   // Events for the currently selected day, used by the "other" / fallback view
   const todayEvents = useMemo(() => {
     return events
-      .filter((e) => isSameDay(startOfDay(parseISO(e.start)), selectedDate))
+      .filter((e) => eventOccursOnDay(e, selectedDate))
       .sort((a, b) => a.start.localeCompare(b.start));
   }, [events, selectedDate]);
 
@@ -92,7 +93,7 @@ export function DashboardView({
     return Array.from({ length: 7 }, (_, i) => {
       const day = addDays(start, i);
       const dayEvents = events
-        .filter((e) => isSameDay(startOfDay(parseISO(e.start)), day))
+        .filter((e) => eventOccursOnDay(e, day))
         .sort((a, b) => a.start.localeCompare(b.start));
       return { day, events: dayEvents };
     });

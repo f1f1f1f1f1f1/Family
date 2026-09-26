@@ -40,4 +40,48 @@ describe('WeekCalendar', () => {
     rerender(<WeekCalendar events={[]} {...props} />);
     expect(onVisibleWeekChange).toHaveBeenLastCalledWith(new Date(2026, 9, 4)); // Sun 4 Oct
   });
+
+  it('starts the week on Monday when set to', () => {
+    vi.setSystemTime(new Date(2026, 8, 27, 10, 0)); // Sun 27 Sep 2026
+    const onVisibleWeekChange = vi.fn();
+    render(
+      <WeekCalendar
+        events={[]}
+        hiddenCalendars={new Set()}
+        onEventClick={vi.fn()}
+        onSlotClick={vi.fn()}
+        onVisibleWeekChange={onVisibleWeekChange}
+        weekStartsOn={1}
+      />,
+    );
+    // Sunday is the last day of the week that started on Monday 21 Sep.
+    expect(onVisibleWeekChange).toHaveBeenLastCalledWith(new Date(2026, 8, 21));
+  });
+
+  // Hour rows are var(--hour-height) tall, which is 64px or less on
+  // tablets and phones; events were placed as if every row were 72px, so
+  // a 4pm event showed up around 5pm and the error grew through the day.
+  it('places timed events in units of the hour-row height', () => {
+    vi.setSystemTime(new Date(2026, 8, 26, 10, 0));
+    const { container } = render(
+      <WeekCalendar
+        events={[{
+          id: 'ev-1',
+          title: 'Soccer practice',
+          start: '2026-09-26T16:00:00',
+          end: '2026-09-26T17:30:00',
+          allDay: false,
+          calendarId: 'calendar.family',
+          calendarName: 'Family',
+          color: '#22c55e',
+        }]}
+        hiddenCalendars={new Set()}
+        onEventClick={vi.fn()}
+        onSlotClick={vi.fn()}
+      />,
+    );
+    const block = container.querySelector<HTMLElement>('.event-block')!;
+    expect(block.style.top).toBe('calc(var(--hour-height) * 9)'); // 4pm is 9 hours below 7am
+    expect(block.style.height).toBe('max(22px, calc(var(--hour-height) * 1.5))');
+  });
 });

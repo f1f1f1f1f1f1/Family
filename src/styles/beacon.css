@@ -133,8 +133,30 @@ a:focus:not(:focus-visible) {
 .beacon {
   height: 100vh;
   display: grid;
+  /* A banner (Kid Display member not found), the screen, and the Now
+     Playing bar. Rows with nothing in them take no space; without these
+     rows the banner and bar were put in extra rows below the screen, where
+     overflow: hidden cut them off. */
+  grid-template-rows: auto minmax(0, 1fr) auto;
   overflow: hidden;
   background: var(--bg-primary);
+}
+
+.beacon > .focus-invalid-banner {
+  grid-row: 1;
+}
+
+.beacon-main {
+  grid-row: 2;
+}
+
+.beacon > .now-playing-bar {
+  grid-row: 3;
+}
+
+/* While the Now Playing bar is up, the add button sits above it. */
+.beacon--now-playing {
+  --now-playing-height: 64px;
 }
 
 /* Sidebar LEFT (default) */
@@ -142,7 +164,9 @@ a:focus:not(:focus-visible) {
   grid-template-columns: var(--sidebar-width) 1fr;
 }
 
-.beacon--sidebar-left .beacon-main {
+.beacon--sidebar-left .beacon-main,
+.beacon--sidebar-left > .focus-invalid-banner,
+.beacon--sidebar-left > .now-playing-bar {
   grid-column: 2;
 }
 
@@ -157,7 +181,9 @@ a:focus:not(:focus-visible) {
   grid-template-columns: 1fr var(--sidebar-width);
 }
 
-.beacon--sidebar-right .beacon-main {
+.beacon--sidebar-right .beacon-main,
+.beacon--sidebar-right > .focus-invalid-banner,
+.beacon--sidebar-right > .now-playing-bar {
   grid-column: 1;
 }
 
@@ -173,7 +199,9 @@ a:focus:not(:focus-visible) {
   padding-bottom: var(--mobile-tab-bar-height, 72px);
 }
 
-.beacon--sidebar-bottom .beacon-main {
+.beacon--sidebar-bottom .beacon-main,
+.beacon--sidebar-bottom > .focus-invalid-banner,
+.beacon--sidebar-bottom > .now-playing-bar {
   grid-column: 1;
 }
 
@@ -1647,7 +1675,8 @@ a:focus:not(:focus-visible) {
 
   .beacon .beacon-main,
   .beacon--sidebar-left .beacon-main,
-  .beacon--sidebar-right .beacon-main {
+  .beacon--sidebar-right .beacon-main,
+  .beacon > .focus-invalid-banner {
     grid-column: 1 !important;
   }
 

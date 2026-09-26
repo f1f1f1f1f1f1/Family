@@ -24,6 +24,8 @@ interface WeekCalendarProps {
   onSlotClick: (date: string, hour: number) => void;
   onEventReschedule?: (event: CalendarEvent, newDate: string, newHour: number) => void;
   onVisibleWeekChange?: (weekStart: Date) => void;
+  /** First day of the week: 0 = Sunday, 1 = Monday. */
+  weekStartsOn?: 0 | 1;
 }
 
 const START_HOUR = 7;
@@ -67,9 +69,9 @@ interface MultiDaySpan {
   lane: number;
 }
 
-export function WeekCalendar({ events, hiddenCalendars, onEventClick, onSlotClick, onEventReschedule, onVisibleWeekChange }: WeekCalendarProps) {
+export function WeekCalendar({ events, hiddenCalendars, onEventClick, onSlotClick, onEventReschedule, onVisibleWeekChange, weekStartsOn = 0 }: WeekCalendarProps) {
   const today = new Date();
-  const todayWeekStart = startOfWeek(today, { weekStartsOn: 0 });
+  const todayWeekStart = startOfWeek(today, { weekStartsOn });
   const scrollRef = useRef<HTMLDivElement>(null);
   const isMobile = useIsMobile();
   const forecast = useWeatherForecast();
@@ -283,7 +285,7 @@ export function WeekCalendar({ events, hiddenCalendars, onEventClick, onSlotClic
     if (scrollRef.current) {
       const currentHour = getHours(new Date());
       const scrollToHour = Math.max(currentHour - 1, START_HOUR);
-      const hourHeight = 72; // matches --hour-height
+      const hourHeight = parseFloat(getComputedStyle(scrollRef.current).getPropertyValue('--hour-height')) || 72;
       scrollRef.current.scrollTop = (scrollToHour - START_HOUR) * hourHeight;
     }
   }, []);
@@ -341,12 +343,12 @@ export function WeekCalendar({ events, hiddenCalendars, onEventClick, onSlotClic
     const clampedStart = Math.max(startHour, START_HOUR);
     const clampedEnd = Math.min(endHour, END_HOUR);
 
-    const topOffset = (clampedStart - START_HOUR) * 72;
-    const height = Math.max((clampedEnd - clampedStart) * 72, 22);
-
+    // Hour rows are var(--hour-height) tall, which the stylesheet shrinks
+    // on smaller screens (72px down to 52px), so place events in units of
+    // it rather than a fixed pixel height.
     const style: React.CSSProperties = {
-      top: `${topOffset}px`,
-      height: `${height}px`,
+      top: `calc(var(--hour-height) * ${clampedStart - START_HOUR})`,
+      height: `max(22px, calc(var(--hour-height) * ${clampedEnd - clampedStart}))`,
     };
 
     // Side-by-side columns for overlapping events
@@ -359,19 +361,20 @@ export function WeekCalendar({ events, hiddenCalendars, onEventClick, onSlotClic
     return style;
   }
 
-  // Current time indicator position — updates every 30s so the red line moves
-  const [currentTimeTop, setCurrentTimeTop] = useState<number | null>(() => {
+  // Current time indicator position (in hours below the grid's top) —
+  // updates every 30s so the red line moves
+  const [currentTimeOffset, setCurrentTimeOffset] = useState<number | null>(() => {
     const now = new Date();
     const h = getHours(now) + getMinutes(now) / 60;
     if (h < START_HOUR || h > END_HOUR) return null;
-    return (h - START_HOUR) * 72;
+    return h - START_HOUR;
   });
 
   useEffect(() => {
     const tick = () => {
       const now = new Date();
       const h = getHours(now) + getMinutes(now) / 60;
-      setCurrentTimeTop(h < START_HOUR || h > END_HOUR ? null : (h - START_HOUR) * 72);
+      setCurrentTimeOffset(h < START_HOUR || h > END_HOUR ? null : h - START_HOUR);
     };
     const interval = setInterval(tick, 30_000);
     return () => clearInterval(interval);
@@ -680,10 +683,10 @@ export function WeekCalendar({ events, hiddenCalendars, onEventClick, onSlotClic
                 ))}
 
                 {/* Current time indicator */}
-                {isToday && currentTimeTop !== null && (
+                {isToday && currentTimeOffset !== null && (
                   <div
                     className="current-time-line"
-                    style={{ top: `${currentTimeTop}px` }}
+                    style={{ top: `calc(var(--hour-height) * ${currentTimeOffset})` }}
                   />
                 )}
               </div>

@@ -1,9 +1,10 @@
 import { useMemo } from 'react';
-import { format, parseISO, isSameDay, startOfDay } from 'date-fns';
+import { format, parseISO } from 'date-fns';
 import { CalendarEvent } from '../types';
 import { Chore, FamilyMember } from '../types/family';
 import { TaskChecklist } from './TaskChecklist';
 import { DashboardTodoItem } from '../hooks/useDashboardTasks';
+import { eventOccursOnDay } from '../utils/event-dates';
 
 interface CalendarSidebarProps {
   events: CalendarEvent[];
@@ -24,13 +25,14 @@ export function CalendarSidebar({
   onToggleTodo,
   members = [],
 }: CalendarSidebarProps) {
-  const today = startOfDay(new Date());
+  const todayKey = format(new Date(), 'yyyy-MM-dd');
 
   const todayEvents = useMemo(() => {
+    const today = parseISO(todayKey);
     return events
-      .filter((e) => isSameDay(startOfDay(parseISO(e.start)), today))
+      .filter((e) => eventOccursOnDay(e, today))
       .sort((a, b) => a.start.localeCompare(b.start));
-  }, [events, today]);
+  }, [events, todayKey]);
 
   const pendingTodos = todoItems.filter((t) => t.status === 'needs_action');
 
