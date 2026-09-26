@@ -338,6 +338,18 @@ describe('chores sync (add-on)', () => {
     expect(coll('beacon_streaks')[0]).toMatchObject({ current: 3, longest: 3 });
   });
 
+  // "Yesterday" was now minus 24 hours: just after midnight following a
+  // 23-hour daylight-saving day, that's the day before yesterday.
+  it('advances a streak across a daylight-saving change', async () => {
+    timeZone = 'America/New_York';
+    clock = new Date('2026-03-09T04:30:00Z'); // 00:30 on 9 March, after 8 March lost an hour
+    const { run, task } = await setup();
+    coll('beacon_streaks').push({ id: 'kai', member_id: 'kai', current: 2, longest: 2, last_completed: '2026-03-08T17:00:00Z' });
+    task()[0].status = 'completed';
+    await run();
+    expect(coll('beacon_streaks')[0]).toMatchObject({ current: 3 });
+  });
+
   it("starts a streak when a chore is ticked in Google by someone who doesn't have one yet", async () => {
     const { run, task } = await setup();
     task()[0].status = 'completed';

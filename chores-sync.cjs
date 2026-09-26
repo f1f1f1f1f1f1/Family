@@ -58,7 +58,15 @@ const COLLECTIONS = {
 /** Tag earlier builds wrote into task notes; no longer written. */
 const LEGACY_MARKER_PREFIX = '[beacon-sync]';
 
-const DAY_MS = 24 * 60 * 60 * 1000;
+/**
+ * The day before a "YYYY-MM-DD" key, by the calendar. Now minus 24 hours
+ * isn't always yesterday: after a 23-hour daylight-saving day, at 00:30
+ * it's the day before yesterday, and a streak restarted at 1.
+ */
+function previousDayKey(key) {
+  const [y, m, d] = key.split('-').map(Number);
+  return new Date(Date.UTC(y, m - 1, d - 1)).toISOString().slice(0, 10);
+}
 
 /**
  * Links are looked up by the chore and member they belong to. Their `id` is
@@ -270,7 +278,7 @@ function createChoresSync({
       const existing = streaks.find((s) => s.member_id === memberId);
       const lastDate = dayKey(existing?.last_completed);
       if (lastDate === today) return;
-      const yesterday = dayKey(now().getTime() - DAY_MS);
+      const yesterday = previousDayKey(today);
       const current = lastDate === yesterday ? (existing?.current ?? 0) + 1 : 1;
       const patch = {
         member_id: memberId,
