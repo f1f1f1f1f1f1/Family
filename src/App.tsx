@@ -129,11 +129,11 @@ export function App() {
     uncompleteChore,
   } = useChores();
 
-  const { runSync: runChoresSync } = useChoresSync(
-    settings.choresSyncEnabled,
-    settings.choresSyncListByMember,
-    members,
-  );
+  const {
+    status: choresSyncStatus,
+    runSync: runChoresSync,
+    available: choresSyncAvailable,
+  } = useChoresSync(settings.choresSyncEnabled);
 
   // Lists mirrored as chores by the Google Tasks sync already show on the
   // Chores screen, so keep them out of the Tasks screen and dashboard.
@@ -657,7 +657,8 @@ export function App() {
             settings={settings}
             onUpdateSettings={updateSettings}
             onResetSettings={resetSettings}
-            onRunChoresSync={() => runChoresSync(true)}
+            onRunChoresSync={choresSyncAvailable ? runChoresSync : undefined}
+            choresSyncStatus={choresSyncStatus}
             onExportSettings={exportSettings}
             onImportSettings={importSettings}
             onClearLocalStorage={clearLocalStorage}
