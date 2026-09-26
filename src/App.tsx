@@ -8,16 +8,12 @@ import { useChores } from './hooks/useChores';
 import { useChoresSync } from './hooks/useChoresSync';
 import { Clock } from './components/Clock';
 import { WeekCalendar } from './components/WeekCalendar';
-import { DashboardView } from './components/DashboardView';
+import { DashboardView, AdvancedDashboard } from './components/DashboardView';
 import { EventModal, EventFormData } from './components/EventModal';
 import { FamilyFilter } from './components/FamilyFilter';
-import { SettingsView } from './components/SettingsView';
 import { useSettings } from './hooks/useSettings';
 import { ChoresView } from './components/ChoresView';
-import { Leaderboard } from './components/Leaderboard';
 import { Sidebar, SidebarView } from './components/Sidebar';
-import { MusicView } from './components/MusicView';
-import { PhotoFrame } from './components/PhotoFrame';
 import { NowPlayingBar } from './components/NowPlayingBar';
 import { useMusic } from './hooks/useMusic';
 import { useNotifications } from './hooks/useNotifications';
@@ -25,21 +21,53 @@ import { ScreenSaver } from './components/ScreenSaver';
 import { GroceryView } from './components/GroceryView';
 import { OmniAdd } from './components/OmniAdd';
 import { CalendarSidebar } from './components/CalendarSidebar';
-import { Timer } from './components/Timer';
-import { WeatherView } from './components/WeatherView';
 import { useIngressDetect } from './hooks/useIngressDetect';
 import { useHaAuth } from './hooks/useHaAuth';
 import { useTheme } from './hooks/useTheme';
 import { useLocalCalendar } from './hooks/useLocalCalendar';
 import { useDashboardTasks } from './hooks/useDashboardTasks';
-import OnboardingView from './components/OnboardingView';
-import { FocusView } from './components/focus/FocusView';
+import { LazyBoundary } from './components/LazyBoundary';
+import { lazyNamed } from './utils/lazy-screen';
 import { getFocusMemberId, clearFocusMode, setDeviceFocusMember } from './focus';
 import { CalendarEvent, resolveCalendarColor } from './types';
 import { getConfig, patchConfig } from './config';
 import { setHaKioskMode } from './utils/ha-kiosk';
 
 const config = getConfig();
+
+// Screens that aren't needed to show the dashboard are downloaded the first
+// time they're opened, which keeps the startup download small.
+const SettingsView = lazyNamed(() => import('./components/SettingsView'), 'SettingsView');
+const MusicView = lazyNamed(() => import('./components/MusicView'), 'MusicView');
+const PhotoFrame = lazyNamed(() => import('./components/PhotoFrame'), 'PhotoFrame');
+const WeatherView = lazyNamed(() => import('./components/WeatherView'), 'WeatherView');
+const Timer = lazyNamed(() => import('./components/Timer'), 'Timer');
+const Leaderboard = lazyNamed(() => import('./components/Leaderboard'), 'Leaderboard');
+const OnboardingView = lazyNamed(() => import('./components/OnboardingView'), 'default');
+const FocusView = lazyNamed(() => import('./components/focus/FocusView'), 'FocusView');
+
+function LoadingScreen() {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', background: 'var(--bg-primary)' }}>
+      <div style={{ textAlign: 'center', color: 'var(--text-muted)' }}>Loading...</div>
+    </div>
+  );
+}
+
+/**
+ * The leaderboard is downloaded the first time it's opened. It mounts closed
+ * and opens right after, so it still slides in that first time.
+ */
+function LeaderboardPanel({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const [ready, setReady] = useState(false);
+  useEffect(() => {
+    // Make the browser lay the panel out closed before it opens, so the
+    // opening is animated rather than the panel just appearing.
+    void document.body.offsetWidth;
+    setReady(true);
+  }, []);
+  return <Leaderboard open={open && ready} onClose={onClose} />;
+}
 
 export function App() {
   const auth = useHaAuth();
@@ -201,6 +229,17 @@ export function App() {
 
   const focusInvalid = !!focusMemberId && !focusMember && (members.length > 0 || focusLoadTimedOut);
 
+  // While stored credentials load, start downloading the screen this device
+  // opens on if it's one of the on-demand ones, so it's ready sooner.
+  useEffect(() => {
+    if (focusMemberId) FocusView.preload();
+    else if (activeView === 'dashboard' && settings.advancedDashboard) AdvancedDashboard.preload();
+    else if (activeView === 'music') MusicView.preload();
+    else if (activeView === 'photos') PhotoFrame.preload();
+    // Only the screen shown at startup.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const handleExitFocus = useCallback(() => {
     clearFocusMode();
     setFocusMemberId(null);
@@ -236,6 +275,8 @@ export function App() {
   // Leaderboard is still a slide-over panel (not a full view); Chores is now
   // a real full-screen activeView (see PRD: dedicated chores screen).
   const [showLeaderboard, setShowLeaderboard] = useState(false);
+  // Not mounted (so not downloaded, and not fetching its data) until first opened.
+  const [leaderboardOpened, setLeaderboardOpened] = useState(false);
 
   // Fetch data when connected, or when the user navigates to a different week.
   useEffect(() => {
@@ -452,6 +493,7 @@ export function App() {
       // Leaderboard opens as an overlay, doesn't change the main view.
       // Chores is a real activeView now (dedicated full-screen view).
       if (view === 'leaderboard') {
+        setLeaderboardOpened(true);
         setShowLeaderboard(true);
         return;
       }
@@ -536,11 +578,7 @@ export function App() {
 
   // Show loading screen while checking stored credentials
   if (auth.state.loading) {
-    return (
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', background: 'var(--bg-primary)' }}>
-        <div style={{ textAlign: 'center', color: 'var(--text-muted)' }}>Loading...</div>
-      </div>
-    );
+    return <LoadingScreen />;
   }
 
   // Show onboarding ONLY when running as a standalone app with no HA connection configured.
@@ -554,32 +592,32 @@ export function App() {
   );
   if (!isHaManaged && !auth.state.isOnboarded) {
     return (
-      <OnboardingView
-        onComplete={handleOnboardingComplete}
-        onOAuthStart={handleOAuthStart}
-      />
+      <LazyBoundary fallback={<LoadingScreen />}>
+        <OnboardingView
+          onComplete={handleOnboardingComplete}
+          onOAuthStart={handleOAuthStart}
+        />
+      </LazyBoundary>
     );
   }
 
   // Kid Display mode: replace the entire shell (same pattern as onboarding)
   if (focusMember) {
     return (
-      <FocusView
-        memberId={focusMember.id}
-        settings={settings}
-        onExit={handleExitFocus}
-      />
+      <LazyBoundary fallback={<LoadingScreen />}>
+        <FocusView
+          memberId={focusMember.id}
+          settings={settings}
+          onExit={handleExitFocus}
+        />
+      </LazyBoundary>
     );
   }
 
   // Focus member requested but members not loaded yet (fresh device cache):
   // hold on a lightweight loading screen instead of flashing the full app.
   if (focusMemberId && members.length === 0 && !focusLoadTimedOut) {
-    return (
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', background: 'var(--bg-primary)' }}>
-        <div style={{ textAlign: 'center', color: 'var(--text-muted)' }}>Loading...</div>
-      </div>
-    );
+    return <LoadingScreen />;
   }
 
   return (
@@ -641,55 +679,65 @@ export function App() {
             </div>
           )
         ) : activeView === 'music' ? (
-          <MusicView
-            activePlayer={music.activePlayer}
-            players={music.players}
-            selectedPlayerId={music.selectedPlayerId}
-            onPlay={music.play}
-            onPause={music.pause}
-            onNext={music.next}
-            onPrevious={music.previous}
-            onSetVolume={music.setVolume}
-            onSelectPlayer={music.selectPlayer}
-          />
+          <LazyBoundary>
+            <MusicView
+              activePlayer={music.activePlayer}
+              players={music.players}
+              selectedPlayerId={music.selectedPlayerId}
+              onPlay={music.play}
+              onPause={music.pause}
+              onNext={music.next}
+              onPrevious={music.previous}
+              onSetVolume={music.setVolume}
+              onSelectPlayer={music.selectPlayer}
+            />
+          </LazyBoundary>
         ) : activeView === 'settings' ? (
-          <SettingsView
-            settings={settings}
-            onUpdateSettings={updateSettings}
-            onResetSettings={resetSettings}
-            onRunChoresSync={() => runChoresSync(true)}
-            onExportSettings={exportSettings}
-            onImportSettings={importSettings}
-            onClearLocalStorage={clearLocalStorage}
-            members={members}
-            onAddMember={addMember}
-            onUpdateMember={updateMember}
-            onRemoveMember={removeMember}
-            connected={connected}
-            haUrl={config.ha_url}
-            calendars={calendars}
-            onEnterFocusMode={handleEnterFocusMode}
-          />
+          <LazyBoundary>
+            <SettingsView
+              settings={settings}
+              onUpdateSettings={updateSettings}
+              onResetSettings={resetSettings}
+              onRunChoresSync={() => runChoresSync(true)}
+              onExportSettings={exportSettings}
+              onImportSettings={importSettings}
+              onClearLocalStorage={clearLocalStorage}
+              members={members}
+              onAddMember={addMember}
+              onUpdateMember={updateMember}
+              onRemoveMember={removeMember}
+              connected={connected}
+              haUrl={config.ha_url}
+              calendars={calendars}
+              onEnterFocusMode={handleEnterFocusMode}
+            />
+          </LazyBoundary>
         ) : activeView === 'grocery' ? (
           <GroceryView defaultListId={settings.defaultGroceryList || undefined} mode="grocery" groceryListIds={settings.groceryListIds} hideLocalList={settings.hideLocalGroceryList} hiddenListIds={choreSyncListIds} />
         ) : activeView === 'tasks' ? (
           <GroceryView mode="tasks" groceryListIds={settings.groceryListIds} hideLocalList={settings.hideLocalTaskList} hiddenListIds={choreSyncListIds} />
         ) : activeView === 'timer' ? (
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', padding: 24 }}>
-            <Timer />
+            <LazyBoundary>
+              <Timer />
+            </LazyBoundary>
           </div>
         ) : activeView === 'weather' ? (
-          <WeatherView />
+          <LazyBoundary>
+            <WeatherView />
+          </LazyBoundary>
         ) : activeView === 'photos' ? (
-          <PhotoFrame
-            musicPlayer={music.activePlayer}
-            onMusicPlay={() => music.activePlayer && music.play(music.activePlayer.entity_id)}
-            onMusicPause={() => music.activePlayer && music.pause(music.activePlayer.entity_id)}
-            onMusicNext={() => music.activePlayer && music.next(music.activePlayer.entity_id)}
-            onMusicPrevious={() => music.activePlayer && music.previous(music.activePlayer.entity_id)}
-            onMusicSetVolume={(v) => music.activePlayer && music.setVolume(v, music.activePlayer.entity_id)}
-            onBack={() => setActiveView('dashboard')}
-          />
+          <LazyBoundary>
+            <PhotoFrame
+              musicPlayer={music.activePlayer}
+              onMusicPlay={() => music.activePlayer && music.play(music.activePlayer.entity_id)}
+              onMusicPause={() => music.activePlayer && music.pause(music.activePlayer.entity_id)}
+              onMusicNext={() => music.activePlayer && music.next(music.activePlayer.entity_id)}
+              onMusicPrevious={() => music.activePlayer && music.previous(music.activePlayer.entity_id)}
+              onMusicSetVolume={(v) => music.activePlayer && music.setVolume(v, music.activePlayer.entity_id)}
+              onBack={() => setActiveView('dashboard')}
+            />
+          </LazyBoundary>
         ) : (
           <>
             {/* Header */}
@@ -769,10 +817,11 @@ export function App() {
       )}
 
       {/* Leaderboard Slide Panel */}
-      <Leaderboard
-        open={showLeaderboard}
-        onClose={handleClosePanel}
-      />
+      {leaderboardOpened && (
+        <LazyBoundary fallback={null}>
+          <LeaderboardPanel open={showLeaderboard} onClose={handleClosePanel} />
+        </LazyBoundary>
+      )}
       {showLeaderboard && (
         <div
           className="slide-panel-backdrop"

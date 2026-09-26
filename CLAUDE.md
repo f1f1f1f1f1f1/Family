@@ -36,3 +36,17 @@ HA aggressively caches add-on repos. To force update visibility: create a git ta
 
 ### Semantic Release
 `.releaserc.json` and `.github/workflows/release.yml` handle automated versioning. Uses conventional commits (`fix:` → patch, `feat:` → minor, `BREAKING CHANGE:` → major). Bumps both config.yaml files, syncs changelogs, creates GitHub releases.
+
+## Learnings - 2026-09-26
+
+### On-Demand Screens (code splitting)
+Screens not needed to show the dashboard (Settings, Music, Photos, Weather,
+Timer, Leaderboard, Onboarding, Kid Display, the Advanced Dashboard with
+GridStack, and its dnd-kit classic-layout editor) are loaded with
+`lazyNamed()` (src/utils/lazy-screen.ts) inside `<LazyBoundary>`. A plain
+`import { X } from './X'` anywhere on the startup path pulls X (and its
+libraries) back into the main bundle, so check `npm run build` output.
+`manualChunks` in vite.config.ts only splits React out; don't widen it to
+all of node_modules, or GridStack/dnd-kit end up in the startup download.
+After an add-on update a running display asks for old file names and
+server.js answers with index.html; `lazyNamed` reloads the page once.
