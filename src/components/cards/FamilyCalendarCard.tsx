@@ -30,8 +30,13 @@ export function FamilyCalendarCard({ config, context }: DashboardCardProps) {
     );
   }
 
+  const showOtherColumn = showOther && other.length > 0;
+  // The Other column needs a grid column of its own too, or it wraps onto a
+  // second row and every column gets half the height.
+  const columnCount = members.length + (showOtherColumn ? 1 : 0);
+
   return (
-    <div className="dash-family-grid" style={{ '--member-count': members.length } as React.CSSProperties}>
+    <div className="dash-family-grid" style={{ '--member-count': columnCount } as React.CSSProperties}>
       {members.map((member) => {
         const memberEvents = byMember.get(member.id) || [];
         const isSelected = selectedMemberFilter === member.id;
@@ -66,7 +71,7 @@ export function FamilyCalendarCard({ config, context }: DashboardCardProps) {
           </section>
         );
       })}
-      {showOther && other.length > 0 && (
+      {showOtherColumn && (
         <section className="dash-member-col dash-member-col--other">
           <div className="dash-member-header">
             <span className="dash-member-avatar" style={{ backgroundColor: 'var(--bg-hover)', borderColor: 'var(--border)' }}>
