@@ -5,7 +5,10 @@
 /* --- Main grid: topbar / main+sidebar (default layout) --- */
 .dashboard {
   display: grid;
-  grid-template-columns: 1fr 300px;
+  /* minmax(0, …): the calendar gives up width instead of pushing the
+     sidebar off-screen. The sidebar is 300px, or 30% of the width (at
+     least 240px) on smaller screens like the Echo Show 5/8 (~960px). */
+  grid-template-columns: minmax(0, 1fr) clamp(240px, 30%, 300px);
   grid-template-rows: auto 1fr;
   grid-template-areas:
     "topbar topbar"
@@ -199,11 +202,16 @@
 
 .dash-family-grid {
   display: grid;
-  grid-template-columns: repeat(var(--member-count, 1), minmax(140px, 1fr));
+  grid-template-columns: repeat(var(--member-count, 1), minmax(120px, 1fr));
   gap: 20px;
   align-items: stretch;
   height: 100%;
   min-height: 0;
+  /* Members that don't fit at 120px each scroll sideways here. */
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
 }
 
 .dash-member-col {
@@ -259,6 +267,10 @@
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.04em;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .dash-member-events {
@@ -676,6 +688,15 @@
 
 .task-groups .task-checklist { flex: none; overflow-y: visible; }
 
+/* ─── Responsive: mid-size screens (Echo Show 5/8, iPad) ─── */
+/* Tighter spacing leaves more room for member columns next to the sidebar. */
+@media (min-width: 769px) and (max-width: 1199px) {
+  .dashboard:not(.dashboard--classic):not(.dashboard--compact) {
+    padding: 20px 24px;
+    gap: 20px;
+  }
+}
+
 /* ─── Responsive: Tablet < 768px ─── */
 @media (max-width: 768px) {
   .dashboard {
@@ -702,6 +723,7 @@
   .dash-family-grid {
     grid-template-columns: 1fr;
     gap: 12px;
+    overflow: visible;
   }
 
   .dash-member-header {
