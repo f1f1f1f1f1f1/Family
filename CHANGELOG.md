@@ -1,3 +1,10 @@
+## [1.52.3](https://github.com/f1f1f1f1f1f1/Family/compare/v1.52.2...v1.52.3) (2026-09-26)
+
+
+### Bug Fixes
+
+* keep the dashboard's Tasks column on screen on Echo Show-sized displays ([647cf78](https://github.com/f1f1f1f1f1f1/Family/commit/647cf782281291d06005b043dde8d2d4b0a12ed5))
+
 ## [1.52.2](https://github.com/f1f1f1f1f1f1/Family/compare/v1.52.1...v1.52.2) (2026-09-26)
 
 
