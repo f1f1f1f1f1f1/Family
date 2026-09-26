@@ -117,4 +117,15 @@ describe('HaToggleCard', () => {
 
     expect(screen.getByRole('button', { name: /light.missing/ })).toBeDisabled();
   });
+
+  it('disables entities the add-on server will not switch, like a garage door', async () => {
+    withEntities({ 'cover.garage': entity('cover.garage', 'closed', 'Garage') });
+    render(<HaToggleCard config={{ entity_ids: ['cover.garage'] }} context={context} />);
+    const toggle = screen.getByRole('button', { name: /Garage/ });
+
+    expect(toggle).toBeDisabled();
+    expect(toggle).toHaveAttribute('title', expect.stringMatching(/only switch lights/));
+    await userEvent.click(toggle);
+    expect(mockCallHaService).not.toHaveBeenCalled();
+  });
 });

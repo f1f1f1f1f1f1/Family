@@ -4,6 +4,7 @@ import { callHaService } from '../../api/ha-rest';
 import { refreshEntities } from '../../api/ha-entity-store';
 import { useHaEntities } from '../../hooks/useHaEntities';
 import { readEntityIds, readString } from './card-config';
+import { canToggle } from './toggle-domains';
 
 /** Toggle card for light/switch entities, like Lovelace's toggle rows. */
 export function HaToggleCard({ config }: DashboardCardProps) {
@@ -17,7 +18,7 @@ export function HaToggleCard({ config }: DashboardCardProps) {
 
   const handleToggle = async (entityId: string) => {
     const entity = entities[entityId];
-    if (!entity) return;
+    if (!entity || !canToggle(entityId)) return;
 
     setOptimisticStates((previous) => ({ ...previous, [entityId]: entity.state === 'on' ? 'off' : 'on' }));
     setPendingEntityIds((previous) => [...previous, entityId]);
@@ -50,6 +51,7 @@ export function HaToggleCard({ config }: DashboardCardProps) {
         {entityIds.map((entityId) => {
           const entity = entities[entityId];
           const isOn = (optimisticStates[entityId] ?? entity?.state) === 'on';
+          const toggleable = canToggle(entityId);
           const name = typeof entity?.attributes.friendly_name === 'string'
             ? entity.attributes.friendly_name
             : entityId;
@@ -59,8 +61,9 @@ export function HaToggleCard({ config }: DashboardCardProps) {
               type="button"
               className={`dash-ha-toggle ${isOn ? 'dash-ha-toggle--on' : ''}`}
               onClick={() => handleToggle(entityId)}
-              disabled={pendingEntityIds.includes(entityId) || !entity}
+              disabled={pendingEntityIds.includes(entityId) || !entity || !toggleable}
               aria-pressed={isOn}
+              title={toggleable ? undefined : 'Family can only switch lights, switches, fans and on/off helpers'}
             >
               <span className="dash-ha-toggle-name">{name}</span>
               <span className="dash-ha-toggle-switch" />
