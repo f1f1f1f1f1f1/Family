@@ -32,6 +32,26 @@ const START_HOUR = 7;
 const END_HOUR = 21; // 9 PM
 const HOURS = Array.from({ length: END_HOUR - START_HOUR }, (_, i) => START_HOUR + i);
 
+/** Height of an event pinned to the top or bottom edge of the hour grid. */
+const PINNED_EVENT_PX = 22;
+
+/**
+ * The hours of `day` (0–24, wall clock) a timed event takes up. The event
+ * must overlap the day; one that started earlier counts from 0, one that
+ * runs on past midnight up to 24.
+ */
+function hoursOnDay(event: CalendarEvent, day: Date): { from: number; to: number } {
+  const start = parseISO(event.start);
+  const end = parseISO(event.end);
+  return {
+    from: isSameDay(start, day) ? getHours(start) + getMinutes(start) / 60 : 0,
+    to: isSameDay(end, day) ? getHours(end) + getMinutes(end) / 60 : 24,
+  };
+}
+
+/** Timed events this long or longer show as bars in the all-day row. */
+const TIMED_BAR_MIN_MS = 24 * 60 * 60 * 1000;
+
 /** Number of days to show in mobile 3-day view */
 const MOBILE_DAYS = 3;
 const MOBILE_BREAKPOINT = 768;
@@ -194,18 +214,20 @@ export function WeekCalendar({ events, hiddenCalendars, onEventClick, onSlotClic
             }
           }
         }
+      } else if (eventEnd.getTime() - eventStart.getTime() >= TIMED_BAR_MIN_MS) {
+        multiDayEvents.push(event);
       } else {
-        // Check if timed event spans multiple days
-        const spanDays = differenceInCalendarDays(eventEnd, eventStart);
-        if (spanDays >= 1) {
-          multiDayEvents.push(event);
-        } else {
-          for (const day of days) {
-            const dayKey = format(day, 'yyyy-MM-dd');
-            const dayEnd = addDays(day, 1);
-            if (eventStart < dayEnd && eventEnd > day) {
-              timed.get(dayKey)?.push(event);
-            }
+        // Shorter timed events stay in the hour grid, overnight ones too:
+        // on each day whose visible hours they reach, or — when they reach
+        // none, like a 10pm–1am movie — on the day they start, pinned to
+        // the grid's edge.
+        for (const day of days) {
+          const dayKey = format(day, 'yyyy-MM-dd');
+          const dayEnd = addDays(day, 1);
+          if (!(eventStart < dayEnd && eventEnd > day)) continue;
+          const { from, to } = hoursOnDay(event, day);
+          if ((to > START_HOUR && from < END_HOUR) || isSameDay(eventStart, day)) {
+            timed.get(dayKey)?.push(event);
           }
         }
       }
@@ -336,23 +358,28 @@ export function WeekCalendar({ events, hiddenCalendars, onEventClick, onSlotClic
 
   const isCurrentWeek = weekOffset === 0;
 
-  // Calculate position and height for a timed event
-  function getEventStyle(event: CalendarEvent, layout?: OverlapLayout): React.CSSProperties {
-    const start = parseISO(event.start);
-    const end = parseISO(event.end);
-    const startHour = getHours(start) + getMinutes(start) / 60;
-    const endHour = getHours(end) + getMinutes(end) / 60;
-
-    const clampedStart = Math.max(startHour, START_HOUR);
-    const clampedEnd = Math.min(endHour, END_HOUR);
+  // Calculate position and height for a timed event on `day`
+  function getEventStyle(event: CalendarEvent, day: Date, layout?: OverlapLayout): React.CSSProperties {
+    const { from, to } = hoursOnDay(event, day);
 
     // Hour rows are var(--hour-height) tall, which the stylesheet shrinks
     // on smaller screens (72px down to 52px), so place events in units of
-    // it rather than a fixed pixel height.
-    const style: React.CSSProperties = {
-      top: `calc(var(--hour-height) * ${clampedStart - START_HOUR})`,
-      height: `max(22px, calc(var(--hour-height) * ${clampedEnd - clampedStart}))`,
-    };
+    // it rather than a fixed pixel height. Events wholly outside the grid's
+    // hours are pinned to its top or bottom edge.
+    let style: React.CSSProperties;
+    if (from >= END_HOUR) {
+      style = {
+        top: `calc(var(--hour-height) * ${END_HOUR - START_HOUR} - ${PINNED_EVENT_PX}px)`,
+        height: `${PINNED_EVENT_PX}px`,
+      };
+    } else {
+      const clampedStart = Math.max(from, START_HOUR);
+      const clampedEnd = Math.min(to, END_HOUR);
+      style = {
+        top: `calc(var(--hour-height) * ${clampedStart - START_HOUR})`,
+        height: `max(${PINNED_EVENT_PX}px, calc(var(--hour-height) * ${Math.max(clampedEnd - clampedStart, 0)}))`,
+      };
+    }
 
     // Side-by-side columns for overlapping events
     if (layout && layout.width < 1) {
@@ -677,7 +704,7 @@ export function WeekCalendar({ events, hiddenCalendars, onEventClick, onSlotClic
                     key={`${event.id}-${key}`}
                     event={event}
                     onClick={handleEventBlockClick}
-                    style={getEventStyle(event, overlapLayout.get(event.id))}
+                    style={getEventStyle(event, day, overlapLayout.get(event.id))}
                     draggable
                     expanded={expandedEventId === event.id}
                     onDragStart={(e) => handleDragStart(event, e)}

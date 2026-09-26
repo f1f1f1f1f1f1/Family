@@ -116,4 +116,56 @@ describe('WeekCalendar', () => {
     expect(bars).toHaveLength(1);
     expect(bars[0].textContent).toContain('Vacation');
   });
+  describe('timed events that cross midnight', () => {
+    const renderWith = (start: string, end: string) => {
+      vi.setSystemTime(new Date(2026, 8, 23, 10, 0)); // Wed 23 Sep 2026
+      return render(
+        <WeekCalendar
+          events={[{
+            id: 'ev-late',
+            title: 'Late movie',
+            start,
+            end,
+            allDay: false,
+            calendarId: 'calendar.family',
+            calendarName: 'Family',
+            color: '#22c55e',
+          }]}
+          hiddenCalendars={new Set()}
+          onEventClick={vi.fn()}
+          onSlotClick={vi.fn()}
+        />,
+      ).container;
+    };
+    const dayColumns = (container: HTMLElement) => [...container.querySelectorAll<HTMLElement>('.week-day-column')];
+    const blocksIn = (column: HTMLElement) => [...column.querySelectorAll<HTMLElement>('.event-block')];
+
+    // A 10pm–1am movie used to be drawn as a two-day all-day bar.
+    it('pins a late event to the bottom of the grid on the day it starts', () => {
+      const container = renderWith('2026-09-26T22:00:00', '2026-09-27T01:00:00');
+      expect(container.querySelector('.event-block--multiday')).toBeNull();
+
+      const columns = dayColumns(container);
+      const saturday = columns[6];
+      expect(columns.filter((c) => blocksIn(c).length > 0)).toEqual([saturday]);
+      const [block] = blocksIn(saturday);
+      expect(block.style.top).toBe('calc(var(--hour-height) * 14 - 22px)'); // bottom edge (9pm)
+      expect(block.style.height).toBe('22px');
+    });
+
+    it('shows each day the part of an overnight event within grid hours', () => {
+      const container = renderWith('2026-09-23T20:00:00', '2026-09-24T08:30:00');
+      const [, , , wednesday, thursday] = dayColumns(container);
+
+      expect(blocksIn(wednesday)[0].style.top).toBe('calc(var(--hour-height) * 13)'); // 8pm
+      expect(blocksIn(wednesday)[0].style.height).toBe('max(22px, calc(var(--hour-height) * 1))'); // to 9pm
+      expect(blocksIn(thursday)[0].style.top).toBe('calc(var(--hour-height) * 0)'); // from 7am
+      expect(blocksIn(thursday)[0].style.height).toBe('max(22px, calc(var(--hour-height) * 1.5))'); // to 8:30
+    });
+
+    it('keeps timed events of a day or longer as bars', () => {
+      const container = renderWith('2026-09-23T09:00:00', '2026-09-25T17:00:00');
+      expect(container.querySelectorAll('.event-block--multiday')).toHaveLength(1);
+    });
+  });
 });
