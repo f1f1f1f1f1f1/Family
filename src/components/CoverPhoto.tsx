@@ -12,12 +12,20 @@ import { useEffect, useRef, useState } from 'react';
  * apply the orientation: the file is fetched, its orientation tag is
  * rewritten to 1 ("as stored") in our copy, the raw pixels are loaded,
  * and the rotation and centre crop are both done here.
+ *
+ * Each photo is downloaded once: the image is built from the fetched bytes
+ * whether or not it needed rotating, and the last few loaded photos are
+ * kept, so `preloadSrc` (the next photo) is ready when it's shown.
  */
 
 interface Props {
   src?: string;
+  /** Loaded in the background once `src` is showing, e.g. the next photo. */
+  preloadSrc?: string;
   label: string;
   className?: string;
+  /** Called with `src` when it couldn't be loaded. */
+  onError?: (src: string) => void;
 }
 
 /** Source rectangle of an image (w × h) that fills a box (bw × bh), centred. */
@@ -66,11 +74,10 @@ export function readExifOrientation(bytes: ArrayBuffer): number | null {
   return findExifOrientation(bytes)?.value ?? null;
 }
 
-interface LoadedPhoto {
+export interface LoadedPhoto {
   image: HTMLImageElement;
   /** EXIF orientation still to be applied (1 = none). */
   orientation: number;
-  revoke?: () => void;
 }
 
 function loadImage(url: string): Promise<HTMLImageElement> {
@@ -83,21 +90,74 @@ function loadImage(url: string): Promise<HTMLImageElement> {
   });
 }
 
-async function loadPhoto(src: string): Promise<LoadedPhoto> {
+async function fetchPhoto(src: string): Promise<LoadedPhoto> {
+  let res: Response;
   try {
-    const bytes = await (await fetch(src)).arrayBuffer();
-    const found = findExifOrientation(bytes);
-    if (found && found.value >= 2 && found.value <= 8) {
-      const copy = bytes.slice(0);
-      new DataView(copy).setUint16(found.offset, 1, found.little);
-      const url = URL.createObjectURL(new Blob([copy], { type: 'image/jpeg' }));
-      const image = await loadImage(url);
-      return { image, orientation: found.value, revoke: () => URL.revokeObjectURL(url) };
-    }
+    res = await fetch(src);
+  } catch {
+    // Can't be fetched (e.g. another site without CORS): let the browser
+    // load it directly.
+    return { image: await loadImage(src), orientation: 1 };
+  }
+  if (!res.ok) throw new Error(`Photo failed to load (HTTP ${res.status})`);
+
+  const bytes = await res.arrayBuffer();
+  let type = res.headers.get('Content-Type') || '';
+  let orientation = 1;
+  const found = findExifOrientation(bytes);
+  if (found && found.value >= 2 && found.value <= 8) {
+    new DataView(bytes).setUint16(found.offset, 1, found.little);
+    orientation = found.value;
+    type = 'image/jpeg';
+  }
+
+  const url = URL.createObjectURL(new Blob([bytes], { type }));
+  try {
+    return { image: await loadImage(url), orientation };
   } catch {
     /* fall back to letting the browser load it directly */
+  } finally {
+    // A loaded image keeps its pixels; the blob URL isn't needed after.
+    URL.revokeObjectURL(url);
   }
   return { image: await loadImage(src), orientation: 1 };
+}
+
+const MAX_KEPT_PHOTOS = 4; // current + next, for both slideshows
+const keptPhotos = new Map<string, Promise<LoadedPhoto>>();
+
+/**
+ * Downloads a photo (once) and loads it ready to draw. The most recently
+ * used photos are kept, so asking again — e.g. showing a preloaded photo —
+ * doesn't download it again. Failed loads aren't kept.
+ */
+export function loadPhoto(src: string): Promise<LoadedPhoto> {
+  const kept = keptPhotos.get(src);
+  if (kept) {
+    // Re-insert so the least recently used photo is first to go.
+    keptPhotos.delete(src);
+    keptPhotos.set(src, kept);
+    return kept;
+  }
+  const loading = fetchPhoto(src);
+  keptPhotos.set(src, loading);
+  loading.catch(() => {
+    if (keptPhotos.get(src) === loading) keptPhotos.delete(src);
+  });
+  while (keptPhotos.size > MAX_KEPT_PHOTOS) {
+    keptPhotos.delete(keptPhotos.keys().next().value as string);
+  }
+  return loading;
+}
+
+/** Starts loading a photo in the background so it shows instantly later. */
+export function preloadPhoto(src: string): void {
+  loadPhoto(src).catch(() => { /* reported if and when it's shown */ });
+}
+
+/** Forget all kept photos (for tests). */
+export function clearLoadedPhotos(): void {
+  keptPhotos.clear();
 }
 
 /** The photo drawn upright on a canvas of its upright size. */
@@ -125,26 +185,34 @@ function uprightCanvas({ image, orientation }: LoadedPhoto): HTMLCanvasElement |
   return canvas;
 }
 
-export function CoverPhoto({ src, label, className }: Props) {
+export function CoverPhoto({ src, preloadSrc, label, className, onError }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [upright, setUpright] = useState<HTMLCanvasElement | HTMLImageElement | null>(null);
+  const [settledSrc, setSettledSrc] = useState<string>();
+  const onErrorRef = useRef(onError);
+  useEffect(() => { onErrorRef.current = onError; });
 
   useEffect(() => {
     setUpright(null);
     if (!src) return;
     let cancelled = false;
-    let revoke: (() => void) | undefined;
     loadPhoto(src)
       .then((loaded) => {
-        revoke = loaded.revoke;
         if (!cancelled) setUpright(uprightCanvas(loaded));
       })
-      .catch(() => { /* image failed to load: leave blank */ });
-    return () => {
-      cancelled = true;
-      revoke?.();
-    };
+      .catch(() => {
+        if (!cancelled) onErrorRef.current?.(src);
+      })
+      .finally(() => {
+        if (!cancelled) setSettledSrc(src);
+      });
+    return () => { cancelled = true; };
   }, [src]);
+
+  // Preload once this photo is done, so it isn't slowed down by the next.
+  useEffect(() => {
+    if (preloadSrc && src && settledSrc === src) preloadPhoto(preloadSrc);
+  }, [preloadSrc, src, settledSrc]);
 
   useEffect(() => {
     const canvas = canvasRef.current;

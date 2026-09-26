@@ -59,10 +59,12 @@ export function PhotoFrame({
 }: PhotoFrameProps) {
   const {
     currentPhoto,
+    upcomingPhoto,
     nextPhoto,
     previousPhoto,
     isActive,
     setActive,
+    reportLoadError,
     photoCount,
   } = usePhotos(['ha_media', 'local'], intervalSeconds);
 
@@ -172,7 +174,9 @@ export function PhotoFrame({
         <CoverPhoto
           className="photo-frame-image"
           src={testPattern ? testPatternUrl(photoSize?.w, photoSize?.h) : currentPhoto?.url}
+          preloadSrc={testPattern ? undefined : upcomingPhoto?.url}
           label={currentPhoto?.caption || 'Photo'}
+          onError={testPattern ? undefined : reportLoadError}
         />
       </div>
 
