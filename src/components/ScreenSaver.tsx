@@ -3,6 +3,7 @@ import { format } from 'date-fns';
 import { usePhotos } from '../hooks/usePhotos';
 import { requestFullBleed } from '../utils/ha-kiosk';
 import { CoverPhoto } from './CoverPhoto';
+import { preloadPhoto } from '../utils/photo-loader';
 
 const POSITION_INTERVAL = 30_000; // move clock every 30s
 
@@ -35,19 +36,28 @@ export function ScreenSaver({
   const dimAfterMs = dimTimeoutMin * 60 * 1000;
   const screenSaverAfterMs = screenSaverTimeoutMin * 60 * 1000;
 
-  // Photos load on mount regardless of phase (so the first photo is ready
-  // the moment the screensaver activates, no blank flash), but only
-  // actively cycle while the screensaver is actually showing.
-  const { currentPhoto, isActive: photosActive, setActive: setPhotosActive } = usePhotos(
-    ['ha_media', 'local'],
-    photoIntervalSeconds,
-  );
+  // Photos are only looked at once the screen dims, and only when the
+  // photo screensaver is turned on; they only cycle while it's showing.
+  const photosWanted = enabled && showPhotos && phase !== 'awake';
+  const {
+    currentPhoto,
+    upcomingPhoto,
+    isActive: photosActive,
+    setActive: setPhotosActive,
+    reportLoadError,
+  } = usePhotos(['ha_media', 'local'], photoIntervalSeconds, { enabled: photosWanted });
 
   useEffect(() => {
-    if (!showPhotos) return;
+    if (!photosWanted) return;
     const shouldCycle = phase === 'screensaver';
     if (shouldCycle !== photosActive) setPhotosActive(shouldCycle);
-  }, [showPhotos, phase, photosActive, setPhotosActive]);
+  }, [photosWanted, phase, photosActive, setPhotosActive]);
+
+  // Get the first photo ready while dimmed, so the screensaver opens on it.
+  const currentPhotoUrl = currentPhoto?.url;
+  useEffect(() => {
+    if (photosWanted && phase === 'dim' && currentPhotoUrl) preloadPhoto(currentPhotoUrl);
+  }, [photosWanted, phase, currentPhotoUrl]);
 
   const wake = useCallback(() => {
     lastActivityRef.current = Date.now();
@@ -120,7 +130,9 @@ export function ScreenSaver({
             key={currentPhoto.url}
             className="screensaver-photo"
             src={currentPhoto.url}
+            preloadSrc={upcomingPhoto?.url}
             label={currentPhoto.caption || 'Photo'}
+            onError={reportLoadError}
           />
           <div className="screensaver-photo-scrim" />
         </>
