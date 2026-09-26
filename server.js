@@ -5,6 +5,7 @@
  * - Serves the static SPA from /app/dist
  * - Proxies /api/* to HA Supervisor API with SUPERVISOR_TOKEN
  * - Provides /beacon-data/* for persistent storage (survives rebuilds)
+ * - Runs the Google Tasks chores sync (chores-sync.cjs)
  */
 
 const http = require('http');
@@ -12,6 +13,7 @@ const fs = require('fs');
 const fsp = require('fs/promises');
 const path = require('path');
 const WebSocket = require('ws');
+const { createChoresSync } = require('./chores-sync.cjs');
 
 const PORT = 3000;
 const DIST = process.env.BEACON_DIST || '/app/dist';
@@ -161,6 +163,15 @@ function proxyToHA(req, res) {
   });
 }
 
+/** One line in the add-on log per to-do delete: which list, why, and who asked. */
+function logTodoDelete(data, reason, from) {
+  console.log(
+    `[todo-delete] ${data?.entity_id} item=${JSON.stringify(data?.item)} ` +
+    `reason=${reason || 'none given (older build?)'} ` +
+    `from=${from}`,
+  );
+}
+
 /**
  * Direct HA service call — avoids proxy issues with POST body forwarding.
  * POST /beacon-action/service { domain, service, data }
@@ -184,11 +195,7 @@ function handleServiceCall(req, res) {
       // Log every to-do delete with the requesting device, so deletes coming
       // from a device still running an older build can be traced.
       if (domain === 'todo' && service === 'remove_item') {
-        console.log(
-          `[todo-delete] ${data?.entity_id} item=${JSON.stringify(data?.item)} ` +
-          `reason=${reason || 'none given (older build?)'} ` +
-          `from=${req.headers['user-agent'] || 'unknown device'}`,
-        );
+        logTodoDelete(data, reason, req.headers['user-agent'] || 'unknown device');
       }
 
       const qs = return_response ? '?return_response' : '';
@@ -209,7 +216,9 @@ function handleServiceCall(req, res) {
 
 /**
  * Diagnostic report from the chores sync, written to the add-on log so it
- * can be read in HA (Settings → Add-ons → Family → Log).
+ * can be read in HA (Settings → Add-ons → Family → Log). Only sent by
+ * builds that ran the sync in the browser; the add-on's own sync logs
+ * directly (see /beacon-action/chores-sync).
  * POST /beacon-action/log { lines: string[] }
  */
 function handleClientLog(req, res) {
@@ -492,6 +501,61 @@ function generateItemId() {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
+/**
+ * Like readCollectionArray, but only a missing file counts as empty; a file
+ * that can't be read or parsed throws. Used by the chores sync, which would
+ * otherwise take an unreadable chores file as "every chore was deleted".
+ */
+async function readCollectionArrayStrict(name) {
+  let raw;
+  try {
+    raw = await fsp.readFile(collectionFilePath(name), 'utf8');
+  } catch (err) {
+    if (err.code === 'ENOENT') return [];
+    throw err;
+  }
+  const parsed = JSON.parse(raw);
+  if (!Array.isArray(parsed)) throw new Error(`${name}.json does not hold a list`);
+  return parsed;
+}
+
+/** Add one item (the server assigns its id unless it has one). */
+function collectionAdd(name, item) {
+  return withCollectionLock(name, async () => {
+    const items = await readCollectionArray(name);
+    const newItem = { ...item, id: item.id || generateItemId() };
+    items.push(newItem);
+    await writeCollectionArray(name, items);
+    return newItem;
+  });
+}
+
+/** Merge-patch one item by id; null if there's no such item. */
+function collectionUpdate(name, itemId, patch) {
+  return withCollectionLock(name, async () => {
+    const items = await readCollectionArray(name);
+    const idx = items.findIndex((it) => it.id === itemId);
+    if (idx === -1) return null;
+    items[idx] = { ...items[idx], ...patch, id: itemId };
+    await writeCollectionArray(name, items);
+    return items[idx];
+  });
+}
+
+/** Remove one item by id; whether it was there. */
+function collectionRemove(name, itemId) {
+  return withCollectionLock(name, async () => {
+    const items = await readCollectionArray(name);
+    const filtered = items.filter((it) => it.id !== itemId);
+    const didRemove = filtered.length !== items.length;
+    if (didRemove) await writeCollectionArray(name, filtered);
+    return didRemove;
+  });
+}
+
+/** Collections whose changes the chores sync pushes to Google Tasks. */
+const CHORES_SYNC_TRIGGER_COLLECTIONS = new Set(['beacon_chores', 'beacon_completions']);
+
 async function handleCollectionApi(req, res) {
   const parts = req.url.split('?')[0].replace(/^\/beacon-collection\//, '').split('/').filter(Boolean);
   const name = (parts[0] || '').replace(/[^a-zA-Z0-9_-]/g, '');
@@ -514,13 +578,8 @@ async function handleCollectionApi(req, res) {
     if (req.method === 'POST' && !itemId) {
       const bodyBuf = await collectBody(req);
       const item = JSON.parse((bodyBuf || '{}').toString('utf8'));
-      const created = await withCollectionLock(name, async () => {
-        const items = await readCollectionArray(name);
-        const newItem = { ...item, id: item.id || generateItemId() };
-        items.push(newItem);
-        await writeCollectionArray(name, items);
-        return newItem;
-      });
+      const created = await collectionAdd(name, item);
+      if (CHORES_SYNC_TRIGGER_COLLECTIONS.has(name)) choresSync.requestSoon();
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify(created));
       return;
@@ -529,14 +588,8 @@ async function handleCollectionApi(req, res) {
     if (req.method === 'PUT' && itemId) {
       const bodyBuf = await collectBody(req);
       const patch = JSON.parse((bodyBuf || '{}').toString('utf8'));
-      const updated = await withCollectionLock(name, async () => {
-        const items = await readCollectionArray(name);
-        const idx = items.findIndex((it) => it.id === itemId);
-        if (idx === -1) return null;
-        items[idx] = { ...items[idx], ...patch, id: itemId };
-        await writeCollectionArray(name, items);
-        return items[idx];
-      });
+      const updated = await collectionUpdate(name, itemId, patch);
+      if (updated && CHORES_SYNC_TRIGGER_COLLECTIONS.has(name)) choresSync.requestSoon();
       if (!updated) {
         res.writeHead(404, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ error: 'Item not found' }));
@@ -548,13 +601,8 @@ async function handleCollectionApi(req, res) {
     }
 
     if (req.method === 'DELETE' && itemId) {
-      const removed = await withCollectionLock(name, async () => {
-        const items = await readCollectionArray(name);
-        const filtered = items.filter((it) => it.id !== itemId);
-        const didRemove = filtered.length !== items.length;
-        if (didRemove) await writeCollectionArray(name, filtered);
-        return didRemove;
-      });
+      const removed = await collectionRemove(name, itemId);
+      if (removed && CHORES_SYNC_TRIGGER_COLLECTIONS.has(name)) choresSync.requestSoon();
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ ok: removed }));
       return;
@@ -627,6 +675,7 @@ async function handleDataApi(req, res) {
         } catch { /* no file yet */ }
         await writeFileAtomic(filePath, JSON.stringify({ ...existing, ...parsed }));
       });
+      if (key === SETTINGS_KEY) void choresSync.settingsChanged();
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ ok: true }));
     } catch (err) {
@@ -750,8 +799,11 @@ function parseIntent(text) {
   return null;
 }
 
-/** Helper: make a request to the HA Supervisor API and return parsed JSON. */
-function haRequest(method, apiPath, body) {
+/**
+ * Helper: make a request to the HA Supervisor API and return parsed JSON.
+ * With `timeoutMs`, gives up (rejects) when HA goes quiet for that long.
+ */
+function haRequest(method, apiPath, body, timeoutMs) {
   return new Promise((resolve, reject) => {
     const bodyBuf = body ? Buffer.from(JSON.stringify(body), 'utf8') : null;
     const url = new URL(`${HA_API_BASE}${apiPath}`);
@@ -777,6 +829,9 @@ function haRequest(method, apiPath, body) {
       });
     });
     r.on('error', reject);
+    if (timeoutMs) {
+      r.setTimeout(timeoutMs, () => r.destroy(new Error(`no answer from Home Assistant after ${timeoutMs / 1000}s`)));
+    }
     if (bodyBuf) r.write(bodyBuf);
     r.end();
   });
@@ -991,6 +1046,99 @@ function handleVoiceAction(req, res) {
   });
 }
 
+/* ------------------------------------------------------------------ */
+/*  Google Tasks chores sync (logic in chores-sync.cjs)                */
+/* ------------------------------------------------------------------ */
+
+/** /beacon-data key of the app settings (sync on/off, each member's list). */
+const SETTINGS_KEY = 'beacon-settings';
+/** Longest the sync waits for one HA call (a Google refresh can be slow). */
+const SYNC_HA_TIMEOUT_MS = 60_000;
+
+async function readSettingsFile() {
+  try {
+    return JSON.parse(await fsp.readFile(path.join(DATA_DIR, `${SETTINGS_KEY}.json`), 'utf8'));
+  } catch (err) {
+    if (err.code === 'ENOENT') return null;
+    throw err;
+  }
+}
+
+/** HA service call for the sync; throws when HA answers with an error. */
+async function callHaServiceForSync(domain, service, data, { returnResponse = false, reason } = {}) {
+  if (domain === 'todo' && service === 'remove_item') logTodoDelete(data, reason, 'chores sync (add-on)');
+  const qs = returnResponse ? '?return_response' : '';
+  const result = await haRequest('POST', `/api/services/${domain}/${service}${qs}`, data, SYNC_HA_TIMEOUT_MS);
+  if (result.status >= 400) {
+    const detail = typeof result.data === 'string' ? result.data : JSON.stringify(result.data);
+    throw new Error(`${domain}.${service} failed (HTTP ${result.status}): ${String(detail).slice(0, 200)}`);
+  }
+  return result.data;
+}
+
+/**
+ * Home Assistant's configured time zone, which decides when "today" starts
+ * for chore completions. Re-read hourly; if HA can't be asked, the last
+ * known zone (or the container's own) is used.
+ */
+let haTimeZone = { name: undefined, fetchedAt: 0 };
+async function getHaTimeZone() {
+  if (!haTimeZone.name || Date.now() - haTimeZone.fetchedAt > 60 * 60 * 1000) {
+    try {
+      const result = await haRequest('GET', '/api/config', null, 10_000);
+      if (result.status === 200 && typeof result.data?.time_zone === 'string') {
+        haTimeZone = { name: result.data.time_zone, fetchedAt: Date.now() };
+      }
+    } catch { /* keep the last known zone */ }
+  }
+  return haTimeZone.name || process.env.TZ || undefined;
+}
+
+const choresSync = createChoresSync({
+  store: {
+    list: readCollectionArrayStrict,
+    add: collectionAdd,
+    update: collectionUpdate,
+    remove: collectionRemove,
+  },
+  callService: callHaServiceForSync,
+  readSettings: readSettingsFile,
+  getTimeZone: getHaTimeZone,
+  haAvailable: () => !!SUPERVISOR_TOKEN,
+  log: (line) => console.log(`[chores-sync] ${line}`),
+});
+
+/**
+ * GET  /beacon-action/chores-sync → sync status (last synced, last error,
+ *                                   when it last changed Family's data)
+ * POST /beacon-action/chores-sync → run a pass now ("Sync Now"), write its
+ *                                   full report to the add-on log, and
+ *                                   answer with the status and report
+ */
+function handleChoresSyncAction(req, res) {
+  if (req.method === 'GET') {
+    res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+    res.end(JSON.stringify(choresSync.status()));
+    return;
+  }
+  if (req.method !== 'POST') {
+    res.writeHead(405, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ error: 'Method not allowed' }));
+    return;
+  }
+  collectBody(req, 64 * 1024).then(async () => {
+    console.log(`[chores-sync] Sync Now requested from ${req.headers['user-agent'] || 'unknown device'}`);
+    const { outcome, report } = await choresSync.runNow({ verbose: true });
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ ...choresSync.status(), outcome, report }));
+  }).catch((err) => {
+    if (!res.headersSent) {
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: err.message }));
+    }
+  });
+}
+
 const server = http.createServer((req, res) => {
   // Voice / natural-language action API
   if (req.url === '/beacon-action/voice') {
@@ -998,7 +1146,13 @@ const server = http.createServer((req, res) => {
     return;
   }
 
-  // Chores sync diagnostic report -> add-on log
+  // Google Tasks chores sync: status (GET) and Sync Now (POST)
+  if (req.url === '/beacon-action/chores-sync') {
+    handleChoresSyncAction(req, res);
+    return;
+  }
+
+  // Chores sync diagnostic report from older builds -> add-on log
   if (req.url === '/beacon-action/log') {
     handleClientLog(req, res);
     return;
@@ -1091,4 +1245,5 @@ server.listen(PORT, () => {
   console.log(`Family server listening on port ${PORT}`);
   console.log(`Supervisor token: ${SUPERVISOR_TOKEN ? 'available' : 'NOT available'}`);
   console.log(`Data directory: ${DATA_DIR}`);
+  choresSync.start();
 });

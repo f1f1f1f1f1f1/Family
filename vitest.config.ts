@@ -11,7 +11,8 @@ export default defineConfig({
     setupFiles: ['./src/test/setup.ts'],
     globals: true,
     css: false,
-    include: ['src/**/*.{test,spec}.{ts,tsx}'],
+    // Root-level tests cover the add-on server's modules (chores-sync.cjs).
+    include: ['src/**/*.{test,spec}.{ts,tsx}', '*.test.ts'],
     coverage: {
       provider: 'v8',
       reporter: ['text', 'html'],

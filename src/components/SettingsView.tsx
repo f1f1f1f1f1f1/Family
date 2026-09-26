@@ -24,6 +24,7 @@ import {
   Routine,
 } from '../types/family';
 import type { BeaconSettings } from '../hooks/useSettings';
+import type { ChoresSyncStatus } from '../hooks/useChoresSync';
 import { buildFocusUrl } from '../focus';
 import { exitToHomeAssistant, isInHaPanel } from '../utils/ha-kiosk';
 import { useRoutines } from '../hooks/useRoutines';
@@ -47,7 +48,9 @@ interface SettingsViewProps {
   settings: BeaconSettings;
   onUpdateSettings: (patch: Partial<BeaconSettings>) => void;
   onResetSettings: () => void;
+  /** Present only where the add-on can run the Google Tasks sync. */
   onRunChoresSync?: () => Promise<void>;
+  choresSyncStatus?: ChoresSyncStatus | null;
   onExportSettings: () => string;
   onImportSettings: (json: string) => void;
   onClearLocalStorage: () => void;
@@ -190,11 +193,28 @@ const EMPTY_FORM: MemberForm = {
 // Main component
 // ---------------------------------------------------------------------------
 
+/** The line under "Sync Now": what the add-on's Google Tasks sync last did. */
+function choresSyncSummary(
+  status: ChoresSyncStatus | null | undefined,
+  running: boolean,
+  requestFailed: boolean,
+): string {
+  if (running) return 'Syncing…';
+  if (requestFailed) return "Couldn't reach the add-on to sync. Try again in a moment.";
+  if (status?.lastError) return "The last sync failed. The add-on's Log tab has the details.";
+  if (status?.lastSyncedAt) {
+    const synced = `Last synced ${new Date(status.lastSyncedAt).toLocaleTimeString()}`;
+    return status.problems.length ? `${synced} · ${status.problems.join(' · ')}` : synced;
+  }
+  return 'Runs automatically every minute';
+}
+
 export function SettingsView({
   settings,
   onUpdateSettings,
   onResetSettings,
   onRunChoresSync,
+  choresSyncStatus,
   onExportSettings,
   onImportSettings,
   onClearLocalStorage,
@@ -258,7 +278,7 @@ export function SettingsView({
   // ---- Fetch todo lists for grocery default dropdown ----
   const [todoLists, setTodoLists] = useState<GroceryList[]>([]);
   const [choresSyncRunning, setChoresSyncRunning] = useState(false);
-  const [choresSyncRanAt, setChoresSyncRanAt] = useState<Date | null>(null);
+  const [choresSyncRequestFailed, setChoresSyncRequestFailed] = useState(false);
   useEffect(() => {
     if (!connected) return;
     const client = new AnyListClient();
@@ -1809,7 +1829,7 @@ export function SettingsView({
               <div>
                 <div className="settings-row-label">Sync with Google Tasks</div>
                 <div className="settings-row-sublabel">
-                  Create and check off chores from the Google Tasks app. Each person's chores sync to their own list. Routines aren't synced.
+                  Create and check off chores from the Google Tasks app. Each person's chores sync to their own list. Routines aren't synced. The add-on keeps it in sync, even when no screen is open.
                 </div>
               </div>
               <Toggle
@@ -1822,11 +1842,7 @@ export function SettingsView({
                 <div>
                   <div className="settings-row-label">Sync Now</div>
                   <div className="settings-row-sublabel">
-                    {choresSyncRunning
-                      ? 'Syncing…'
-                      : choresSyncRanAt
-                      ? `Last synced ${choresSyncRanAt.toLocaleTimeString()}`
-                      : 'Normally runs automatically every minute'}
+                    {choresSyncSummary(choresSyncStatus, choresSyncRunning, choresSyncRequestFailed)}
                   </div>
                 </div>
                 <button
@@ -1835,11 +1851,13 @@ export function SettingsView({
                   disabled={choresSyncRunning}
                   onClick={async () => {
                     setChoresSyncRunning(true);
+                    setChoresSyncRequestFailed(false);
                     try {
                       await onRunChoresSync();
+                    } catch {
+                      setChoresSyncRequestFailed(true);
                     } finally {
                       setChoresSyncRunning(false);
-                      setChoresSyncRanAt(new Date());
                     }
                   }}
                 >
