@@ -1,6 +1,7 @@
 import { useState, useCallback, useMemo, useEffect } from 'react';
 import { FamilyStore, notifyFamilyDataChanged, onFamilyDataChanged } from '../api/family';
 import { saveThen } from '../utils/save-errors';
+import { byDay, useClock } from './useClock';
 import { Routine, RoutineTaskCompletion } from '../types/family';
 
 export function useRoutines(memberId?: string) {
@@ -17,10 +18,12 @@ export function useRoutines(memberId?: string) {
     setCompletionsToday(ct);
   }, [store, memberId]);
 
+  // Loads again when the day changes, so yesterday's ticks clear at midnight.
+  const today = useClock(byDay);
   useEffect(() => {
     refresh();
     return onFamilyDataChanged(store, () => void refresh());
-  }, [refresh, store]);
+  }, [refresh, store, today]);
 
   const addRoutine = useCallback(
     async (routine: Omit<Routine, 'id'>) => {

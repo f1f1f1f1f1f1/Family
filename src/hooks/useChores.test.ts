@@ -57,4 +57,23 @@ describe('useChores', () => {
     app.rerender({ enabled: true });
     await waitFor(() => expect(app.result.current.isChoreCompletedToday('c2', 'kai')).toBe(true));
   });
+
+  // Only the Kid Display reloaded at midnight: the dashboard and Chores
+  // screen kept showing yesterday's ticks on a display left on overnight.
+  it("clears yesterday's ticks at midnight", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    vi.setSystemTime(new Date(2026, 8, 26, 23, 58));
+    db.collections.set('beacon_chores', [
+      { id: 'c2', name: 'Dishes', assigned_to: ['kai'], frequency: 'daily', value_cents: 0 } as { id: string },
+    ]);
+    db.collections.set('beacon_completions', []);
+    const { result } = renderHook(() => useChores());
+    await waitFor(() => expect(result.current.chores).toHaveLength(1));
+    await act(async () => { await result.current.completeChore('c2', 'kai'); });
+    expect(result.current.isChoreCompletedToday('c2', 'kai')).toBe(true);
+
+    await act(async () => { await vi.advanceTimersByTimeAsync(3 * 60 * 1000); }); // 00:01
+    await waitFor(() => expect(result.current.isChoreCompletedToday('c2', 'kai')).toBe(false));
+    vi.useRealTimers();
+  });
 });

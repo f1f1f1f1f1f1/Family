@@ -59,17 +59,6 @@ export function FocusView({ memberId, settings, onExit }: FocusViewProps) {
     return () => clearInterval(t);
   }, [refreshRoutines, refreshChores]);
 
-  // At midnight, reload so yesterday's ticks clear straight away rather
-  // than at the next 5-minute refresh.
-  const day = localDayKey(now);
-  const loadedDay = useRef(day);
-  useEffect(() => {
-    if (loadedDay.current === day) return;
-    loadedDay.current = day;
-    refreshRoutines();
-    refreshChores();
-  }, [day, refreshRoutines, refreshChores]);
-
   // Exit gesture: 5 taps on the clock within 3 seconds
   const taps = useRef<number[]>([]);
   const [showExitConfirm, setShowExitConfirm] = useState(false);

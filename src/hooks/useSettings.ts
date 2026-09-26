@@ -63,8 +63,6 @@ export interface BeaconSettings {
 
   // Chores
   choresEnabled: boolean;
-  choresResetTime: string;  // "HH:mm"
-  streakDays: number;
   currencySymbol: string;
   payoutSchedule: 'weekly' | 'monthly';
   choresSyncEnabled: boolean;
@@ -127,8 +125,6 @@ function buildDefaults(): BeaconSettings {
     kioskMode: false,
 
     choresEnabled: true,
-    choresResetTime: '00:00',
-    streakDays: 7,
     currencySymbol: '$',
     payoutSchedule: 'weekly',
     choresSyncEnabled: false,

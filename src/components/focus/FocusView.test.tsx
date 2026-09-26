@@ -67,16 +67,15 @@ describe('FocusView over time', () => {
     expect(screen.getByText('12:00 PM')).toBeInTheDocument();
   });
 
-  it('reloads routines and chores at midnight so yesterday\'s ticks clear', () => {
+  // Reloading routines and chores at midnight is up to useRoutines and
+  // useChores now (so every screen does it); see their tests.
+  it('moves on to the new day at midnight', () => {
     vi.setSystemTime(new Date(2026, 8, 26, 23, 59, 30));
     render(<FocusView memberId="kai" settings={settings} onExit={() => {}} />);
     expect(screen.getByText('Saturday, September 26')).toBeInTheDocument();
-    expect(mocks.refreshRoutines).not.toHaveBeenCalled();
 
     advance(30_000);
     expect(screen.getByText('Sunday, September 27')).toBeInTheDocument();
     expect(screen.getByText('Good morning,')).toBeInTheDocument();
-    expect(mocks.refreshRoutines).toHaveBeenCalledTimes(1);
-    expect(mocks.refreshChores).toHaveBeenCalledTimes(1);
   });
 });

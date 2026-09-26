@@ -1,6 +1,7 @@
 import { useState, useCallback, useMemo, useEffect } from 'react';
 import { FamilyStore, notifyFamilyDataChanged, onFamilyDataChanged } from '../api/family';
 import { saveThen } from '../utils/save-errors';
+import { byDay, useClock } from './useClock';
 import { Chore, ChoreCompletion, Streak, MemberEarnings } from '../types/family';
 
 /**
@@ -25,11 +26,14 @@ export function useChores(enabled = true) {
     setStreaks(s);
   }, [store]);
 
+  // Today's ticks are worked out as data loads, so it loads again when the
+  // day changes; otherwise yesterday's ticks stayed up after midnight.
+  const today = useClock(byDay);
   useEffect(() => {
     if (!enabled) return;
     refresh();
     return onFamilyDataChanged(store, () => void refresh());
-  }, [refresh, store, enabled]);
+  }, [refresh, store, enabled, today]);
 
   const addChore = useCallback(
     async (chore: Omit<Chore, 'id'>) => {
