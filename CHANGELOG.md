@@ -1,3 +1,10 @@
+## [1.51.5](https://github.com/f1f1f1f1f1f1/Family/compare/v1.1.2...v1.51.5) (2026-09-26)
+
+
+### Version Numbering
+
+* same add-on as 1.1.2, renumbered so Home Assistant offers the update. After 1.50.10 the automated releases restarted at 1.0.0, and Home Assistant only offers an update when the number goes up, so 1.0.0 to 1.1.2 never reached installs on 1.50.x. Releases now continue from 1.51.5.
+
 ## [1.1.2](https://github.com/f1f1f1f1f1f1/Family/compare/v1.1.1...v1.1.2) (2026-09-26)
 
 
