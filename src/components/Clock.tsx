@@ -1,13 +1,8 @@
-import { useState, useEffect } from 'react';
 import { format } from 'date-fns';
+import { useClock } from '../hooks/useClock';
 
 export function Clock() {
-  const [now, setNow] = useState(new Date());
-
-  useEffect(() => {
-    const timer = setInterval(() => setNow(new Date()), 1000);
-    return () => clearInterval(timer);
-  }, []);
+  const now = useClock();
 
   return (
     <span className="clock-mini">

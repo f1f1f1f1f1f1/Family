@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { format } from 'date-fns';
 import { usePhotos } from '../hooks/usePhotos';
+import { useClock } from '../hooks/useClock';
 import { requestFullBleed } from '../utils/ha-kiosk';
 import { CoverPhoto } from './CoverPhoto';
 import { preloadPhoto } from '../utils/photo-loader';
@@ -8,6 +9,17 @@ import { preloadPhoto } from '../utils/photo-loader';
 const POSITION_INTERVAL = 30_000; // move clock every 30s
 
 type Phase = 'awake' | 'dim' | 'screensaver';
+
+/** Only mounted while the screensaver shows, so it starts on the right time. */
+function ScreenSaverTime() {
+  const now = useClock();
+  return (
+    <>
+      <div className="screensaver-time">{format(now, 'h:mm')}</div>
+      <div className="screensaver-date">{format(now, 'EEEE, MMMM d')}</div>
+    </>
+  );
+}
 
 interface ScreenSaverProps {
   enabled?: boolean;
@@ -29,7 +41,6 @@ export function ScreenSaver({
   // A photo screensaver fills the whole screen, under the iPhone notch too.
   const fullBleed = enabled && showPhotos && phase === 'screensaver';
   useEffect(() => (fullBleed ? requestFullBleed() : undefined), [fullBleed]);
-  const [now, setNow] = useState(new Date());
   const [position, setPosition] = useState({ x: 50, y: 50 });
   const lastActivityRef = useRef(Date.now());
 
@@ -93,13 +104,6 @@ export function ScreenSaver({
     return () => clearInterval(interval);
   }, [enabled, dimAfterMs, screenSaverAfterMs]);
 
-  // Clock tick for screensaver
-  useEffect(() => {
-    if (phase !== 'screensaver') return;
-    const interval = setInterval(() => setNow(new Date()), 1000);
-    return () => clearInterval(interval);
-  }, [phase]);
-
   // Move screensaver clock position periodically to prevent burn-in
   useEffect(() => {
     if (phase !== 'screensaver') return;
@@ -141,8 +145,7 @@ export function ScreenSaver({
         className="screensaver-clock"
         style={{ left: `${position.x}%`, top: `${position.y}%` }}
       >
-        <div className="screensaver-time">{format(now, 'h:mm')}</div>
-        <div className="screensaver-date">{format(now, 'EEEE, MMMM d')}</div>
+        <ScreenSaverTime />
       </div>
     </div>
   );

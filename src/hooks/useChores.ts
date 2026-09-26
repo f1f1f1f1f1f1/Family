@@ -2,7 +2,11 @@ import { useState, useCallback, useMemo, useEffect } from 'react';
 import { FamilyStore, notifyFamilyDataChanged, onFamilyDataChanged } from '../api/family';
 import { Chore, ChoreCompletion, Streak, MemberEarnings } from '../types/family';
 
-export function useChores() {
+/**
+ * `enabled: false` stops following changes (made here or by the Google Tasks
+ * sync) until it's turned back on, which reloads at once.
+ */
+export function useChores(enabled = true) {
   const store = useMemo(() => new FamilyStore(), []);
   // Initialize with localStorage data immediately
   const [chores, setChores] = useState<Chore[]>(() => store.getChoresSync());
@@ -21,9 +25,10 @@ export function useChores() {
   }, [store]);
 
   useEffect(() => {
+    if (!enabled) return;
     refresh();
     return onFamilyDataChanged(store, () => void refresh());
-  }, [refresh, store]);
+  }, [refresh, store, enabled]);
 
   const addChore = useCallback(
     async (chore: Omit<Chore, 'id'>) => {

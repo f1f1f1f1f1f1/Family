@@ -22,14 +22,16 @@ export function useDashboardTasks(
   hideLocalTasks: boolean = false,
   /** HA todo entity IDs never shown on the dashboard (e.g. per-person chore sync lists) */
   hiddenListIds: string[] = NO_HIDDEN_LISTS,
+  /** false stops the minute-by-minute refresh; turning it back on fetches at once */
+  enabled = true,
 ) {
   const localTasks = useLocalTasks();
-  const { users, listByUser, completions } = useTaskmate(connected);
+  const { users, listByUser, completions } = useTaskmate(connected, enabled);
   const [haItems, setHaItems] = useState<Omit<DashboardTodoItem, 'userId'>[]>([]);
 
   // Fetch HA todo items for task-type lists
   useEffect(() => {
-    if (!connected && !hasToken()) return;
+    if (!enabled || (!connected && !hasToken())) return;
 
     async function fetchTasks() {
       try {
@@ -70,7 +72,7 @@ export function useDashboardTasks(
     fetchTasks();
     const interval = setInterval(fetchTasks, 60_000);
     return () => clearInterval(interval);
-  }, [connected, groceryListIds, hiddenListIds]);
+  }, [connected, groceryListIds, hiddenListIds, enabled]);
 
   const items: DashboardTodoItem[] = useMemo(() => {
     const local: DashboardTodoItem[] = hideLocalTasks

@@ -1,9 +1,10 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useMemo } from 'react';
 import { isSameDay, startOfDay, addDays, parseISO } from 'date-fns';
 import { CalendarEvent, WeatherData } from '../types';
 import { Chore, FamilyMember } from '../types/family';
 import { useFamilyEvents } from '../hooks/useFamilyEvents';
 import { useMealPlans } from '../hooks/useMealPlans';
+import { useClock, byDay } from '../hooks/useClock';
 import { ClockWeatherCard } from './cards/ClockWeatherCard';
 import { FamilyCalendarCard } from './cards/FamilyCalendarCard';
 import { AgendaTodayCard } from './cards/AgendaTodayCard';
@@ -57,7 +58,8 @@ export function DashboardView({
   onSelectedDateChange,
   defaultShoppingList = '',
 }: DashboardViewProps) {
-  const [now, setNow] = useState(new Date());
+  // Re-renders the dashboard at midnight only; the clock card keeps its own time.
+  const today = useClock(byDay);
   const [selectedMemberFilter, setSelectedMemberFilter] = useState<string | null>(null);
 
   const toggleMemberFilter = (memberId: string) => {
@@ -67,16 +69,11 @@ export function DashboardView({
   const goToPreviousDay = () => onSelectedDateChange(addDays(selectedDate, -1));
   const goToNextDay = () => onSelectedDateChange(addDays(selectedDate, 1));
   const goToToday = () => onSelectedDateChange(startOfDay(new Date()));
-  const isViewingToday = isSameDay(selectedDate, startOfDay(now));
+  const isViewingToday = isSameDay(selectedDate, today);
 
   const filteredChores = selectedMemberFilter
     ? chores.filter((c) => c.assigned_to.includes(selectedMemberFilter))
     : chores;
-
-  useEffect(() => {
-    const timer = setInterval(() => setNow(new Date()), 1000);
-    return () => clearInterval(timer);
-  }, []);
 
   const { byMember, other } = useFamilyEvents(events, members, selectedDate);
   const { todaysMenu } = useMealPlans();
@@ -91,7 +88,7 @@ export function DashboardView({
   // Group the next 7 days of events for the Classic "This Week" column
   // (starts tomorrow — today is covered by the Today column)
   const weekEvents = useMemo(() => {
-    const start = addDays(startOfDay(new Date()), 1);
+    const start = addDays(startOfDay(today), 1);
     return Array.from({ length: 7 }, (_, i) => {
       const day = addDays(start, i);
       const dayEvents = events
@@ -99,10 +96,9 @@ export function DashboardView({
         .sort((a, b) => a.start.localeCompare(b.start));
       return { day, events: dayEvents };
     });
-  }, [events]);
+  }, [events, today]);
 
   const context: DashboardCardContext = {
-    now,
     defaultShoppingList,
     timeFormat,
     events,

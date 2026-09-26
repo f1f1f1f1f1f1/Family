@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { loadData } from '../api/beacon-store';
+import { localDayKey } from '../api/date-keys';
 import { MealPlanEntry, DayMenu } from '../types/meals';
 
 const STORAGE_KEY = 'beacon_meal_plans';
@@ -21,7 +22,8 @@ export function useMealPlans() {
     return () => clearInterval(interval);
   }, []);
 
-  const todayStr = new Date().toISOString().slice(0, 10);
+  // Local date, so the menu turns over at the family's midnight, not UTC's.
+  const todayStr = localDayKey();
 
   const todaysMenu: DayMenu = useMemo(() => {
     const meals = entries

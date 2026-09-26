@@ -53,9 +53,10 @@ export interface DashboardLayoutView {
  * Shared data every card can read from. Built once per DashboardView render
  * so individual cards stay "dumb" (Phase 1); self-fetching HA entity cards
  * (Phase 3) will mostly ignore this and rely on `config` instead.
+ * There's no current time here: a card that shows it calls `useClock()`,
+ * so a ticking clock doesn't re-render every card.
  */
 export interface DashboardCardContext {
-  now: Date;
   timeFormat: '12h' | '24h';
   events: CalendarEvent[];
   weather: WeatherData | null;

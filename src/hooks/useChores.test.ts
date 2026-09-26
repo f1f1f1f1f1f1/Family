@@ -41,4 +41,20 @@ describe('useChores', () => {
 
     await waitFor(() => expect(dashboard.result.current.isChoreCompletedToday('c1', 'kai')).toBe(true));
   });
+
+  it('while paused (Kid Display up), ignores changes, then catches up when resumed', async () => {
+    db.collections.set('beacon_chores', [
+      { id: 'c2', name: 'Feed cat', assigned_to: ['kai'], frequency: 'daily', value_cents: 0 } as { id: string },
+    ]);
+    db.collections.set('beacon_completions', []);
+    const app = renderHook(({ enabled }) => useChores(enabled), { initialProps: { enabled: false } });
+    const kidDisplay = renderHook(() => useChores());
+    await waitFor(() => expect(kidDisplay.result.current.chores).toHaveLength(1));
+
+    await act(async () => { await kidDisplay.result.current.completeChore('c2', 'kai'); });
+    expect(app.result.current.isChoreCompletedToday('c2', 'kai')).toBe(false);
+
+    app.rerender({ enabled: true });
+    await waitFor(() => expect(app.result.current.isChoreCompletedToday('c2', 'kai')).toBe(true));
+  });
 });

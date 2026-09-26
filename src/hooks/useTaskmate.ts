@@ -35,12 +35,13 @@ function findOverview(states: HaState[]): HaState | undefined {
   );
 }
 
-export function useTaskmate(connected: boolean): UseTaskmateResult {
+/** `enabled: false` stops the minute-by-minute refresh; turning it back on fetches at once. */
+export function useTaskmate(connected: boolean, enabled = true): UseTaskmateResult {
   const [users, setUsers] = useState<TaskmateUser[]>([]);
   const [completions, setCompletions] = useState<TaskmateCompletion[]>([]);
 
   useEffect(() => {
-    if (!connected && !hasToken()) return;
+    if (!enabled || (!connected && !hasToken())) return;
 
     async function fetchTaskmate() {
       try {
@@ -100,7 +101,7 @@ export function useTaskmate(connected: boolean): UseTaskmateResult {
     fetchTaskmate();
     const interval = setInterval(fetchTaskmate, 60_000);
     return () => clearInterval(interval);
-  }, [connected]);
+  }, [connected, enabled]);
 
   const listByUser: Record<string, TaskmateUser> = {};
   for (const u of users) listByUser[u.todoListId] = u;

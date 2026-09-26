@@ -7,7 +7,8 @@ import { findWeatherEntity } from '../api/ha-services';
 
 const REFRESH_INTERVAL = 10 * 60 * 1000; // 10 minutes
 
-export function useWeather(getClient: () => HomeAssistantClient | null) {
+/** `enabled: false` stops refreshing (the last reading is kept); turning it back on fetches at once. */
+export function useWeather(getClient: () => HomeAssistantClient | null, enabled = true) {
   const [weather, setWeather] = useState<WeatherData | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -50,10 +51,11 @@ export function useWeather(getClient: () => HomeAssistantClient | null) {
   }, [getClient]);
 
   useEffect(() => {
+    if (!enabled) return;
     fetchWeather();
     const interval = setInterval(fetchWeather, REFRESH_INTERVAL);
     return () => clearInterval(interval);
-  }, [fetchWeather]);
+  }, [fetchWeather, enabled]);
 
   return { weather, error, refresh: fetchWeather };
 }

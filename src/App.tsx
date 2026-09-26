@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { startOfWeek, startOfDay, addDays, format } from 'date-fns';
+import { startOfWeek, addDays, format } from 'date-fns';
 import { useHomeAssistant } from './hooks/useHomeAssistant';
 import { useCalendarEvents, CalendarNotSupportedError } from './hooks/useCalendarEvents';
 import { useFamily } from './hooks/useFamily';
@@ -29,6 +29,7 @@ import { useLocalCalendar } from './hooks/useLocalCalendar';
 import { useDashboardTasks } from './hooks/useDashboardTasks';
 import { LazyBoundary } from './components/LazyBoundary';
 import { lazyNamed } from './utils/lazy-screen';
+import { useSelectedDay } from './hooks/useClock';
 import { getFocusMemberId, clearFocusMode, setDeviceFocusMember } from './focus';
 import { CalendarEvent, resolveCalendarColor } from './types';
 import { getConfig, patchConfig } from './config';
@@ -91,6 +92,40 @@ export function App() {
     removeMember,
   } = useFamily();
 
+  // Kid Display (focus) mode — URL param wins, then device-local storage
+  const [focusMemberId, setFocusMemberId] = useState<string | null>(() => getFocusMemberId());
+  const focusMember = focusMemberId ? members.find((m) => m.id === focusMemberId) : undefined;
+
+  // Escape hatch: if a display is assigned to a member but the family list
+  // stays empty (fresh device, stale assignment), stop waiting after 10s and
+  // fall through to the invalid-member banner instead of loading forever.
+  const [focusLoadTimedOut, setFocusLoadTimedOut] = useState(false);
+  useEffect(() => {
+    if (!focusMemberId || members.length > 0) {
+      setFocusLoadTimedOut(false);
+      return;
+    }
+    const t = setTimeout(() => setFocusLoadTimedOut(true), 10_000);
+    return () => clearTimeout(t);
+  }, [focusMemberId, members.length]);
+
+  const focusInvalid = !!focusMemberId && !focusMember && (members.length > 0 || focusLoadTimedOut);
+
+  const handleExitFocus = useCallback(() => {
+    clearFocusMode();
+    setFocusMemberId(null);
+  }, []);
+
+  const handleEnterFocusMode = useCallback((memberId: string) => {
+    setDeviceFocusMember(memberId);
+    setFocusMemberId(memberId);
+  }, []);
+
+  // The Kid Display (and its loading screen) replaces the whole app, so the
+  // app's own refreshes — calendar, weather, music, tasks, chores — pause
+  // while it's up and catch up as soon as it closes.
+  const fullAppShown = !focusMemberId || focusInvalid;
+
   const {
     calendars: haCalendars,
     events: haEvents,
@@ -150,15 +185,18 @@ export function App() {
     }
   }, [localCal, deleteHaEvent]);
 
-  const { weather } = useWeather(client);
-  const music = useMusic(client, connected);
+  const { weather } = useWeather(client, fullAppShown);
+  const music = useMusic(client, connected, fullAppShown);
   const {
     chores,
     completionsToday,
     completeChore,
     uncompleteChore,
-  } = useChores();
+  } = useChores(fullAppShown);
 
+  // Keeps running on the Kid Display: the sync itself runs in the add-on,
+  // and this status check is what shows a chore ticked in Google Tasks on
+  // the child's screen within 30s.
   const {
     status: choresSyncStatus,
     runSync: runChoresSync,
@@ -175,7 +213,7 @@ export function App() {
     [choreSyncListKey],
   );
 
-  const dashboardTasks = useDashboardTasks(connected, settings.groceryListIds, settings.hideLocalTaskList, choreSyncListIds);
+  const dashboardTasks = useDashboardTasks(connected, settings.groceryListIds, settings.hideLocalTaskList, choreSyncListIds, fullAppShown);
 
   // Apply theme at App level so it stays active regardless of which view is shown
   const { setTheme } = useTheme();
@@ -216,25 +254,6 @@ export function App() {
     (settings.defaultView as SidebarView) || 'dashboard'
   );
 
-  // Kid Display (focus) mode — URL param wins, then device-local storage
-  const [focusMemberId, setFocusMemberId] = useState<string | null>(() => getFocusMemberId());
-  const focusMember = focusMemberId ? members.find((m) => m.id === focusMemberId) : undefined;
-
-  // Escape hatch: if a display is assigned to a member but the family list
-  // stays empty (fresh device, stale assignment), stop waiting after 10s and
-  // fall through to the invalid-member banner instead of loading forever.
-  const [focusLoadTimedOut, setFocusLoadTimedOut] = useState(false);
-  useEffect(() => {
-    if (!focusMemberId || members.length > 0) {
-      setFocusLoadTimedOut(false);
-      return;
-    }
-    const t = setTimeout(() => setFocusLoadTimedOut(true), 10_000);
-    return () => clearTimeout(t);
-  }, [focusMemberId, members.length]);
-
-  const focusInvalid = !!focusMemberId && !focusMember && (members.length > 0 || focusLoadTimedOut);
-
   // While stored credentials load, start downloading the screen this device
   // opens on if it's one of the on-demand ones, so it's ready sooner.
   useEffect(() => {
@@ -245,23 +264,13 @@ export function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- only the screen shown at startup
   }, []);
 
-  const handleExitFocus = useCallback(() => {
-    clearFocusMode();
-    setFocusMemberId(null);
-  }, []);
-
-  const handleEnterFocusMode = useCallback((memberId: string) => {
-    setDeviceFocusMember(memberId);
-    setFocusMemberId(memberId);
-  }, []);
-
   // Visible week shown by the calendar (drives event fetch window)
   const [visibleWeekStart, setVisibleWeekStart] = useState<Date>(() =>
     startOfWeek(new Date(), { weekStartsOn: 0 }),
   );
 
-  // Day currently selected on the Dashboard's day view
-  const [dashboardDate, setDashboardDate] = useState<Date>(() => startOfDay(new Date()));
+  // Day currently selected on the Dashboard's day view (moves on at midnight while on today)
+  const [dashboardDate, setDashboardDate] = useSelectedDay();
 
   // Helper: refetch events for a given week, with one extra day on either side
   // so multi-day events that bleed in/out of the visible week still render.
@@ -275,7 +284,7 @@ export function App() {
   );
 
   // Event notifications (browser + HA mobile_app)
-  useNotifications(events, client, !focusMemberId);
+  useNotifications(events, client, fullAppShown);
 
   // Leaderboard is still a slide-over panel (not a full view); Chores is now
   // a real full-screen activeView (see PRD: dedicated chores screen).
@@ -285,7 +294,7 @@ export function App() {
 
   // Fetch data when connected, or when the user navigates to a different week.
   useEffect(() => {
-    if (!connected) return;
+    if (!connected || !fullAppShown) return;
 
     const loadData = async () => {
       await fetchCalendars();
@@ -300,19 +309,20 @@ export function App() {
     }, 5 * 60 * 1000);
 
     return () => clearInterval(interval);
-  }, [connected, fetchCalendars, refetchEventsForWeek, visibleWeekStart]);
+  }, [connected, fullAppShown, fetchCalendars, refetchEventsForWeek, visibleWeekStart]);
 
   // Re-fetch when calendar colors or family members change so colors update
   // immediately, without recreating the 5-minute polling interval above.
-  const colorRefreshRef = useRef({ connected, fetchCalendars, refetchEventsForWeek, visibleWeekStart });
-  colorRefreshRef.current = { connected, fetchCalendars, refetchEventsForWeek, visibleWeekStart };
+  const colorRefreshRef = useRef({ connected, fullAppShown, fetchCalendars, refetchEventsForWeek, visibleWeekStart });
+  colorRefreshRef.current = { connected, fullAppShown, fetchCalendars, refetchEventsForWeek, visibleWeekStart };
   const didColorRefreshMount = useRef(false);
   useEffect(() => {
     if (!didColorRefreshMount.current) {
       didColorRefreshMount.current = true;
       return;
     }
-    if (!colorRefreshRef.current.connected) return;
+    // Paused: the fetch above runs with the latest colors when it resumes.
+    if (!colorRefreshRef.current.connected || !colorRefreshRef.current.fullAppShown) return;
     colorRefreshRef.current.fetchCalendars();
     colorRefreshRef.current.refetchEventsForWeek(colorRefreshRef.current.visibleWeekStart);
   }, [settings.calendarColors, members]);
