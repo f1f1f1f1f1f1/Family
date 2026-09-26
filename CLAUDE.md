@@ -23,8 +23,13 @@ Upstream's `beacon/` subdirectory was removed: Supervisor treats every
 add-on store as a stale second "Beacon" add-on. Don't reintroduce a nested
 `config.yaml`.
 
-### HA Add-on Auth: Long-Lived Token in Config
-SUPERVISOR_TOKEN only works container-side (http://supervisor/core). postMessage auth doesn't work in HA companion app WKWebView. The `ha_token` config option (schema: password) with a user-provided long-lived access token is the only reliable browser-side auth approach.
+### HA Add-on Auth: Server-Side Proxy, No Browser Token
+In the add-on the browser never holds an HA token. SUPERVISOR_TOKEN only
+works container-side (http://supervisor/core), so server.js proxies
+/api/* and the /beacon-action/* bridges with it, and the page calls them
+same-origin through ingress (run.sh writes an empty `ha_token` into
+runtime-config.js). postMessage auth doesn't work in the HA companion
+app's WKWebView. There is no `ha_token` add-on option.
 
 ### HA Todo Items: Service Call with ?return_response
 Don't read `entity.attributes.items` — it doesn't exist. Use:

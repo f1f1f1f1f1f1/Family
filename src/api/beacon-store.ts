@@ -6,13 +6,7 @@
  * store during local development (no add-on server).
  */
 
-function isAddOn(): boolean {
-  return !!window.__BEACON_CONFIG__;
-}
-
-function getIngressBasePath(): string {
-  return window.location.pathname.replace(/\/$/, '');
-}
+import { getIngressBasePath, isAddOn } from '../utils/ha-env';
 
 /**
  * Read from server first, fall back to localStorage.

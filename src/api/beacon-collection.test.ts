@@ -2,7 +2,10 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { addToCollection, getCollection, removeFromCollection, updateInCollection } from './beacon-collection';
 import { onSaveFailed, saveThen, SaveFailedError } from '../utils/save-errors';
 
-vi.mock('../utils/ha-env', () => ({ isAddOn: () => true }));
+vi.mock('../utils/ha-env', async (importOriginal) => ({
+  ...await importOriginal<typeof import('../utils/ha-env')>(),
+  isAddOn: () => true,
+}));
 
 /*
  * Add-on mode: the server's copy is the real one. A write the server didn't

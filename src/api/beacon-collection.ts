@@ -18,7 +18,7 @@
  * read replaced that cache with the server's copy, silently undoing it.
  */
 
-import { isAddOn } from '../utils/ha-env';
+import { getIngressBasePath, isAddOn } from '../utils/ha-env';
 import { SaveFailedError, reportSaveFailed } from '../utils/save-errors';
 
 function saveFailed(name: string): SaveFailedError {
@@ -29,10 +29,6 @@ function saveFailed(name: string): SaveFailedError {
 
 interface HasId {
   id?: string;
-}
-
-function getIngressBasePath(): string {
-  return window.location.pathname.replace(/\/$/, '');
 }
 
 function readLocal<T>(name: string): T[] {
