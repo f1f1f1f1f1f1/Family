@@ -1,3 +1,10 @@
+# [1.52.0](https://github.com/f1f1f1f1f1f1/Family/compare/v1.51.5...v1.52.0) (2026-09-26)
+
+
+### Features
+
+* make the Font Size setting actually change text size ([796931a](https://github.com/f1f1f1f1f1f1/Family/commit/796931aa92661cd10b25fa450884dda12ae3c592))
+
 ## [1.51.5](https://github.com/f1f1f1f1f1f1/Family/compare/v1.1.2...v1.51.5) (2026-09-26)
 
 
