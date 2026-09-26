@@ -49,3 +49,15 @@ refreshes screens when `lastChangeAt` moves. Server tests are root-level
 own `COPY` line in the `Dockerfile` — only `server.js` and the files listed
 there reach the container. Server-side files use `.cjs` because the root
 `package.json` is `"type": "module"`.
+
+### On-Demand Screens (code splitting)
+Screens not needed to show the dashboard (Settings, Music, Photos, Weather,
+Timer, Leaderboard, Onboarding, Kid Display, the Advanced Dashboard with
+GridStack, and its dnd-kit classic-layout editor) are loaded with
+`lazyNamed()` (src/utils/lazy-screen.ts) inside `<LazyBoundary>`. A plain
+`import { X } from './X'` anywhere on the startup path pulls X (and its
+libraries) back into the main bundle, so check `npm run build` output.
+`manualChunks` in vite.config.ts only splits React out; don't widen it to
+all of node_modules, or GridStack/dnd-kit end up in the startup download.
+After an add-on update a running display asks for old file names and
+server.js answers with index.html; `lazyNamed` reloads the page once.

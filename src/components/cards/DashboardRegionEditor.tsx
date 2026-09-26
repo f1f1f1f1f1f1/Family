@@ -4,8 +4,8 @@ import { SortableContext, verticalListSortingStrategy, arrayMove } from '@dnd-ki
 import { CardSize, DashboardCard, DashboardCardContext, DashboardRegion } from '../../types/dashboard-cards';
 import { cardRegistry } from './registry';
 import { SortableCardItem } from './SortableCardItem';
-import { CardPickerModal } from './CardPickerModal';
-import { CardConfigModal } from './CardConfigModal';
+import { CardPickerModal, CardConfigModal } from './card-modals';
+import { LazyBoundary } from '../LazyBoundary';
 
 const SIZE_CYCLE: CardSize[] = ['sm', 'md', 'lg'];
 
@@ -86,16 +86,18 @@ export function DashboardRegionEditor({ region, cards, context, onChange, resiza
       <button type="button" className="dash-card-add-float" onClick={() => setPickerOpen(true)}>
         + Add Card
       </button>
-      {pickerOpen && (
-        <CardPickerModal region={region} onPick={handleAdd} onClose={() => setPickerOpen(false)} />
-      )}
-      {configuringCard && (
-        <CardConfigModal
-          card={configuringCard}
-          onSave={(config) => handleConfigSave(configuringCard.id, config)}
-          onClose={() => setConfiguringId(null)}
-        />
-      )}
+      <LazyBoundary fallback={null}>
+        {pickerOpen && (
+          <CardPickerModal region={region} onPick={handleAdd} onClose={() => setPickerOpen(false)} />
+        )}
+        {configuringCard && (
+          <CardConfigModal
+            card={configuringCard}
+            onSave={(config) => handleConfigSave(configuringCard.id, config)}
+            onClose={() => setConfiguringId(null)}
+          />
+        )}
+      </LazyBoundary>
     </div>
   );
 }

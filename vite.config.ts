@@ -32,5 +32,17 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     sourcemap: false,
+    rollupOptions: {
+      output: {
+        // React is the biggest part of the startup download and changes far
+        // less often than the app, so it gets its own file: its content hash
+        // (and the browser's immutable cached copy) survives app updates.
+        // Only React goes here; other packages stay with the code that uses
+        // them so on-demand screens keep their libraries out of startup.
+        manualChunks(id) {
+          if (/[\\/]node_modules[\\/](react|react-dom|scheduler)[\\/]/.test(id)) return 'react';
+        },
+      },
+    },
   },
 });
