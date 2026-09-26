@@ -1,3 +1,11 @@
+## [1.52.1](https://github.com/f1f1f1f1f1f1/Family/compare/v1.52.0...v1.52.1) (2026-09-26)
+
+
+### Bug Fixes
+
+* start a streak on a member's first completed chore ([ba0894e](https://github.com/f1f1f1f1f1f1/Family/commit/ba0894e05874b1df50c1e2b8c4cb82b7c03ac089))
+* start a streak when a chore ticked in Google is someone's first ([9522f60](https://github.com/f1f1f1f1f1f1/Family/commit/9522f607277c97e1012bba58a6602fb9442fb2ce))
+
 # [1.52.0](https://github.com/f1f1f1f1f1f1/Family/compare/v1.51.5...v1.52.0) (2026-09-26)
 
 
