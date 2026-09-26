@@ -3,6 +3,7 @@ import { DashboardCard } from '../../types/dashboard-cards';
 import { EntityMultiPicker, EntityPicker } from './EntityPicker';
 import { getCardDefinition } from './registry';
 import { readString, readStringArray } from './card-config';
+import '../../styles/settings.css';
 
 interface CardConfigModalProps {
   card: DashboardCard;

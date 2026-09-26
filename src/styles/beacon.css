@@ -146,6 +146,20 @@ a:focus:not(:focus-visible) {
   grid-row: 1;
 }
 
+/* Kid Display member not found (rendered by App; the rest of the Kid
+   Display's styles load with it, from focus.css) */
+.focus-invalid-banner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  justify-content: center;
+  padding: 8px 16px;
+  background: color-mix(in srgb, var(--color-error, #ef4444) 13%, transparent);
+  color: var(--text-primary);
+  font-size: 0.9rem;
+  border-bottom: 1px solid var(--border);
+}
+
 .beacon-main {
   grid-row: 2;
 }

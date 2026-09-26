@@ -392,16 +392,3 @@
     font-size: 1.1rem;
   }
 }
-
-/* Invalid-member banner (rendered by App in the normal shell) */
-.focus-invalid-banner {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  justify-content: center;
-  padding: 8px 16px;
-  background: color-mix(in srgb, var(--color-error, #ef4444) 13%, transparent);
-  color: var(--text-primary);
-  font-size: 0.9rem;
-  border-bottom: 1px solid var(--border);
-}

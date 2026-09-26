@@ -29,6 +29,7 @@ import { buildFocusUrl } from '../focus';
 import { exitToHomeAssistant, isInHaPanel } from '../utils/ha-kiosk';
 import { useRoutines } from '../hooks/useRoutines';
 import { resolveCalendarColor, CALENDAR_COLOR_PRESETS } from '../types';
+import '../styles/settings.css';
 
 // ---------------------------------------------------------------------------
 // Types

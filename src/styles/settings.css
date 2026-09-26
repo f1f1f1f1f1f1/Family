@@ -492,57 +492,6 @@
   background: none;
 }
 
-.settings-btn:disabled {
-  opacity: 0.45;
-  cursor: default;
-}
-
-/* --- Button styles for settings --- */
-.settings-btn {
-  padding: 8px 18px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  background: var(--bg-surface);
-  font-family: var(--font-body);
-  font-size: 0.85rem;
-  color: var(--text-primary);
-  cursor: pointer;
-  transition: all var(--transition);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  max-width: 100%;
-}
-
-.settings-btn:hover {
-  background: var(--bg-hover);
-}
-
-.settings-btn--primary {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: white;
-}
-
-.settings-btn--primary:hover {
-  opacity: 0.9;
-}
-
-.settings-btn--danger {
-  color: var(--color-error, #ef4444);
-  border-color: var(--color-error, #ef4444);
-}
-
-.settings-btn--danger:hover {
-  background: color-mix(in srgb, var(--color-error, #ef4444) 6%, transparent);
-}
-
-.settings-btn-group {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
 /* --- About section --- */
 .settings-about-row {
   display: flex;

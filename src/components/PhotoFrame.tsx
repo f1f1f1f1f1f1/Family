@@ -15,6 +15,7 @@ import { PhotoDiagnostics } from './PhotoDiagnostics';
 import { testPatternUrl } from '../utils/test-pattern';
 import { CoverPhoto } from './CoverPhoto';
 import { MediaPlayer } from '../types/music';
+import '../styles/photos.css';
 
 interface PhotoFrameProps {
   showClock?: boolean;

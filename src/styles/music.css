@@ -1,172 +1,6 @@
 /* ============================================================
-   Beacon — Music Components
-   Now Playing Bar + Full Music View
+   Beacon — Music screen (the Now Playing bar is in now-playing.css)
    ============================================================ */
-
-/* --- Now Playing Bar (compact bottom bar) --- */
-.now-playing-bar {
-  position: relative;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 8px 16px;
-  background: color-mix(in srgb, var(--bg-surface) 75%, transparent);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
-  border-top: 1px solid var(--border-subtle);
-  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
-  animation: now-playing-slide-up 300ms ease;
-  min-height: 64px;
-  overflow: hidden;
-}
-
-/* Thin progress bar along the top edge */
-.now-playing-progress {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 2px;
-  background: var(--border-subtle, rgba(0, 0, 0, 0.06));
-}
-
-.now-playing-progress-fill {
-  height: 100%;
-  background: var(--accent, #3b82f6);
-  transition: width 1s linear;
-}
-
-[data-theme="dark"] .now-playing-bar {
-  background: rgba(15, 23, 42, 0.8);
-}
-
-@keyframes now-playing-slide-up {
-  from {
-    opacity: 0;
-    transform: translateY(100%);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-.now-playing-info {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex: 1;
-  min-width: 0;
-  text-align: left;
-}
-
-.now-playing-art {
-  width: 44px;
-  height: 44px;
-  border-radius: var(--radius-sm);
-  object-fit: cover;
-  flex-shrink: 0;
-  box-shadow: var(--shadow-sm);
-}
-
-.now-playing-art--placeholder {
-  background: var(--bg-hover);
-}
-
-.now-playing-text {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-}
-
-.now-playing-title {
-  font-size: 0.85rem;
-  font-weight: 600;
-  color: var(--text-primary);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  line-height: 1.3;
-}
-
-.now-playing-artist {
-  font-size: 0.75rem;
-  color: var(--text-secondary);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  line-height: 1.3;
-}
-
-.now-playing-controls {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  flex-shrink: 0;
-}
-
-.now-playing-btn {
-  width: 40px;
-  height: 40px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 50%;
-  color: var(--text-primary);
-  transition: all var(--transition);
-}
-
-.now-playing-btn:hover {
-  background: var(--bg-hover);
-}
-
-.now-playing-btn--play {
-  width: 44px;
-  height: 44px;
-  background: var(--color-blue-full);
-  color: white;
-}
-
-.now-playing-btn--play:hover {
-  opacity: 0.9;
-}
-
-.now-playing-volume {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  flex-shrink: 0;
-  width: 120px;
-}
-
-.now-playing-volume-slider {
-  -webkit-appearance: none;
-  appearance: none;
-  width: 80px;
-  height: 4px;
-  border-radius: 2px;
-  background: var(--border);
-  outline: none;
-}
-
-.now-playing-volume-slider::-webkit-slider-thumb {
-  -webkit-appearance: none;
-  appearance: none;
-  width: 14px;
-  height: 14px;
-  border-radius: 50%;
-  background: var(--color-blue-full);
-  cursor: pointer;
-}
-
-.now-playing-volume-slider::-moz-range-thumb {
-  width: 14px;
-  height: 14px;
-  border-radius: 50%;
-  background: var(--color-blue-full);
-  cursor: pointer;
-  border: none;
-}
 
 /* --- Full Music View --- */
 .music-view {
@@ -441,10 +275,6 @@
     font-size: 1.2rem;
   }
 
-  .now-playing-volume {
-    display: none;
-  }
-
   /* Touch-friendly controls */
   .music-control-btn {
     width: 52px;
@@ -454,16 +284,6 @@
   .music-control-btn--play {
     width: 68px;
     height: 68px;
-  }
-
-  .now-playing-btn {
-    width: 44px;
-    height: 44px;
-  }
-
-  .now-playing-btn--play {
-    width: 48px;
-    height: 48px;
   }
 }
 

@@ -10,6 +10,7 @@ import { ScreenSaver } from '../ScreenSaver';
 import { RoutineCard } from './RoutineCard';
 import { FocusChores } from './FocusChores';
 import { pickRoutine, getTimeOfDay } from './period';
+import '../../styles/focus.css';
 
 interface FocusViewProps {
   memberId: string;
