@@ -1,3 +1,10 @@
+# [1.1.0](https://github.com/f1f1f1f1f1f1/Family/compare/v1.0.1...v1.1.0) (2026-09-26)
+
+
+### Features
+
+* run the Google Tasks chores sync in the add-on ([ba31707](https://github.com/f1f1f1f1f1f1/Family/commit/ba3170762d7ac343f57f279cebe23e6bd9561e04))
+
 ## [1.0.1](https://github.com/f1f1f1f1f1f1/Family/compare/v1.0.0...v1.0.1) (2026-09-26)
 
 
