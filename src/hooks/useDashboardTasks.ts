@@ -5,6 +5,7 @@ import { isGroceryListName } from '../utils/grocery';
 import { localDayKey } from '../api/date-keys';
 import { useLocalTasks } from './useLocalTasks';
 import { useTaskmate } from './useTaskmate';
+import { refreshWhileAwake } from '../utils/display-sleep';
 
 export interface DashboardTodoItem {
   uid: string;
@@ -70,8 +71,7 @@ export function useDashboardTasks(
     }
 
     fetchTasks();
-    const interval = setInterval(fetchTasks, 60_000);
-    return () => clearInterval(interval);
+    return refreshWhileAwake(fetchTasks, 60_000);
   }, [connected, groceryListIds, hiddenListIds, enabled]);
 
   const items: DashboardTodoItem[] = useMemo(() => {

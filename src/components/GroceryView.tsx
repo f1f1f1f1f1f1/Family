@@ -6,6 +6,7 @@ import { hasToken } from '../api/ha-rest';
 import { getTodoItems } from '../api/ha-services';
 import { isGroceryListName } from '../utils/grocery';
 import { useLocalTasks } from '../hooks/useLocalTasks';
+import { refreshWhileAwake } from '../utils/display-sleep';
 
 interface TodoItem {
   uid: string;
@@ -163,11 +164,11 @@ export function GroceryView({ defaultListId, mode = 'grocery', groceryListIds = 
     loadHaItems(haListId);
   }, [haListId, loadHaItems]);
 
-  // Refresh HA lists every 30 seconds
+  // Refresh HA lists every 30 seconds (not while hidden or under the
+  // screensaver)
   useEffect(() => {
     if (!haListId) return;
-    const interval = setInterval(() => loadHaItems(haListId), 30_000);
-    return () => clearInterval(interval);
+    return refreshWhileAwake(() => loadHaItems(haListId), 30_000);
   }, [haListId, loadHaItems]);
 
   // Split items

@@ -3,6 +3,7 @@ import { Plus } from 'lucide-react';
 import { DashboardCardProps } from '../../types/dashboard-cards';
 import { AnyListClient } from '../../api/anylist';
 import { getTodoItems } from '../../api/ha-services';
+import { refreshWhileAwake } from '../../utils/display-sleep';
 
 interface TodoItem {
   uid: string;
@@ -44,11 +45,10 @@ export function ShoppingCard({ config, context }: DashboardCardProps) {
     loadItems();
   }, [loadItems]);
 
-  // Refresh every 30 seconds
+  // Refresh every 30 seconds (not while hidden or under the screensaver)
   useEffect(() => {
     if (!shoppingEntity) return;
-    const interval = setInterval(loadItems, 30_000);
-    return () => clearInterval(interval);
+    return refreshWhileAwake(loadItems, 30_000);
   }, [shoppingEntity, loadItems]);
 
   // Add item

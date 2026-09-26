@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { fetchAllStates, hasToken } from '../api/ha-rest';
 import { TaskmateUser, TaskmateCompletion } from '../types/taskmate';
+import { refreshWhileAwake } from '../utils/display-sleep';
 
 interface HaState {
   entity_id: string;
@@ -99,8 +100,7 @@ export function useTaskmate(connected: boolean, enabled = true): UseTaskmateResu
     }
 
     fetchTaskmate();
-    const interval = setInterval(fetchTaskmate, 60_000);
-    return () => clearInterval(interval);
+    return refreshWhileAwake(fetchTaskmate, 60_000);
   }, [connected, enabled]);
 
   const listByUser: Record<string, TaskmateUser> = {};

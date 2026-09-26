@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { ForecastDay } from '../types';
 import { hasToken } from '../api/ha-rest';
 import { findWeatherEntity, getWeatherForecast } from '../api/ha-services';
+import { refreshWhileAwake } from '../utils/display-sleep';
 
 const REFRESH_INTERVAL = 30 * 60 * 1000; // 30 minutes
 
@@ -35,8 +36,7 @@ export function useWeatherForecast(): ForecastDay[] {
 
   useEffect(() => {
     fetchForecast();
-    const interval = setInterval(fetchForecast, REFRESH_INTERVAL);
-    return () => clearInterval(interval);
+    return refreshWhileAwake(fetchForecast, REFRESH_INTERVAL);
   }, [fetchForecast]);
 
   return forecast;

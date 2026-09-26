@@ -4,6 +4,7 @@ import { RefreshCw, ChevronDown, Droplets, Wind } from 'lucide-react';
 import { weatherIcon, conditionLabel } from '../types/weather-icons';
 import { hasToken } from '../api/ha-rest';
 import { findWeatherEntity, getWeatherForecast } from '../api/ha-services';
+import { refreshWhileAwake } from '../utils/display-sleep';
 
 interface ForecastItem {
   datetime: string;
@@ -110,8 +111,7 @@ export function WeatherView() {
 
   useEffect(() => {
     fetchData();
-    const interval = setInterval(fetchData, 10 * 60 * 1000);
-    return () => clearInterval(interval);
+    return refreshWhileAwake(fetchData, 10 * 60 * 1000);
   }, [fetchData]);
 
   const handleDayClick = (datetime: string) => {
