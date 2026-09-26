@@ -6,6 +6,7 @@ import { localDayKey } from '../api/date-keys';
 import { useLocalTasks } from './useLocalTasks';
 import { useTaskmate } from './useTaskmate';
 import { refreshWhileAwake } from '../utils/display-sleep';
+import { todoItemRef } from '../api/anylist';
 
 export interface DashboardTodoItem {
   uid: string;
@@ -127,7 +128,7 @@ export function useDashboardTasks(
     try {
       await callHaService('todo', 'update_item', {
         entity_id: haItem.listId,
-        item: haItem.summary,
+        item: todoItemRef(haItem),
         status: newStatus,
       });
       setHaItems(prev => prev.map(i =>

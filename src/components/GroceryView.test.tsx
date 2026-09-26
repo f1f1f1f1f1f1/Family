@@ -29,7 +29,9 @@ vi.mock('../hooks/useLocalTasks', () => ({
 }));
 
 describe('GroceryView', () => {
-  beforeEach(() => vi.mocked(getTodoItems).mockClear());
+  beforeEach(() => {
+    vi.mocked(getTodoItems).mockClear();
+  });
 
   // The Shopping list is Family's own; it only exists on the Shopping
   // screen. A view that moved on to To-Do with it still selected used to
