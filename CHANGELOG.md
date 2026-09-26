@@ -1,3 +1,24 @@
+## [1.1.1](https://github.com/f1f1f1f1f1f1/Family/compare/v1.1.0...v1.1.1) (2026-09-26)
+
+
+### Performance Improvements
+
+* load screens on demand so the dashboard starts faster ([287b8f7](https://github.com/f1f1f1f1f1f1/Family/commit/287b8f793bbc390acd0ee9dd4c79ce9a17b4f8d5))
+
+# [1.1.0](https://github.com/f1f1f1f1f1f1/Family/compare/v1.0.1...v1.1.0) (2026-09-26)
+
+
+### Features
+
+* run the Google Tasks chores sync in the add-on ([ba31707](https://github.com/f1f1f1f1f1f1/Family/commit/ba3170762d7ac343f57f279cebe23e6bd9561e04))
+
+## [1.0.1](https://github.com/f1f1f1f1f1f1/Family/compare/v1.0.0...v1.0.1) (2026-09-26)
+
+
+### Bug Fixes
+
+* load photos lazily and download each one once ([3f040b4](https://github.com/f1f1f1f1f1f1/Family/commit/3f040b4e0f3e7e0251a841162892f33469ab134f))
+
 # 1.0.0 (2026-09-26)
 
 

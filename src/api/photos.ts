@@ -1,4 +1,4 @@
-import { Photo } from '../types/photos';
+import { PhotoEntry, PhotoSource } from '../types/photos';
 import { getConfig } from '../config';
 import { hasToken, callBeaconAction } from './ha-rest';
 import { isAddOn } from '../utils/ha-env';
@@ -6,15 +6,18 @@ import { isAddOn } from '../utils/ha-env';
 const { photo_directory: PHOTOS_PATH } = getConfig();
 
 /**
- * Shuffles an array in place using Fisher-Yates.
+ * How long a browsed photo list is reused. Shared by everything showing
+ * photos (the Photos screen and the screensaver), so opening Photos or the
+ * screensaver starting doesn't browse the media folders again.
  */
-function shuffle<T>(arr: T[]): T[] {
-  for (let i = arr.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [arr[i], arr[j]] = [arr[j], arr[i]];
-  }
-  return arr;
-}
+export const PHOTO_LIST_TTL_MS = 60 * 60 * 1000;
+
+/**
+ * How long a resolved photo URL is reused. resolve_media signs URLs for
+ * CONTENT_AUTH_EXPIRY_TIME (24h, homeassistant/components/media_player/
+ * const.py), so they're re-resolved well before they stop working.
+ */
+export const PHOTO_URL_MAX_AGE_MS = 12 * 60 * 60 * 1000;
 
 /**
  * Converts a plain filesystem-style path (e.g. "/media/beacon/photos", as
@@ -83,16 +86,14 @@ async function resolveImageUrl(mediaContentId: string): Promise<string | null> {
 }
 
 /**
- * Browses a media_content_id and resolves every image child to a
- * displayable URL.
+ * Browses a media_content_id and lists its image children. Doesn't
+ * resolve them — that's done per photo, just before it's shown.
+ * Rejects if the browse fails, so a failed browse isn't cached.
  *
  * media_source/browse_media has no REST endpoint either — same WS-only
  * situation as resolve_media above.
  */
-async function fetchPhotosFrom(
-  mediaContentId: string,
-  source: 'ha_media' | 'local',
-): Promise<Photo[]> {
+async function browsePhotos(mediaContentId: string, source: PhotoSource): Promise<PhotoEntry[]> {
   if (!hasToken()) return [];
   if (!isAddOn()) return []; // standalone WS media browsing not yet implemented
 
@@ -111,57 +112,97 @@ async function fetchPhotosFrom(
     };
 
     const children = browsed?.result?.children || [];
-    const imageChildren = children.filter((item) => item.media_content_type?.startsWith('image'));
-
-    const resolved = await Promise.all(
-      imageChildren.map(async (item) => ({
-        url: await resolveImageUrl(item.media_content_id),
-        caption: item.title as string | undefined,
-        source,
-      })),
-    );
-
-    const photos: Photo[] = [];
-    for (const item of resolved) {
-      if (item.url) photos.push({ url: item.url, caption: item.caption, source: item.source });
-    }
-    return photos;
-  } catch {
+    return children
+      .filter((item) => item.media_content_type?.startsWith('image') && item.media_content_id)
+      .map((item) => ({ id: item.media_content_id, caption: item.title || undefined, source }));
+  } catch (err) {
     console.warn(`Beacon: Failed to fetch photos from ${mediaContentId}`);
-    return [];
+    throw err;
   }
 }
 
-/**
- * Fetches photos from HA media browser API (root of local media).
- */
-function fetchHAMediaPhotos(): Promise<Photo[]> {
-  return fetchPhotosFrom('media-source://media_source/local', 'ha_media');
-}
+let listCache: { key: string; at: number; entries: Promise<PhotoEntry[]> } | null = null;
 
 /**
- * Fetches photos from the configured local photo directory.
+ * Every photo in the configured sources (HA's local media root and the
+ * `photo_directory` folder), in folder order. Browsed once and shared for
+ * PHOTO_LIST_TTL_MS; a list that came back empty or incomplete because a
+ * browse failed isn't kept, so the next call tries again.
  */
-function fetchLocalPhotos(): Promise<Photo[]> {
-  return fetchPhotosFrom(toMediaContentId(PHOTOS_PATH), 'local');
-}
+export function listPhotos(sources: PhotoSource[] = ['ha_media', 'local']): Promise<PhotoEntry[]> {
+  const key = [...sources].sort().join(',');
+  if (listCache && listCache.key === key && Date.now() - listCache.at < PHOTO_LIST_TTL_MS) {
+    return listCache.entries;
+  }
 
-/**
- * Gets all photos from configured sources, shuffled.
- */
-export async function getPhotos(sources: Array<'local' | 'google_photos' | 'ha_media'> = ['ha_media', 'local']): Promise<Photo[]> {
-  const fetchers: Promise<Photo[]>[] = [];
-
+  const browses: Promise<PhotoEntry[]>[] = [];
   if (sources.includes('ha_media')) {
-    fetchers.push(fetchHAMediaPhotos());
+    browses.push(browsePhotos('media-source://media_source/local', 'ha_media'));
   }
   if (sources.includes('local')) {
-    fetchers.push(fetchLocalPhotos());
+    browses.push(browsePhotos(toMediaContentId(PHOTOS_PATH), 'local'));
   }
   // google_photos would require OAuth — not implemented yet
 
-  const results = await Promise.all(fetchers);
-  const allPhotos = results.flat();
+  const entry = {
+    key,
+    at: Date.now(),
+    entries: Promise.allSettled(browses).then((results) => {
+      const seen = new Set<string>();
+      const entries: PhotoEntry[] = [];
+      let failed = false;
+      for (const result of results) {
+        if (result.status === 'rejected') { failed = true; continue; }
+        for (const photo of result.value) {
+          // Both sources point at the same folder when photo_directory is
+          // the media root; list each photo once.
+          if (seen.has(photo.id)) continue;
+          seen.add(photo.id);
+          entries.push(photo);
+        }
+      }
+      if ((failed || entries.length === 0) && listCache === entry) listCache = null;
+      return entries;
+    }),
+  };
+  listCache = entry;
+  return entry.entries;
+}
 
-  return shuffle(allPhotos);
+const urlCache = new Map<string, { at: number; url: Promise<string | null>; value?: string | null }>();
+
+/**
+ * A displayable URL for one photo. Resolved on first use and reused for
+ * PHOTO_URL_MAX_AGE_MS; callers asking at the same time share one resolve.
+ * A failed resolve (null) isn't kept.
+ */
+export function resolvePhotoUrl(id: string): Promise<string | null> {
+  const cached = urlCache.get(id);
+  if (cached && Date.now() - cached.at < PHOTO_URL_MAX_AGE_MS) return cached.url;
+
+  const entry: { at: number; url: Promise<string | null>; value?: string | null } = {
+    at: Date.now(),
+    url: resolveImageUrl(id).then((url) => {
+      entry.value = url;
+      if (!url && urlCache.get(id) === entry) urlCache.delete(id);
+      return url;
+    }),
+  };
+  urlCache.set(id, entry);
+  return entry.url;
+}
+
+/**
+ * Drops a photo's resolved URL (e.g. after it failed to load), so the next
+ * resolvePhotoUrl() asks HA again. Only drops `url` if that's still the
+ * cached one — not a newer resolve that's already replaced it.
+ */
+export function forgetPhotoUrl(id: string, url: string): void {
+  if (urlCache.get(id)?.value === url) urlCache.delete(id);
+}
+
+/** Forget all cached photo lists and URLs (for tests). */
+export function clearPhotoCaches(): void {
+  listCache = null;
+  urlCache.clear();
 }

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
-import { coverCrop, findExifOrientation } from '../utils/cover-photo';
+import { coverCrop } from '../utils/cover-photo';
+import { loadPhoto, preloadPhoto, type LoadedPhoto } from '../utils/photo-loader';
 
 /**
  * Draws a photo to fill its box without distortion, cropped around the
@@ -13,46 +14,20 @@ import { coverCrop, findExifOrientation } from '../utils/cover-photo';
  * apply the orientation: the file is fetched, its orientation tag is
  * rewritten to 1 ("as stored") in our copy, the raw pixels are loaded,
  * and the rotation and centre crop are both done here.
+ *
+ * Each photo is downloaded once: the image is built from the fetched bytes
+ * whether or not it needed rotating, and the last few loaded photos are
+ * kept, so `preloadSrc` (the next photo) is ready when it's shown.
  */
 
 interface Props {
   src?: string;
+  /** Loaded in the background once `src` is showing, e.g. the next photo. */
+  preloadSrc?: string;
   label: string;
   className?: string;
-}
-
-interface LoadedPhoto {
-  image: HTMLImageElement;
-  /** EXIF orientation still to be applied (1 = none). */
-  orientation: number;
-  revoke?: () => void;
-}
-
-function loadImage(url: string): Promise<HTMLImageElement> {
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    img.decoding = 'async';
-    img.onload = () => resolve(img);
-    img.onerror = reject;
-    img.src = url;
-  });
-}
-
-async function loadPhoto(src: string): Promise<LoadedPhoto> {
-  try {
-    const bytes = await (await fetch(src)).arrayBuffer();
-    const found = findExifOrientation(bytes);
-    if (found && found.value >= 2 && found.value <= 8) {
-      const copy = bytes.slice(0);
-      new DataView(copy).setUint16(found.offset, 1, found.little);
-      const url = URL.createObjectURL(new Blob([copy], { type: 'image/jpeg' }));
-      const image = await loadImage(url);
-      return { image, orientation: found.value, revoke: () => URL.revokeObjectURL(url) };
-    }
-  } catch {
-    /* fall back to letting the browser load it directly */
-  }
-  return { image: await loadImage(src), orientation: 1 };
+  /** Called with `src` when it couldn't be loaded. */
+  onError?: (src: string) => void;
 }
 
 /** The photo drawn upright on a canvas of its upright size. */
@@ -80,26 +55,34 @@ function uprightCanvas({ image, orientation }: LoadedPhoto): HTMLCanvasElement |
   return canvas;
 }
 
-export function CoverPhoto({ src, label, className }: Props) {
+export function CoverPhoto({ src, preloadSrc, label, className, onError }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [upright, setUpright] = useState<HTMLCanvasElement | HTMLImageElement | null>(null);
+  const [settledSrc, setSettledSrc] = useState<string>();
+  const onErrorRef = useRef(onError);
+  useEffect(() => { onErrorRef.current = onError; });
 
   useEffect(() => {
     setUpright(null);
     if (!src) return;
     let cancelled = false;
-    let revoke: (() => void) | undefined;
     loadPhoto(src)
       .then((loaded) => {
-        revoke = loaded.revoke;
         if (!cancelled) setUpright(uprightCanvas(loaded));
       })
-      .catch(() => { /* image failed to load: leave blank */ });
-    return () => {
-      cancelled = true;
-      revoke?.();
-    };
+      .catch(() => {
+        if (!cancelled) onErrorRef.current?.(src);
+      })
+      .finally(() => {
+        if (!cancelled) setSettledSrc(src);
+      });
+    return () => { cancelled = true; };
   }, [src]);
+
+  // Preload once this photo is done, so it isn't slowed down by the next.
+  useEffect(() => {
+    if (preloadSrc && src && settledSrc === src) preloadPhoto(preloadSrc);
+  }, [preloadSrc, src, settledSrc]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
