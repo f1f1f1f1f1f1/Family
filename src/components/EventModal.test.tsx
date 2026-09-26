@@ -23,6 +23,22 @@ function makeEvent(overrides: Partial<CalendarEvent> = {}): CalendarEvent {
 }
 
 describe('EventModal', () => {
+  // Home Assistant's end date for an all-day event is the day after its
+  // last day; the form used to show that, so a one-day event read as two.
+  it("shows an all-day event's last day as its end date", () => {
+    render(
+      <EventModal
+        event={makeEvent({ allDay: true, start: '2026-09-28', end: '2026-10-01' })}
+        calendars={calendars}
+        onSave={vi.fn()}
+        onDelete={vi.fn()}
+        onClose={vi.fn()}
+      />
+    );
+    expect((document.getElementById('event-start-date') as HTMLInputElement).value).toBe('2026-09-28');
+    expect((document.getElementById('event-end-date') as HTMLInputElement).value).toBe('2026-09-30');
+  });
+
   it('auto-shifts the end time to preserve duration when start time changes', () => {
     const onSave = vi.fn();
     render(

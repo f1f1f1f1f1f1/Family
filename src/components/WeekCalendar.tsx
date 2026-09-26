@@ -24,6 +24,8 @@ interface WeekCalendarProps {
   onSlotClick: (date: string, hour: number) => void;
   onEventReschedule?: (event: CalendarEvent, newDate: string, newHour: number) => void;
   onVisibleWeekChange?: (weekStart: Date) => void;
+  /** First day of the week: 0 = Sunday, 1 = Monday. */
+  weekStartsOn?: 0 | 1;
 }
 
 const START_HOUR = 7;
@@ -67,9 +69,9 @@ interface MultiDaySpan {
   lane: number;
 }
 
-export function WeekCalendar({ events, hiddenCalendars, onEventClick, onSlotClick, onEventReschedule, onVisibleWeekChange }: WeekCalendarProps) {
+export function WeekCalendar({ events, hiddenCalendars, onEventClick, onSlotClick, onEventReschedule, onVisibleWeekChange, weekStartsOn = 0 }: WeekCalendarProps) {
   const today = new Date();
-  const todayWeekStart = startOfWeek(today, { weekStartsOn: 0 });
+  const todayWeekStart = startOfWeek(today, { weekStartsOn });
   const scrollRef = useRef<HTMLDivElement>(null);
   const isMobile = useIsMobile();
   const forecast = useWeatherForecast();
@@ -226,13 +228,16 @@ export function WeekCalendar({ events, hiddenCalendars, onEventClick, onSlotClic
       const eventStart = parseISO(event.start);
       const eventEnd = parseISO(event.end);
 
-      // Clamp to visible week
-      const visStart = eventStart < days[0] ? days[0] : eventStart;
-      const weekEndDate = addDays(days[6], 1);
+      // Clamp to the week. Columns count from the week's first day even on
+      // mobile, where `days` is only a slice of it — the bars below map
+      // them onto the visible slice.
+      const weekStartDate = allDays[0];
+      const visStart = eventStart < weekStartDate ? weekStartDate : eventStart;
+      const weekEndDate = addDays(allDays[6], 1);
       const visEnd = eventEnd > weekEndDate ? weekEndDate : eventEnd;
 
-      const startCol = Math.max(0, differenceInCalendarDays(visStart, days[0]));
-      const endCol = Math.min(7, differenceInCalendarDays(visEnd, days[0]));
+      const startCol = Math.max(0, differenceInCalendarDays(visStart, weekStartDate));
+      const endCol = Math.min(7, differenceInCalendarDays(visEnd, weekStartDate));
       const span = endCol - startCol;
 
       if (span <= 0) continue;
@@ -268,7 +273,7 @@ export function WeekCalendar({ events, hiddenCalendars, onEventClick, onSlotClic
       timedByDay: timed,
       allDayLaneCount: maxLane,
     };
-  }, [days, visibleEvents]);
+  }, [days, allDays, visibleEvents]);
 
   const hasAnyAllDay = useMemo(() => {
     if (multiDaySpans.length > 0) return true;
@@ -283,7 +288,7 @@ export function WeekCalendar({ events, hiddenCalendars, onEventClick, onSlotClic
     if (scrollRef.current) {
       const currentHour = getHours(new Date());
       const scrollToHour = Math.max(currentHour - 1, START_HOUR);
-      const hourHeight = 72; // matches --hour-height
+      const hourHeight = parseFloat(getComputedStyle(scrollRef.current).getPropertyValue('--hour-height')) || 72;
       scrollRef.current.scrollTop = (scrollToHour - START_HOUR) * hourHeight;
     }
   }, []);
@@ -341,12 +346,12 @@ export function WeekCalendar({ events, hiddenCalendars, onEventClick, onSlotClic
     const clampedStart = Math.max(startHour, START_HOUR);
     const clampedEnd = Math.min(endHour, END_HOUR);
 
-    const topOffset = (clampedStart - START_HOUR) * 72;
-    const height = Math.max((clampedEnd - clampedStart) * 72, 22);
-
+    // Hour rows are var(--hour-height) tall, which the stylesheet shrinks
+    // on smaller screens (72px down to 52px), so place events in units of
+    // it rather than a fixed pixel height.
     const style: React.CSSProperties = {
-      top: `${topOffset}px`,
-      height: `${height}px`,
+      top: `calc(var(--hour-height) * ${clampedStart - START_HOUR})`,
+      height: `max(22px, calc(var(--hour-height) * ${clampedEnd - clampedStart}))`,
     };
 
     // Side-by-side columns for overlapping events
@@ -359,19 +364,20 @@ export function WeekCalendar({ events, hiddenCalendars, onEventClick, onSlotClic
     return style;
   }
 
-  // Current time indicator position — updates every 30s so the red line moves
-  const [currentTimeTop, setCurrentTimeTop] = useState<number | null>(() => {
+  // Current time indicator position (in hours below the grid's top) —
+  // updates every 30s so the red line moves
+  const [currentTimeOffset, setCurrentTimeOffset] = useState<number | null>(() => {
     const now = new Date();
     const h = getHours(now) + getMinutes(now) / 60;
     if (h < START_HOUR || h > END_HOUR) return null;
-    return (h - START_HOUR) * 72;
+    return h - START_HOUR;
   });
 
   useEffect(() => {
     const tick = () => {
       const now = new Date();
       const h = getHours(now) + getMinutes(now) / 60;
-      setCurrentTimeTop(h < START_HOUR || h > END_HOUR ? null : (h - START_HOUR) * 72);
+      setCurrentTimeOffset(h < START_HOUR || h > END_HOUR ? null : h - START_HOUR);
     };
     const interval = setInterval(tick, 30_000);
     return () => clearInterval(interval);
@@ -680,10 +686,10 @@ export function WeekCalendar({ events, hiddenCalendars, onEventClick, onSlotClic
                 ))}
 
                 {/* Current time indicator */}
-                {isToday && currentTimeTop !== null && (
+                {isToday && currentTimeOffset !== null && (
                   <div
                     className="current-time-line"
-                    style={{ top: `${currentTimeTop}px` }}
+                    style={{ top: `calc(var(--hour-height) * ${currentTimeOffset})` }}
                   />
                 )}
               </div>

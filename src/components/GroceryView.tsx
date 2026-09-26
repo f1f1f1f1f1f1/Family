@@ -88,6 +88,9 @@ export function GroceryView({ defaultListId, mode = 'grocery', groceryListIds = 
 
   const selectedList = allLists.find(l => l.id === selectedListId);
   const isLocal = selectedList?.source === 'local';
+  // Only lists this screen offers — a list id left over from elsewhere isn't
+  // an HA entity, and asking HA for its items fails.
+  const haListId = selectedList?.source === 'ha' ? selectedList.id : '';
 
   // Items for current list
   const items = useMemo<TodoItem[]>(() => {
@@ -153,19 +156,19 @@ export function GroceryView({ defaultListId, mode = 'grocery', groceryListIds = 
 
   // Reload when selected list changes (HA lists only)
   useEffect(() => {
-    if (!selectedListId || isLocal) {
+    if (!haListId) {
       setLoading(false);
       return;
     }
-    loadHaItems(selectedListId);
-  }, [selectedListId, isLocal, loadHaItems]);
+    loadHaItems(haListId);
+  }, [haListId, loadHaItems]);
 
   // Refresh HA lists every 30 seconds
   useEffect(() => {
-    if (!selectedListId || isLocal) return;
-    const interval = setInterval(() => loadHaItems(selectedListId), 30_000);
+    if (!haListId) return;
+    const interval = setInterval(() => loadHaItems(haListId), 30_000);
     return () => clearInterval(interval);
-  }, [selectedListId, isLocal, loadHaItems]);
+  }, [haListId, loadHaItems]);
 
   // Split items
   const uncheckedItems = useMemo(

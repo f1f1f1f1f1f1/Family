@@ -35,6 +35,7 @@ import { CalendarEvent, resolveCalendarColor } from './types';
 import { getConfig, patchConfig } from './config';
 import { setHaKioskMode } from './utils/ha-kiosk';
 import { applyFontScale } from './utils/font-scale';
+import { allDayEndAfter, moveAllDayEvent } from './utils/event-dates';
 
 const config = getConfig();
 
@@ -266,7 +267,7 @@ export function App() {
 
   // Visible week shown by the calendar (drives event fetch window)
   const [visibleWeekStart, setVisibleWeekStart] = useState<Date>(() =>
-    startOfWeek(new Date(), { weekStartsOn: 0 }),
+    startOfWeek(new Date(), { weekStartsOn: settings.weekStartsOn }),
   );
 
   // Day currently selected on the Dashboard's day view (moves on at midnight while on today)
@@ -369,14 +370,9 @@ export function App() {
       ? {
           summary: data.summary,
           start_date: data.startDate,
-          // HA's calendar API treats dtend as exclusive (the day AFTER the
-          // last day of the event) and rejects dtstart === dtend with a
-          // "minimum event duration" error. When the user picks the same
-          // start/end date for a single-day all-day event, bump end_date to
-          // the day after start_date so HA sees a valid >=1-day duration.
-          end_date: data.endDate <= data.startDate
-            ? format(addDays(new Date(`${data.startDate}T00:00:00`), 1), 'yyyy-MM-dd')
-            : data.endDate,
+          // The form's end date is the event's last day; HA's is the day
+          // after it (and it rejects an end equal to the start).
+          end_date: allDayEndAfter(data.startDate, data.endDate),
           description: data.description || undefined,
         }
       : {
@@ -464,10 +460,7 @@ export function App() {
       const durationMs = oldEnd.getTime() - oldStart.getTime();
 
       const patch = event.allDay
-        ? {
-            start_date: newDate,
-            end_date: format(new Date(new Date(newDate).getTime() + durationMs), 'yyyy-MM-dd'),
-          }
+        ? moveAllDayEvent(event, newDate)
         : (() => {
             const pad = (n: number) => String(n).padStart(2, '0');
             const newStartDt = `${newDate}T${pad(newHour)}:00:00`;
@@ -581,15 +574,17 @@ export function App() {
       const view = viewMap[e.key];
       if (view) {
         e.preventDefault();
-        setActiveView(view);
+        // Same as tapping the sidebar, so 6 opens the leaderboard panel.
+        handleChangeView(view);
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, []);
+  }, [handleChangeView]);
 
   const sidebarPos = settings.sidebarPosition || 'left';
+  const showNowPlaying = activeView !== 'music' && activeView !== 'photos' && music.activePlayer?.state === 'playing';
 
   // Show loading screen while checking stored credentials
   if (auth.state.loading) {
@@ -636,7 +631,7 @@ export function App() {
   }
 
   return (
-    <div className={`beacon beacon--sidebar-${sidebarPos} ${isIngress ? 'beacon--ingress' : ''} ${compact ? 'beacon--compact' : ''}`}>
+    <div className={`beacon beacon--sidebar-${sidebarPos} ${isIngress ? 'beacon--ingress' : ''} ${compact ? 'beacon--compact' : ''} ${showNowPlaying ? 'beacon--now-playing' : ''}`}>
       {focusInvalid && (
         <div className="focus-invalid-banner">
           Kid display member not found — showing the full app.
@@ -729,9 +724,11 @@ export function App() {
             />
           </LazyBoundary>
         ) : activeView === 'grocery' ? (
-          <GroceryView defaultListId={settings.defaultGroceryList || undefined} mode="grocery" groceryListIds={settings.groceryListIds} hideLocalList={settings.hideLocalGroceryList} hiddenListIds={choreSyncListIds} />
+          // Separate keys: otherwise React keeps one GroceryView across
+          // Shopping ↔ To-Do, along with the other screen's selected list.
+          <GroceryView key="grocery" defaultListId={settings.defaultGroceryList || undefined} mode="grocery" groceryListIds={settings.groceryListIds} hideLocalList={settings.hideLocalGroceryList} hiddenListIds={choreSyncListIds} />
         ) : activeView === 'tasks' ? (
-          <GroceryView mode="tasks" groceryListIds={settings.groceryListIds} hideLocalList={settings.hideLocalTaskList} hiddenListIds={choreSyncListIds} />
+          <GroceryView key="tasks" mode="tasks" groceryListIds={settings.groceryListIds} hideLocalList={settings.hideLocalTaskList} hiddenListIds={choreSyncListIds} />
         ) : activeView === 'timer' ? (
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', padding: 24 }}>
             <LazyBoundary>
@@ -788,6 +785,7 @@ export function App() {
               <div className="beacon-body-calendar">
                 <WeekCalendar
                   events={events}
+                  weekStartsOn={settings.weekStartsOn}
                   hiddenCalendars={hiddenCalendars}
                   onEventClick={handleEventClick}
                   onSlotClick={handleSlotClick}
@@ -848,7 +846,7 @@ export function App() {
       {/* GroceryView is now rendered as a full view above */}
 
       {/* Now Playing Bar — shows when music is playing, hidden in photo/music views */}
-      {activeView !== 'music' && activeView !== 'photos' && music.activePlayer?.state === 'playing' && (
+      {showNowPlaying && (
         <NowPlayingBar
           player={music.activePlayer}
           onPlay={() => music.play(music.activePlayer!.entity_id)}

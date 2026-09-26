@@ -4,7 +4,7 @@
 
 .omni-add {
   position: fixed;
-  bottom: 24px;
+  bottom: calc(24px + var(--now-playing-height, 0px));
   right: 24px;
   z-index: 90;
   display: flex;
@@ -173,7 +173,7 @@
 
 @media (max-width: 768px) {
   .omni-add {
-    bottom: calc(var(--mobile-tab-bar-height, 64px) + 16px);
+    bottom: calc(var(--mobile-tab-bar-height, 64px) + 16px + var(--now-playing-height, 0px));
     right: 16px;
   }
 
@@ -194,7 +194,7 @@
 
 @media (max-width: 480px) {
   .omni-add {
-    bottom: calc(var(--mobile-tab-bar-height, 64px) + 12px);
+    bottom: calc(var(--mobile-tab-bar-height, 64px) + 12px + var(--now-playing-height, 0px));
     right: 12px;
   }
 

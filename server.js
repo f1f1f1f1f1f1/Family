@@ -25,7 +25,7 @@ const {
 } = require('./server-guards.cjs');
 const { createChoresSync } = require('./chores-sync.cjs');
 
-const PORT = 3000;
+const PORT = Number(process.env.BEACON_PORT) || 3000;
 const DIST = process.env.BEACON_DIST || '/app/dist';
 const SUPERVISOR_TOKEN = process.env.SUPERVISOR_TOKEN || '';
 const HA_API_BASE = process.env.HA_API_BASE_OVERRIDE || 'http://supervisor/core';
@@ -579,7 +579,14 @@ const CHORES_SYNC_TRIGGER_COLLECTIONS = new Set(['beacon_chores', 'beacon_comple
 async function handleCollectionApi(req, res) {
   const parts = req.url.split('?')[0].replace(/^\/beacon-collection\//, '').split('/').filter(Boolean);
   const name = (parts[0] || '').replace(/[^a-zA-Z0-9_-]/g, '');
-  const itemId = parts[1] ? decodeURIComponent(parts[1]) : null;
+  let itemId = null;
+  try {
+    if (parts[1]) itemId = decodeURIComponent(parts[1]);
+  } catch {
+    res.writeHead(400, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ error: 'Malformed item id' }));
+    return;
+  }
 
   if (!name) {
     res.writeHead(400, { 'Content-Type': 'application/json' });
@@ -1159,6 +1166,23 @@ function handleChoresSyncAction(req, res) {
   });
 }
 
+/**
+ * Answers 500 when an async route fails in a way it didn't handle itself.
+ * Otherwise the rejection goes unhandled, which ends the whole add-on
+ * process — every display loses its server, and the chores sync stops.
+ */
+function answerUnexpectedError(req, res) {
+  return (err) => {
+    console.error(`[error] ${req.method} ${JSON.stringify(req.url.split('?')[0].slice(0, 200))}: ${err?.stack || err}`);
+    if (res.headersSent) {
+      res.destroy();
+      return;
+    }
+    res.writeHead(500, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ error: 'Internal server error' }));
+  };
+}
+
 const server = http.createServer((req, res) => {
   // Refuse writes sent by another website (CSRF) before any route runs.
   if (isCrossOriginWrite(req.method, req.headers)) {
@@ -1212,13 +1236,13 @@ const server = http.createServer((req, res) => {
 
   // Atomic collection API (members, chores, routines, completions, etc.)
   if (req.url.startsWith('/beacon-collection/')) {
-    handleCollectionApi(req, res);
+    handleCollectionApi(req, res).catch(answerUnexpectedError(req, res));
     return;
   }
 
   // Persistent data API
   if (req.url.startsWith('/beacon-data/')) {
-    handleDataApi(req, res);
+    handleDataApi(req, res).catch(answerUnexpectedError(req, res));
     return;
   }
 
@@ -1240,7 +1264,7 @@ const server = http.createServer((req, res) => {
     return;
   }
 
-  serveStatic(req, res);
+  serveStatic(req, res).catch(answerUnexpectedError(req, res));
 });
 
 // Handle WebSocket upgrades for /api/websocket
