@@ -90,6 +90,7 @@ beforeAll(async () => {
       BEACON_DIST: join(dir, 'dist'),
       BEACON_DATA: join(dir, 'data'),
       HA_API_BASE_OVERRIDE: haBase,
+      SUPERVISOR_TOKEN: 'test-token', // the WebSocket proxy only runs with one
     },
   });
   server.stdout!.on('data', (chunk) => { output += chunk; });
@@ -199,4 +200,19 @@ describe('add-on server', () => {
     });
   });
 
+  // HA answering the WebSocket upgrade with a plain HTTP error (a 502 while
+  // it restarts) left the browser's socket hanging, never answered.
+  it('passes on an HTTP answer to a WebSocket upgrade instead of hanging', async () => {
+    const answer = await new Promise<string>((resolve) => {
+      const socket = connect(Number(new URL(base).port), '127.0.0.1', () => {
+        socket.write('GET /api/websocket HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: Upgrade\r\nUpgrade: websocket\r\n'
+          + 'Sec-WebSocket-Version: 13\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n\r\n');
+      });
+      let data = '';
+      socket.on('data', (c) => { data += c; });
+      socket.on('close', () => resolve(data));
+      setTimeout(() => { socket.destroy(); resolve(data || 'no answer'); }, 2000);
+    });
+    expect(answer.split('\r\n')[0]).toBe('HTTP/1.1 404 Not Found');
+  });
 });

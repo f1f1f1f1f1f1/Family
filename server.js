@@ -1362,6 +1362,13 @@ server.on('upgrade', (req, socket, head) => {
   };
 
   const proxyReq = http.request(options);
+  // HA answered with a plain HTTP response (401, or 502 while it restarts)
+  // instead of switching protocols: pass the status on and close, rather
+  // than leave the browser's socket hanging.
+  proxyReq.on('response', (proxyRes) => {
+    socket.end(`HTTP/1.1 ${proxyRes.statusCode} ${proxyRes.statusMessage || ''}\r\nConnection: close\r\nContent-Length: 0\r\n\r\n`);
+    proxyRes.resume();
+  });
   proxyReq.on('upgrade', (proxyRes, proxySocket, proxyHead) => {
     socket.write(
       `HTTP/1.1 101 Switching Protocols\r\n` +
