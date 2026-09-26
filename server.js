@@ -509,16 +509,6 @@ function collectionFilePath(name) {
   return path.join(DATA_DIR, `${name}.json`);
 }
 
-async function readCollectionArray(name) {
-  try {
-    const raw = await fsp.readFile(collectionFilePath(name), 'utf8');
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
-}
-
 /**
  * Write a data file atomically: write a temporary file next to it, then
  * rename it over the original. A rename is atomic on the same filesystem,
@@ -545,9 +535,12 @@ function generateItemId() {
 }
 
 /**
- * Like readCollectionArray, but only a missing file counts as empty; a file
- * that can't be read or parsed throws. Used by the chores sync, which would
- * otherwise take an unreadable chores file as "every chore was deleted".
+ * A collection's items. Only a missing file counts as empty; a file that
+ * can't be read or parsed throws. A lenient read (any error = []) was used
+ * before writes, so one failed read (a disk error, a hand-edited file) had
+ * the next add rewrite the whole collection as that one item. The chores
+ * sync would likewise take an unreadable chores file as "every chore was
+ * deleted".
  */
 async function readCollectionArrayStrict(name) {
   let raw;
@@ -555,17 +548,27 @@ async function readCollectionArrayStrict(name) {
     raw = await fsp.readFile(collectionFilePath(name), 'utf8');
   } catch (err) {
     if (err.code === 'ENOENT') return [];
-    throw err;
+    throw storageError(`couldn't read ${name}.json: ${err.message}`);
   }
-  const parsed = JSON.parse(raw);
-  if (!Array.isArray(parsed)) throw new Error(`${name}.json does not hold a list`);
+  let parsed;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (err) {
+    throw storageError(`${name}.json isn't valid JSON: ${err.message}`);
+  }
+  if (!Array.isArray(parsed)) throw storageError(`${name}.json does not hold a list`);
   return parsed;
+}
+
+/** A problem with the stored data rather than the request: answered with 500. */
+function storageError(message) {
+  return Object.assign(new Error(message), { status: 500 });
 }
 
 /** Add one item (the server assigns its id unless it has one). */
 function collectionAdd(name, item) {
   return withCollectionLock(name, async () => {
-    const items = await readCollectionArray(name);
+    const items = await readCollectionArrayStrict(name);
     const newItem = { ...item, id: item.id || generateItemId() };
     items.push(newItem);
     await writeCollectionArray(name, items);
@@ -576,7 +579,7 @@ function collectionAdd(name, item) {
 /** Merge-patch one item by id; null if there's no such item. */
 function collectionUpdate(name, itemId, patch) {
   return withCollectionLock(name, async () => {
-    const items = await readCollectionArray(name);
+    const items = await readCollectionArrayStrict(name);
     const idx = items.findIndex((it) => it.id === itemId);
     if (idx === -1) return null;
     items[idx] = { ...items[idx], ...patch, id: itemId };
@@ -588,7 +591,7 @@ function collectionUpdate(name, itemId, patch) {
 /** Remove one item by id; whether it was there. */
 function collectionRemove(name, itemId) {
   return withCollectionLock(name, async () => {
-    const items = await readCollectionArray(name);
+    const items = await readCollectionArrayStrict(name);
     const filtered = items.filter((it) => it.id !== itemId);
     const didRemove = filtered.length !== items.length;
     if (didRemove) await writeCollectionArray(name, filtered);
@@ -619,13 +622,18 @@ async function handleCollectionApi(req, res) {
 
   try {
     if (req.method === 'GET' && !itemId) {
-      let items = await readCollectionArray(name);
+      let items = await readCollectionArrayStrict(name);
       // ?since=<ISO time>: only items completed then or later. Completion
       // history grows every day and displays reload it on every change;
       // they need today's, or this month's for the leaderboard.
-      const since = Date.parse(new URLSearchParams(req.url.split('?')[1] || '').get('since') || '');
+      // &chore_ids=a,b: also those chores' items, whenever completed (a
+      // one-off chore stays done).
+      const query = new URLSearchParams(req.url.split('?')[1] || '');
+      const since = Date.parse(query.get('since') || '');
       if (!Number.isNaN(since)) {
-        items = items.filter((it) => typeof it?.completed_at === 'string' && Date.parse(it.completed_at) >= since);
+        const choreIds = new Set((query.get('chore_ids') || '').split(',').filter(Boolean));
+        items = items.filter((it) => (typeof it?.completed_at === 'string' && Date.parse(it.completed_at) >= since)
+          || choreIds.has(it?.chore_id));
       }
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify(items));
@@ -669,7 +677,7 @@ async function handleCollectionApi(req, res) {
     res.writeHead(405, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ error: 'Method not allowed' }));
   } catch (err) {
-    res.writeHead(err.message?.includes('too large') ? 413 : 400, { 'Content-Type': 'application/json' });
+    res.writeHead(err.status ?? (err.message?.includes('too large') ? 413 : 400), { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ error: err.message }));
   }
 }
@@ -728,18 +736,32 @@ async function handleDataApi(req, res) {
           await writeFileAtomic(filePath, body);
           return;
         }
+        // Only a missing file counts as empty: on any other read or parse
+        // error, merging into {} would replace every stored setting with
+        // just this patch.
         let existing = {};
+        let raw = null;
         try {
-          const current = JSON.parse(await fsp.readFile(filePath, 'utf8'));
+          raw = await fsp.readFile(filePath, 'utf8');
+        } catch (err) {
+          if (err.code !== 'ENOENT') throw storageError(`couldn't read ${key}.json: ${err.message}`);
+        }
+        if (raw !== null) {
+          let current;
+          try {
+            current = JSON.parse(raw);
+          } catch (err) {
+            throw storageError(`${key}.json isn't valid JSON: ${err.message}`);
+          }
           if (current && typeof current === 'object' && !Array.isArray(current)) existing = current;
-        } catch { /* no file yet */ }
+        }
         await writeFileAtomic(filePath, JSON.stringify({ ...existing, ...parsed }));
       });
       if (key === SETTINGS_KEY) void choresSync.settingsChanged();
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ ok: true }));
     } catch (err) {
-      res.writeHead(err.message?.includes('too large') ? 413 : 400, { 'Content-Type': 'application/json' });
+      res.writeHead(err.status ?? (err.message?.includes('too large') ? 413 : 400), { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ error: err.message }));
     }
     return;
@@ -1342,50 +1364,13 @@ const server = http.createServer((req, res) => {
   serveStatic(req, res).catch(answerUnexpectedError(req, res));
 });
 
-// Handle WebSocket upgrades for /api/websocket
-server.on('upgrade', (req, socket, head) => {
-  if (!req.url.startsWith('/api/websocket') || !SUPERVISOR_TOKEN) {
-    socket.destroy();
-    return;
-  }
-
-  const url = new URL(`${HA_API_BASE}${req.url}`);
-  const options = {
-    hostname: url.hostname,
-    port: url.port || 80,
-    path: url.pathname + url.search,
-    method: 'GET',
-    headers: {
-      ...req.headers,
-      host: url.hostname,
-    },
-  };
-
-  const proxyReq = http.request(options);
-  // HA answered with a plain HTTP response (401, or 502 while it restarts)
-  // instead of switching protocols: pass the status on and close, rather
-  // than leave the browser's socket hanging.
-  proxyReq.on('response', (proxyRes) => {
-    socket.end(`HTTP/1.1 ${proxyRes.statusCode} ${proxyRes.statusMessage || ''}\r\nConnection: close\r\nContent-Length: 0\r\n\r\n`);
-    proxyRes.resume();
-  });
-  proxyReq.on('upgrade', (proxyRes, proxySocket, proxyHead) => {
-    socket.write(
-      `HTTP/1.1 101 Switching Protocols\r\n` +
-      Object.entries(proxyRes.headers).map(([k, v]) => `${k}: ${v}`).join('\r\n') +
-      '\r\n\r\n'
-    );
-    if (proxyHead.length > 0) socket.write(proxyHead);
-
-    proxySocket.pipe(socket);
-    socket.pipe(proxySocket);
-
-    proxySocket.on('error', () => socket.destroy());
-    socket.on('error', () => proxySocket.destroy());
-  });
-
-  proxyReq.on('error', () => socket.destroy());
-  proxyReq.end();
+// No WebSocket proxy: Family's pages talk to Home Assistant over REST
+// through this server (the browser holds no token in the add-on), so
+// nothing opens one. The proxy that was here only added risk: a client
+// resetting its connection mid-upgrade crashed the add-on.
+server.on('upgrade', (req, socket) => {
+  socket.on('error', () => {});
+  socket.end('HTTP/1.1 404 Not Found\r\nConnection: close\r\nContent-Length: 0\r\n\r\n');
 });
 
 server.listen(PORT, () => {
