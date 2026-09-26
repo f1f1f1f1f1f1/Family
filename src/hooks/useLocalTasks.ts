@@ -54,7 +54,7 @@ export function useLocalTasks() {
     };
     setTasks(prev => [...prev, task]);
     return task;
-  }, []);
+  }, [setTasks]);
 
   const toggleTask = useCallback((taskId: string) => {
     setTasks(prev => prev.map(t =>
@@ -64,11 +64,11 @@ export function useLocalTasks() {
           : { ...t, status: 'needs_action', completedAt: undefined }
         : t
     ));
-  }, []);
+  }, [setTasks]);
 
   const removeTask = useCallback((taskId: string) => {
     setTasks(prev => prev.filter(t => t.id !== taskId));
-  }, []);
+  }, [setTasks]);
 
   const addList = useCallback((name: string) => {
     const list: LocalTaskList = {
@@ -77,12 +77,12 @@ export function useLocalTasks() {
     };
     setLists(prev => [...prev, list]);
     return list;
-  }, []);
+  }, [setLists]);
 
   const removeList = useCallback((listId: string) => {
     setLists(prev => prev.filter(l => l.id !== listId));
     setTasks(prev => prev.filter(t => t.listId !== listId));
-  }, []);
+  }, [setLists, setTasks]);
 
   return {
     lists,
