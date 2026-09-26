@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { spawn, type ChildProcess } from 'node:child_process';
-import { copyFileSync, mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { connect, createServer } from 'node:net';
 import { createServer as createHttpServer, type Server } from 'node:http';
 import { tmpdir } from 'node:os';
@@ -214,5 +214,20 @@ describe('add-on server', () => {
       setTimeout(() => { socket.destroy(); resolve(data || 'no answer'); }, 2000);
     });
     expect(answer.split('\r\n')[0]).toBe('HTTP/1.1 404 Not Found');
+  });
+
+  // A failed read counted as "no data yet", so the next write replaced the
+  // whole file: one new chore wiped every other, one setting every other.
+  it("doesn't write over a stored file it can't read", async () => {
+    mkdirSync(join(dir, 'data'), { recursive: true });
+    writeFileSync(join(dir, 'data', 'test_broken.json'), '[{"id":"a"},');
+    writeFileSync(join(dir, 'data', 'test_broken_settings.json'), '{"theme":');
+
+    const add = await fetch(`${base}/beacon-collection/test_broken`, { method: 'POST', body: '{"name":"new"}' });
+    const merge = await fetch(`${base}/beacon-data/test_broken_settings?merge`, { method: 'PUT', body: '{"theme":"dark"}' });
+
+    expect([add.status, merge.status]).toEqual([500, 500]);
+    expect(readFileSync(join(dir, 'data', 'test_broken.json'), 'utf8')).toBe('[{"id":"a"},');
+    expect(readFileSync(join(dir, 'data', 'test_broken_settings.json'), 'utf8')).toBe('{"theme":');
   });
 });
