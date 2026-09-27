@@ -21,12 +21,28 @@ export function parseMediaPlayer(entity: {
     media_content_id: attrs.media_content_id as string | undefined,
     media_duration: attrs.media_duration as number | undefined,
     media_position: attrs.media_position as number | undefined,
+    media_position_updated_at: attrs.media_position_updated_at as string | undefined,
     entity_picture: attrs.entity_picture as string | undefined,
     app_name: attrs.app_name as string | undefined,
     device_class: attrs.device_class as string | undefined,
     volume_level: attrs.volume_level as number | undefined,
     is_volume_muted: attrs.is_volume_muted as boolean | undefined,
   };
+}
+
+/**
+ * Where the track is now. Home Assistant reports the position when it was
+ * last measured (media_position_updated_at) and doesn't update it while
+ * playing; counting on from when the screen opened showed it minutes behind.
+ */
+export function positionAt(player: MediaPlayer, now: number): number | null {
+  if (player.media_position == null) return null;
+  let position = player.media_position;
+  if (player.state === 'playing' && player.media_position_updated_at) {
+    const measuredAt = Date.parse(player.media_position_updated_at);
+    if (!Number.isNaN(measuredAt)) position += Math.max(0, (now - measuredAt) / 1000);
+  }
+  return player.media_duration ? Math.min(position, player.media_duration) : position;
 }
 
 /**

@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "music-addon",
+      "runtimeExecutable": "bash",
+      "runtimeArgs": ["-c", "trap 'kill 0' EXIT; node /private/tmp/claude-501/-Users-macbook-Desktop-Family/6e48ebed-f38a-498e-ae94-a2bdb18cd45c/scratchpad/musicha/fakeha.cjs & NODE_PATH=/Users/macbook/Desktop/Family/node_modules SUPERVISOR_TOKEN=fake HA_API_BASE_OVERRIDE=http://127.0.0.1:5310 BEACON_PORT=5301 BEACON_DIST=/private/tmp/claude-501/-Users-macbook-Desktop-Family/6e48ebed-f38a-498e-ae94-a2bdb18cd45c/scratchpad/addon/dist BEACON_DATA=/private/tmp/claude-501/-Users-macbook-Desktop-Family/6e48ebed-f38a-498e-ae94-a2bdb18cd45c/scratchpad/addon/data node /private/tmp/claude-501/-Users-macbook-Desktop-Family/6e48ebed-f38a-498e-ae94-a2bdb18cd45c/scratchpad/addon/server.cjs"],
+      "port": 5301
+    }
+  ]
+}

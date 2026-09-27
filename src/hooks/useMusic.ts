@@ -6,12 +6,20 @@ import {
   getMediaPlayers,
   refreshMediaPlayers,
   parseMediaPlayer,
+  positionAt,
   play as apiPlay,
   pause as apiPause,
   next as apiNext,
   previous as apiPrevious,
   setVolume as apiSetVolume,
 } from '../api/music';
+
+/** A player stopped or started now, where it had got to. */
+const at = (state: MediaPlayer['state']) => (p: MediaPlayer, now: Date): Partial<MediaPlayer> => ({
+  state,
+  media_position: positionAt(p, now.getTime()) ?? p.media_position,
+  media_position_updated_at: now.toISOString(),
+});
 
 interface UseMusicReturn {
   players: MediaPlayer[];
@@ -41,6 +49,8 @@ export function useMusic(
   const [pickedPlayerId, setSelectedPlayerId] = useState<string | null>(null);
   const selectedPlayerId = pickedPlayerId ?? (defaultPlayerId.trim() || null);
   const subscriptionRef = useRef<number | null>(null);
+  /** Reads the players again shortly (REST mode; live updates need nothing). */
+  const refreshSoonRef = useRef<() => void>(() => {});
 
   const activePlayer =
     players.find((p) => p.state === 'playing') ||
@@ -97,16 +107,26 @@ export function useMusic(
 
     // In REST-only mode, poll every 10s (not while hidden or under the
     // screensaver)
-    const stopPolling = client?.isConnected ? null : refreshWhileAwake(async () => {
+    const poll = async () => {
       if (cancelled) return;
       try {
         const updated = await refreshMediaPlayers();
         if (!cancelled) setPlayers(updated);
       } catch { /* ignore poll errors */ }
-    }, 10_000);
+    };
+    const stopPolling = client?.isConnected ? null : refreshWhileAwake(poll, 10_000);
+    let soon: ReturnType<typeof setTimeout> | undefined;
+    if (!client?.isConnected) {
+      refreshSoonRef.current = () => {
+        clearTimeout(soon);
+        soon = setTimeout(poll, 1000);
+      };
+    }
 
     return () => {
       cancelled = true;
+      clearTimeout(soon);
+      refreshSoonRef.current = () => {};
       if (subscriptionRef.current !== null && client) {
         client.unsubscribe(subscriptionRef.current);
         subscriptionRef.current = null;
@@ -120,54 +140,45 @@ export function useMusic(
     [activePlayer, selectedPlayerId],
   );
 
-  const play = useCallback(
-    async (entityId?: string) => {
+  /**
+   * Runs a control on a player. What it's known to do shows at once, and the
+   * players are read again a second later for the rest (a new track, say):
+   * the add-on reads them only every 10 s, so a tap on pause took up to 10 s
+   * to show.
+   */
+  const control = useCallback(
+    async (
+      entityId: string | undefined,
+      run: (client: HomeAssistantClient | null, id: string) => Promise<void>,
+      expected?: (player: MediaPlayer, now: Date) => Partial<MediaPlayer>,
+    ) => {
       const client = getClient();
       const id = resolveEntityId(entityId);
       if (!id) return;
-      await apiPlay(client, id);
+      if (expected) {
+        const now = new Date();
+        setPlayers((prev) => prev.map((p) => (p.entity_id === id ? { ...p, ...expected(p, now) } : p)));
+      }
+      try {
+        await run(client, id);
+      } finally {
+        refreshSoonRef.current();
+      }
     },
     [getClient, resolveEntityId],
   );
 
-  const pause = useCallback(
-    async (entityId?: string) => {
-      const client = getClient();
-      const id = resolveEntityId(entityId);
-      if (!id) return;
-      await apiPause(client, id);
-    },
-    [getClient, resolveEntityId],
-  );
-
-  const next = useCallback(
-    async (entityId?: string) => {
-      const client = getClient();
-      const id = resolveEntityId(entityId);
-      if (!id) return;
-      await apiNext(client, id);
-    },
-    [getClient, resolveEntityId],
-  );
-
-  const previous = useCallback(
-    async (entityId?: string) => {
-      const client = getClient();
-      const id = resolveEntityId(entityId);
-      if (!id) return;
-      await apiPrevious(client, id);
-    },
-    [getClient, resolveEntityId],
-  );
-
+  const play = useCallback((entityId?: string) => control(entityId, apiPlay, at('playing')), [control]);
+  const pause = useCallback((entityId?: string) => control(entityId, apiPause, at('paused')), [control]);
+  const next = useCallback((entityId?: string) => control(entityId, apiNext), [control]);
+  const previous = useCallback((entityId?: string) => control(entityId, apiPrevious), [control]);
   const setVolume = useCallback(
-    async (level: number, entityId?: string) => {
-      const client = getClient();
-      const id = resolveEntityId(entityId);
-      if (!id) return;
-      await apiSetVolume(client, id, level);
-    },
-    [getClient, resolveEntityId],
+    (level: number, entityId?: string) => control(
+      entityId,
+      (client, id) => apiSetVolume(client, id, level),
+      () => ({ volume_level: level, is_volume_muted: false }),
+    ),
+    [control],
   );
 
   const selectPlayer = useCallback((entityId: string) => {
