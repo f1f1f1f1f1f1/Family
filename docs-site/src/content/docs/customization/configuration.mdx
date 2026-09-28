@@ -47,6 +47,8 @@ Both settings can stay blank. To require an additional parent unlock, set `paren
 
 These app sessions are separate from HA ingress authentication and standalone HTTP Basic. A server restart can also require re-authentication.
 
+After five wrong PINs, the device they were typed on (in the add-on, that HA user) must wait up to 15 minutes before trying again; other devices can still unlock. After 50 wrong PINs from all devices within 15 minutes, every device waits.
+
 ## Standalone Docker
 
 Use a **published version tag** of `ghcr.io/f1f1f1f1f1f1/family:vX.Y.Z` (replace `vX.Y.Z` with an available version from the [fork's GHCR package](https://github.com/f1f1f1f1f1f1/Family/pkgs/container/family)). There is no `latest` tag and releases before GHCR publishing was added may not have an image.
