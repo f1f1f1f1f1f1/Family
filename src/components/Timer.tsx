@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { Play, Pause, RotateCcw, Flag, X, Plus, Volume2, BellOff, BellRing } from 'lucide-react';
+import { loadSavedTimers, saveTimers, type SavedTimer } from '../utils/saved-timers';
 import '../styles/timer.css';
 
 const PRESETS = [
@@ -155,12 +156,46 @@ function formatTime(totalMs: number): string {
 
 let nextTimerId = 1;
 
+/**
+ * The timers saved before the page was reloaded, counted on to now. One
+ * that was ringing, or ran out meanwhile, rings on the first tick.
+ */
+function restoreTimers(): TimerInstance[] {
+  const now = performance.now();
+  return loadSavedTimers().map((saved) => {
+    const ranOn = saved.running ? Math.max(0, Date.now() - saved.savedAt) : 0;
+    const idNumber = /^t-(\d+)-/.exec(saved.id);
+    if (idNumber) nextTimerId = Math.max(nextTimerId, Number(idNumber[1]) + 1);
+    return {
+      id: saved.id,
+      name: saved.name,
+      totalMs: saved.totalMs,
+      startedAt: now,
+      pausedElapsed: saved.finished ? saved.totalMs : Math.min(saved.totalMs, saved.elapsedMs + ranOn),
+      running: saved.running || saved.finished,
+      finished: false,
+    };
+  });
+}
+
+function toSaved(t: TimerInstance): SavedTimer {
+  return {
+    id: t.id,
+    name: t.name,
+    totalMs: t.totalMs,
+    elapsedMs: t.running ? t.pausedElapsed + (performance.now() - t.startedAt) : t.pausedElapsed,
+    savedAt: Date.now(),
+    running: t.running,
+    finished: t.finished,
+  };
+}
+
 export function Timer({ compact = false, shown = true, onShow }: TimerProps) {
   const [mode, setMode] = useState<TimerMode>('timers');
   const [sound, setSound] = useState<SoundName>(getStoredSound);
 
   // --- Multi-timer state ---
-  const [timers, setTimers] = useState<TimerInstance[]>([]);
+  const [timers, setTimers] = useState<TimerInstance[]>(restoreTimers);
   const [newName, setNewName] = useState('');
   const [selectedPreset, setSelectedPreset] = useState(300); // 5m default
   const beeped = useRef<Set<string>>(new Set());
@@ -193,6 +228,12 @@ export function Timer({ compact = false, shown = true, onShow }: TimerProps) {
       loopIntervalsRef.current.delete(timerId);
     }
   }, []);
+
+  // Saved on every change, so a reload doesn't lose them (not on every
+  // tick: a running timer's progress is counted on from when it was saved).
+  useEffect(() => {
+    saveTimers(timers.map(toSaved));
+  }, [timers]);
 
   // Cleanup all loops on unmount
   useEffect(() => {

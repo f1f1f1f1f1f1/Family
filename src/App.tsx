@@ -27,6 +27,7 @@ import { useLocalCalendar } from './hooks/useLocalCalendar';
 import { useDashboardTasks } from './hooks/useDashboardTasks';
 import { LazyBoundary } from './components/LazyBoundary';
 import { lazyNamed } from './utils/lazy-screen';
+import { hasActiveSavedTimers } from './utils/saved-timers';
 import { useSelectedDay } from './hooks/useClock';
 import { getFocusMemberId, clearFocusMode, setDeviceFocusMember } from './focus';
 import { CalendarEvent, resolveCalendarColor } from './types';
@@ -323,7 +324,8 @@ function DashboardApp({ onEnterDisplay }: { onEnterDisplay?: (memberId: string) 
   const [leaderboardOpened, setLeaderboardOpened] = useState(false);
   // The Timer screen isn't mounted until first opened either, then stays,
   // hidden behind other screens, so its timers keep counting and ring there.
-  const [timerOpened, setTimerOpened] = useState(activeView === 'timer');
+  // Timers still running when the page was reloaded mount it at once.
+  const [timerOpened, setTimerOpened] = useState(() => activeView === 'timer' || hasActiveSavedTimers());
 
   // Fetch data when connected, or when the user navigates to a different week.
   useEffect(() => {
