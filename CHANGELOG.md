@@ -1,3 +1,10 @@
+## [1.59.5](https://github.com/f1f1f1f1f1f1/Family/compare/v1.59.4...v1.59.5) (2026-09-28)
+
+
+### Bug Fixes
+
+* make parent PIN optional and use an HA blocklist ([28c180c](https://github.com/f1f1f1f1f1f1/Family/commit/28c180cb4247fe38966f820f51a9e24f06152b06))
+
 ## [1.59.4](https://github.com/f1f1f1f1f1f1/Family/compare/v1.59.3...v1.59.4) (2026-09-28)
 
 
