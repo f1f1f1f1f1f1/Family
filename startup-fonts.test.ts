@@ -1,15 +1,16 @@
 // @vitest-environment node
-import { readdirSync, readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 /*
  * The stylesheets index.html links, and whatever they @import, hold up the
  * page and its scripts until they load. A display on a home network with no
- * internet access waited for fonts.googleapis.com that way, so the web font
- * is linked from index.html in a way that doesn't hold anything up.
+ * internet access waited for fonts.googleapis.com that way, and every
+ * display told Google when it started. Inter now ships with the app.
  */
 const root = import.meta.dirname;
+const FROM_ANOTHER_SITE = /(?:https?:)?\/\//;
 
 describe('startup fonts', () => {
   it("doesn't import stylesheets from another site into the app's own", () => {
@@ -17,15 +18,23 @@ describe('startup fonts', () => {
     const sheets = readdirSync(src, { recursive: true, encoding: 'utf8' }).filter((f) => f.endsWith('.css'));
     expect(sheets.length).toBeGreaterThan(0);
     for (const sheet of sheets) {
-      expect(readFileSync(join(src, sheet), 'utf8'), sheet).not.toMatch(/@import\s+(?:url\(\s*)?['"]?(?:https?:)?\/\//);
+      const imports = readFileSync(join(src, sheet), 'utf8').match(/@import[^;]*;/g) ?? [];
+      for (const rule of imports) expect(rule, sheet).not.toMatch(FROM_ANOTHER_SITE);
     }
   });
 
-  it('loads the web font without holding up startup', () => {
+  it("doesn't load anything from another site in index.html", () => {
     const html = readFileSync(join(root, 'index.html'), 'utf8');
-    const links = [...html.matchAll(/<link [^>]*href="https:\/\/fonts\.googleapis\.com\/[^>]*>/g)].map((m) => m[0]);
-    expect(links).toHaveLength(1);
-    expect(links[0]).toContain('media="print"');
-    expect(links[0]).toContain(`onload="this.media='all'"`);
+    const urls = [...html.matchAll(/\b(?:href|src)="([^"]*)"/g)].map((m) => m[1]);
+    expect(urls.length).toBeGreaterThan(0);
+    for (const url of urls) expect(url).not.toMatch(new RegExp(`^${FROM_ANOTHER_SITE.source}`));
+  });
+
+  it('ships Inter in the weights the app uses', () => {
+    const css = readFileSync(join(root, 'src', 'styles', 'beacon.css'), 'utf8');
+    for (const weight of [300, 400, 500, 600, 700]) {
+      expect(css).toContain(`@import '@fontsource/inter/${weight}.css';`);
+      expect(existsSync(join(root, 'node_modules', '@fontsource', 'inter', `${weight}.css`))).toBe(true);
+    }
   });
 });

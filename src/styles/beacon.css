@@ -3,6 +3,13 @@
    Skylight-inspired light theme
    ============================================================ */
 
+/* --- Inter, shipped with the app (nothing is fetched from another site) --- */
+@import '@fontsource/inter/300.css';
+@import '@fontsource/inter/400.css';
+@import '@fontsource/inter/500.css';
+@import '@fontsource/inter/600.css';
+@import '@fontsource/inter/700.css';
+
 /* --- Custom Properties --- */
 :root {
   /* These are fallback defaults — the theme hook overrides them at runtime */
