@@ -278,6 +278,50 @@ describe('useSettings', () => {
     expect(server.saves).toEqual([]);
   });
 
+  // A map or list was sent whole, from this display's copy, so a calendar
+  // colour, chores list, hidden calendar or grocery list changed on
+  // another display since this one last loaded was undone.
+  it('keeps map and list entries changed on another display', async () => {
+    server.addOn = true;
+    server.data.set('beacon-settings', {
+      calendarColors: { 'calendar.work': '#111111' },
+      choresSyncListByMember: { kid: 'todo.kid' },
+      permanentlyHiddenCalendars: ['calendar.old'],
+      groceryListIds: ['todo.shop'],
+    });
+    const { result } = renderHook(() => useSettings());
+    await waitFor(() => expect(result.current.settings.groceryListIds).toEqual(['todo.shop']));
+    // Another display makes changes before this one refreshes.
+    server.data.set('beacon-settings', {
+      calendarColors: { 'calendar.work': '#111111', 'calendar.home': '#222222' },
+      choresSyncListByMember: { kid: 'todo.kid', teen: 'todo.teen' },
+      permanentlyHiddenCalendars: ['calendar.old', 'calendar.spam'],
+      groceryListIds: ['todo.shop', 'todo.costco'],
+    });
+
+    const shown = result.current.settings;
+    const colors = { ...shown.calendarColors, 'calendar.school': '#333333' };
+    delete colors['calendar.work'];
+    act(() => {
+      result.current.updateSettings({
+        calendarColors: colors,
+        choresSyncListByMember: { ...shown.choresSyncListByMember, kid: 'todo.kid2' },
+        permanentlyHiddenCalendars: shown.permanentlyHiddenCalendars.filter((id) => id !== 'calendar.old'),
+        groceryListIds: [...shown.groceryListIds, 'todo.market'],
+      });
+    });
+
+    const expected = {
+      calendarColors: { 'calendar.home': '#222222', 'calendar.school': '#333333' },
+      choresSyncListByMember: { kid: 'todo.kid2', teen: 'todo.teen' },
+      permanentlyHiddenCalendars: ['calendar.spam'],
+      groceryListIds: ['todo.shop', 'todo.costco', 'todo.market'],
+    };
+    await waitFor(() => expect(server.data.get('beacon-settings')).toEqual(expected));
+    expect(server.patches).toEqual([{ key: 'beacon-settings', patch: expected }]);
+    expect(result.current.settings).toMatchObject(expected);
+  });
+
   it('rejects a null chores sync map visibly, without changing or saving any settings', async () => {
     server.addOn = true;
     server.data.set('beacon-settings', {

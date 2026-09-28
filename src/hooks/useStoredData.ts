@@ -36,6 +36,10 @@ function publish(key: string, value: unknown) {
   e.listeners.forEach((listener) => listener(value));
 }
 
+function pick<T>(value: T, fields: readonly (keyof T)[]): Partial<T> {
+  return Object.fromEntries(fields.map((field) => [field, value[field]])) as Partial<T>;
+}
+
 /** Test hook: forget every shared value. */
 export function resetStoredData(): void {
   shared.clear();
@@ -129,10 +133,12 @@ export function useStoredData<T>(key: string, fallback: T, normalize: (value: T)
 
   /**
    * Apply a change and save the result. Pass `save: false` when the caller
-   * persists the change itself. `patch` makes an object update merge on the
-   * server rather than replacing fields another display may have changed.
+   * persists the change itself. `fields` (for an object value) names the
+   * fields the change sets: only those are sent, as the change left them on
+   * the server's latest copy, and the server merges them into its copy
+   * rather than replacing fields another display may have changed.
    */
-  const update = useCallback((updater: (prev: T) => T, save = true, patch?: Partial<T>): T => {
+  const update = useCallback((updater: (prev: T) => T, save = true, fields?: readonly (keyof T)[]): T => {
     const current = entry(key, () => normalizeRef.current(loadDataSync(key, fallbackRef.current)));
     const next = updater(current.value as T);
     const change = (changesMade.get(key) ?? 0) + 1;
@@ -157,7 +163,7 @@ export function useStoredData<T>(key: string, fallback: T, normalize: (value: T)
           throw err;
         }
         const merged = updater(normalizeRef.current(server.data ?? fallbackRef.current));
-        if (patch) await saveDataPatch(key, patch, merged);
+        if (fields) await saveDataPatch(key, pick(merged, fields), merged);
         else await saveData(key, merged);
         // Show the server-based result unless a later change is still waiting.
         if (queuedSaves.get(key) === 1) publish(key, merged);
