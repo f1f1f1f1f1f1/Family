@@ -113,7 +113,9 @@ jobs:
             echo "::error::$IMAGE_TAG already exists; release tags are immutable"
             exit 1
           fi
-          if ! grep -Eiq 'manifest unknown|manifest .*not found|manifest.*404|not found: ghcr.io/.*/manifests/|404 Not Found|response status code 404' <<< "$result"; then
+          # buildx also reports an absent image as "ERROR: <tag>: not found".
+          if [[ "$result" != "ERROR: $IMAGE_TAG: not found" ]] &&
+             ! grep -Eiq 'manifest unknown|manifest .*not found|manifest.*404|not found: ghcr.io/.*/manifests/|404 Not Found|response status code 404' <<< "$result"; then
             echo "::error::Could not verify that $IMAGE_TAG is unused"
             printf '%s\n' "$result"
             exit 1

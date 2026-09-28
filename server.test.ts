@@ -51,6 +51,7 @@ function startFakeHa(): Promise<string> {
   const states = [
     { entity_id: 'todo.grocery', state: '1', attributes: { friendly_name: 'Grocery' } },
     { entity_id: 'todo.chores', state: '0', attributes: { friendly_name: 'Chores' } },
+    { entity_id: 'todo.private', state: '0', attributes: { friendly_name: 'Private' } },
   ];
   const items: Record<string, object[]> = {
     'todo.grocery': [{ uid: 'g1', summary: 'Milk', status: 'needs_action' }],
@@ -114,7 +115,7 @@ beforeAll(async () => {
       HA_TOKEN: haToken,
       BEACON_PASSWORD: browserPassword,
       BEACON_PARENT_PIN: '654321',
-      BEACON_ALLOWED_ENTITIES: 'todo.grocery,todo.chores,calendar.family,light.kitchen,switch.lamp',
+      BEACON_BLOCKED_ENTITIES: 'todo.private,calendar.private,switch.other',
     },
   });
   server.stdout!.on('data', (chunk) => { output += chunk; });
@@ -383,7 +384,88 @@ describe('add-on server', () => {
     expect(haCalls.some((call) => call.includes('entire_house'))).toBe(false);
   });
 
-  it('filters HA discovery and blocks direct access to unlisted entities', async () => {
+  it('starts with no parent PIN and no blocked entities, without skipping browser authentication', async () => {
+    const port = await freePort();
+    const haAddress = fakeHa.address() as { port: number };
+    const blankServer = spawn(process.execPath, [join(dir, 'server.cjs')], {
+      env: {
+        PATH: process.env.PATH,
+        NODE_PATH: join(repo, 'node_modules'),
+        BEACON_PORT: String(port),
+        BEACON_DIST: join(dir, 'dist'),
+        BEACON_DATA: join(dir, 'no-pin-data'),
+        HA_URL: `http://127.0.0.1:${haAddress.port}`,
+        HA_TOKEN: haToken,
+        BEACON_PASSWORD: browserPassword,
+        BEACON_ALLOWED_ENTITIES: 'todo.grocery', // previous option must not become a blocklist
+      },
+    });
+    let startup = '';
+    blankServer.stdout!.on('data', (chunk) => { startup += chunk; });
+    blankServer.stderr!.on('data', (chunk) => { startup += chunk; });
+    const blankBase = `http://127.0.0.1:${port}`;
+    try {
+      await new Promise<void>((resolve, reject) => {
+        const timeout = setTimeout(() => reject(new Error(`Server failed to start without a PIN:\n${startup}`)), 10_000);
+        blankServer.stdout!.on('data', () => {
+          if (startup.includes('listening on port')) {
+            clearTimeout(timeout);
+            resolve();
+          }
+        });
+        blankServer.once('exit', (code) => reject(new Error(`Server exited (${code}):\n${startup}`)));
+      });
+
+      expect((await globalThis.fetch(`${blankBase}/beacon-auth/session`)).status).toBe(401);
+      expect((await globalThis.fetch(`${blankBase}/beacon-action/service`, {
+        method: 'POST', headers: { Authorization: basicAuth },
+        body: JSON.stringify({ domain: 'switch', service: 'toggle', data: { entity_id: 'switch.lamp' } }),
+      })).status).toBe(401);
+
+      const session = await globalThis.fetch(`${blankBase}/beacon-auth/session`, {
+        headers: { Authorization: basicAuth },
+      });
+      expect(session.status).toBe(200);
+      expect(await session.json()).toMatchObject({ role: 'parent' });
+      const parentCookie = session.headers.get('set-cookie')?.split(';')[0] ?? '';
+      expect(parentCookie).toContain('beacon_session=');
+      expect(await (await withCookie(parentCookie, `${blankBase}/api/states`)).json()).toContainEqual(
+        expect.objectContaining({ entity_id: 'todo.private' }),
+      );
+      expect((await withCookie(parentCookie, `${blankBase}/beacon-action/service`, {
+        method: 'POST',
+        body: JSON.stringify({ domain: 'switch', service: 'toggle', data: { entity_id: 'switch.other' } }),
+      })).status).toBe(200);
+
+      await withCookie(parentCookie, `${blankBase}/beacon-collection/beacon_family_members`, {
+        method: 'POST', body: JSON.stringify({ id: 'kid', name: 'Kid', role: 'child' }),
+      });
+      const display = await withCookie(parentCookie, `${blankBase}/beacon-auth/display`, {
+        method: 'POST', body: JSON.stringify({ member_id: 'kid' }),
+      });
+      const displayCookie = display.headers.get('set-cookie')?.split(';')[0] ?? '';
+      expect((await withCookie(displayCookie, `${blankBase}/beacon-collection/beacon_family_members`)).status).toBe(200);
+      expect((await withCookie(displayCookie, `${blankBase}/beacon-action/service`, {
+        method: 'POST',
+        body: JSON.stringify({ domain: 'switch', service: 'toggle', data: { entity_id: 'switch.lamp' } }),
+      })).status).toBe(403);
+      const exit = await withCookie(displayCookie, `${blankBase}/beacon-auth/parent`, {
+        method: 'POST', body: JSON.stringify({ pin: '' }),
+      });
+      expect(await exit.json()).toMatchObject({ role: 'parent' });
+      const resumedCookie = exit.headers.get('set-cookie')?.split(';')[0] ?? '';
+      expect((await withCookie(resumedCookie, `${blankBase}/beacon-action/service`, {
+        method: 'POST',
+        body: JSON.stringify({ domain: 'switch', service: 'toggle', data: { entity_id: 'switch.lamp' } }),
+      })).status).toBe(200);
+    } finally {
+      if (blankServer.exitCode === null && blankServer.signalCode === null) {
+        await new Promise<void>((resolve) => { blankServer.once('exit', () => resolve()); blankServer.kill(); });
+      }
+    }
+  });
+
+  it('filters HA discovery and blocks direct access to listed entities', async () => {
     const states = await fetch(`${base}/api/states`).then((res) => res.json());
     expect(states).toEqual([
       expect.objectContaining({ entity_id: 'todo.grocery' }),
@@ -537,9 +619,8 @@ describe('add-on server', () => {
         BEACON_PORT: String(port),
         BEACON_DIST: join(dir, 'dist'),
         BEACON_DATA: ingressData,
-        BEACON_PARENT_PIN: '654321',
         SUPERVISOR_TOKEN: haToken,
-        BEACON_ALLOWED_ENTITIES: 'switch.lamp',
+        BEACON_BLOCKED_ENTITIES: '',
       },
     });
     let startup = '';

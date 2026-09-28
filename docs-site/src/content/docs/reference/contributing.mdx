@@ -62,7 +62,7 @@ docker run -d --name family-dev -p 127.0.0.1:3000:3000 \
   --env-file /secure/path/family.env -v family-dev-data:/data beacon-dev
 ```
 
-The private env file must define `HA_URL`, `HA_TOKEN`, `BEACON_PASSWORD`, `BEACON_PARENT_PIN`, `BEACON_ALLOWED_ENTITIES` (CSV of exact HA IDs you use), and `BEACON_HOST=0.0.0.0`; see [Deployment](/docs/getting-started/deployment/). Empty `BEACON_ALLOWED_ENTITIES` denies HA entity/service access. The add-on instead obtains its HA token from Supervisor and is ingress-only.
+The private env file must define `HA_URL`, `HA_TOKEN`, `BEACON_PASSWORD`, and `BEACON_HOST=0.0.0.0`; `BEACON_PARENT_PIN` and `BEACON_BLOCKED_ENTITIES` (CSV of exact HA IDs to deny) are optional and default to blank. See [Deployment](/docs/getting-started/deployment/). The add-on instead obtains its HA token from Supervisor and is ingress-only.
 
 ---
 

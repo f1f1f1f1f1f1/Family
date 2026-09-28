@@ -82,7 +82,7 @@ Each family member has one of two roles:
 
 | Role | Description |
 |------|-------------|
-| **Parent** | Can unlock privileged actions using the deployment's parent PIN or an enrolled parent member PIN. |
+| **Parent** | Can unlock privileged actions using the deployment's optional parent PIN or an enrolled parent member PIN. When no parent PIN is set, HA ingress or the standalone browser password grants parent access automatically. |
 | **Child** | Can use an authorized Kid Display for their own chores and routine. |
 
 The secured Family server enforces parent versus display sessions and restricts sensitive writes. A client-side role label alone does not grant access.
@@ -91,9 +91,9 @@ The secured Family server enforces parent versus display sessions and restricts 
 
 ## PIN setup
 
-The add-on requires a private 6–8 digit `parent_pin` option; standalone Docker requires `BEACON_PARENT_PIN` (also 6–8 digits). Unlocking the parent session is needed for privileged actions. A parent member can also have an optional PIN to unlock the parent session, while a Kid Display may require that member's own PIN. Set member PINs through the secured Family server; it stores PIN hashes, not plaintext in browser localStorage. Do not share the parent PIN with kiosk devices.
+The add-on's `parent_pin` and standalone Docker's `BEACON_PARENT_PIN` are optional (6–8 digits when set). A blank PIN skips parent unlock for users already authenticated by HA ingress or the standalone browser password, and lets them exit Kid Display without a PIN. An optional parent member PIN can still unlock a PIN-protected parent session, while a Kid Display may require that member's own PIN. Set member PINs through the secured Family server; it stores PIN hashes, not plaintext in browser localStorage. Do not share a configured parent PIN with kiosk devices.
 
-Parent unlock expires **10 minutes after PIN entry**, even if you are still using the app: polling does not renew that cookie. Enter the configured 6–8 digit parent PIN again to manage Family or HA. Kid Display sessions are different: they have a **24-hour sliding** lifetime refreshed by normal display session polling.
+When configured, parent unlock expires **10 minutes after PIN entry**, even if you are still using the app: polling does not renew that cookie. Enter the configured 6–8 digit parent PIN again to manage Family or HA. Without one, authenticated users receive a new parent session automatically. Kid Display sessions are different: they have a **24-hour sliding** lifetime refreshed by normal display session polling.
 
 ---
 

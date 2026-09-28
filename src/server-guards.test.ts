@@ -10,7 +10,7 @@ const {
   isServiceAllowed,
   isProxyRequestAllowed,
   isTrustedIngressAddress,
-  parseAllowedEntities,
+  parseBlockedEntities,
   isEntityAllowed,
   isServiceTargetAllowed,
   isCrossOriginWrite,
@@ -20,15 +20,15 @@ const {
   isServiceAllowed: (domain: unknown, service: unknown) => boolean;
   isProxyRequestAllowed: (method: string, url: string) => boolean;
   isTrustedIngressAddress: (address: string | undefined) => boolean;
-  parseAllowedEntities: (value: string | undefined) => Set<string>;
-  isEntityAllowed: (id: unknown, allowed: Set<string>, domain?: string) => boolean;
-  isServiceTargetAllowed: (domain: string, data: unknown, allowed: Set<string>) => boolean;
+  parseBlockedEntities: (value: string | undefined) => Set<string>;
+  isEntityAllowed: (id: unknown, blocked: Set<string>, domain?: string) => boolean;
+  isServiceTargetAllowed: (domain: string, data: unknown, blocked: Set<string>) => boolean;
   isCrossOriginWrite: (method: string, headers: Record<string, string | undefined>) => boolean;
   describeRequester: (headers: Record<string, string | undefined>) => string;
 };
 
 describe('trusted ingress and entity boundaries', () => {
-  const allowed = parseAllowedEntities('todo.grocery, calendar.family, switch.lamp');
+  const blocked = parseBlockedEntities('todo.secret, calendar.private, switch.other');
 
   it('uses the TCP peer address, not request-supplied proxy headers', () => {
     expect(isTrustedIngressAddress('172.30.32.2')).toBe(true);
@@ -38,24 +38,28 @@ describe('trusted ingress and entity boundaries', () => {
     }
   });
 
-  it('rejects invalid or wildcard allowlist entries instead of silently expanding permissions', () => {
-    expect([...allowed]).toEqual(['todo.grocery', 'calendar.family', 'switch.lamp']);
-    expect(() => parseAllowedEntities('todo.grocery, light.*')).toThrow('entity IDs');
-    expect(() => parseAllowedEntities('todo.grocery, /api/config')).toThrow('entity IDs');
-    expect(parseAllowedEntities('')).toEqual(new Set());
+  it('accepts a blank blocklist and rejects invalid or wildcard entries', () => {
+    expect([...blocked]).toEqual(['todo.secret', 'calendar.private', 'switch.other']);
+    expect(() => parseBlockedEntities('todo.secret, light.*')).toThrow('entity IDs');
+    expect(() => parseBlockedEntities('todo.secret, /api/config')).toThrow('entity IDs');
+    const empty = parseBlockedEntities('');
+    expect(empty).toEqual(new Set());
+    expect(isEntityAllowed('todo.grocery', empty, 'todo')).toBe(true);
+    expect(isServiceTargetAllowed('switch', { entity_id: 'switch.lamp' }, empty)).toBe(true);
   });
 
-  it('requires every service target to be explicitly allowed in the right domain', () => {
-    expect(isEntityAllowed('calendar.family', allowed, 'calendar')).toBe(true);
-    expect(isEntityAllowed('calendar.family', allowed, 'todo')).toBe(false);
-    expect(isServiceTargetAllowed('todo', { entity_id: 'todo.grocery' }, allowed)).toBe(true);
-    expect(isServiceTargetAllowed('homeassistant', { entity_id: 'todo.grocery' }, allowed)).toBe(true);
+  it('blocks listed targets and requires every other target to have the right domain', () => {
+    expect(isEntityAllowed('calendar.family', blocked, 'calendar')).toBe(true);
+    expect(isEntityAllowed('calendar.private', blocked, 'calendar')).toBe(false);
+    expect(isEntityAllowed('calendar.family', blocked, 'todo')).toBe(false);
+    expect(isServiceTargetAllowed('todo', { entity_id: 'todo.grocery' }, blocked)).toBe(true);
+    expect(isServiceTargetAllowed('homeassistant', { entity_id: 'todo.grocery' }, blocked)).toBe(true);
     for (const target of [{}, { entity_id: 'todo.secret' }, { entity_id: 'calendar.family' },
       { entity_id: ['todo.grocery', 'todo.secret'] }, { entity_id: { id: 'todo.grocery' } },
       { entity_id: 'todo.grocery', area_id: 'everything' },
       { entity_id: 'todo.grocery', device_id: 'unlisted' },
       { entity_id: 'todo.grocery', target: { entity_id: 'todo.secret' } }]) {
-      expect(isServiceTargetAllowed('todo', target, allowed)).toBe(false);
+      expect(isServiceTargetAllowed('todo', target, blocked)).toBe(false);
     }
   });
 });

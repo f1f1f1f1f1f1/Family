@@ -10,7 +10,11 @@ if [ -n "${SUPERVISOR_TOKEN:-}" ]; then
   PHOTO_INTERVAL="$(bashio::config 'photo_interval' 2>/dev/null || echo '30')"
   SCREEN_SAVER_TIMEOUT="$(bashio::config 'screen_saver_timeout' 2>/dev/null || echo '5')"
   export BEACON_PARENT_PIN="$(bashio::config 'parent_pin' 2>/dev/null || true)"
-  export BEACON_ALLOWED_ENTITIES="$(bashio::config 'allowed_entities' 2>/dev/null || true)"
+  if [ "${BEACON_PARENT_PIN}" = "null" ]; then
+    bashio::log.warning "Legacy parent_pin=null treated as unset; set a PIN to require parent unlock."
+    export BEACON_PARENT_PIN=""
+  fi
+  export BEACON_BLOCKED_ENTITIES="$(bashio::config 'blocked_entities' 2>/dev/null || true)"
   export BEACON_HOST="0.0.0.0"
 else
   THEME="${THEME:-skylight}"
@@ -73,6 +77,7 @@ THEME="${THEME}" AUTO_DARK_MODE="${AUTO_DARK_MODE}" WEATHER_ENTITY="${WEATHER_EN
     ha_url: '',
     ha_token: '',
     ha_available: Boolean(process.env.SUPERVISOR_TOKEN || (process.env.HA_URL && process.env.HA_TOKEN)),
+    parent_pin_required: Boolean(process.env.BEACON_PARENT_PIN),
     theme: process.env.THEME || 'skylight',
     auto_dark_mode: process.env.AUTO_DARK_MODE !== 'false',
     weather_entity: process.env.WEATHER_ENTITY || 'weather.home',

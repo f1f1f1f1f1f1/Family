@@ -853,7 +853,12 @@ function FocusShell({ memberId, onExit }: { memberId: string; onExit: () => void
   }, []);
   return (
     <LazyBoundary fallback={<LoadingScreen />}>
-      <FocusView memberId={memberId} settings={settings} onExit={onExit} />
+      <FocusView
+        memberId={memberId}
+        settings={settings}
+        parentPinRequired={config.parent_pin_required}
+        onExit={onExit}
+      />
     </LazyBoundary>
   );
 }

@@ -19,7 +19,7 @@ The simplest deployment. Add `https://github.com/f1f1f1f1f1f1/Family` to the Hom
 1. `config.yaml` has no `image:` setting. Home Assistant Supervisor builds the root `Dockerfile` itself on installation/update; it does **not** pull the standalone GHCR image. Releases update the manifest version through semantic-release; do not change it by hand. Supervisor does not rebuild this source-built add-on until the manifest version changes.
 2. The build stage uses Node.js 22 Alpine to run `npm ci --ignore-scripts` and `npm run build`. The runtime stage uses `ghcr.io/hassio-addons/base:16.3.2`, installs Node.js, and copies only the built app, the server and its runtime dependencies, and `run.sh`.
 3. `run.sh` reads add-on options from Supervisor and writes `runtime-config.js` with display settings and an **empty HA token**. The Node server listens on port 3000, serves the SPA, persists family data under `/data`, and proxies allowed HA API requests using the Supervisor token on the server.
-4. HA ingress authenticates browser sessions and forwards requests to the add-on. Set a private 6–8 digit `parent_pin` in the add-on options to unlock privileged actions and a nonempty `allowed_entities` CSV of exact HA IDs for entity/service access. Do not expose the add-on port directly or place it behind an unauthenticated external proxy.
+4. HA ingress authenticates browser sessions and forwards requests to the add-on. A blank `parent_pin` lets authenticated ingress users manage Family without another PIN; optionally set a 6–8 digit PIN to require parent unlock. A blank `blocked_entities` blocks no HA entity IDs; list exact IDs only if you need to deny specific entities. The HA service/path restrictions remain in force. Do not expose the add-on port directly or place it behind an unauthenticated external proxy.
 
 The image health check makes a local GET to `http://127.0.0.1:3000/beacon-action/health`. This checks server/HA API readiness rather than simply returning the SPA shell.
 
@@ -37,8 +37,9 @@ Create an environment file **outside the repository**, readable only by the Dock
 HA_URL=http://homeassistant.local:8123
 HA_TOKEN=replace-with-a-dedicated-HA-long-lived-access-token
 BEACON_PASSWORD=replace-with-a-strong-unique-password
-BEACON_PARENT_PIN=REPLACE_WITH_6_TO_8_DIGIT_PIN
-BEACON_ALLOWED_ENTITIES=calendar.family,todo.shopping_list,weather.home,media_player.living_room
+# Optional: require a parent PIN or block specific HA entities
+# BEACON_PARENT_PIN=123456
+# BEACON_BLOCKED_ENTITIES=switch.garage,todo.private
 BEACON_HOST=0.0.0.0
 THEME=midnight
 AUTO_DARK_MODE=true
@@ -48,9 +49,9 @@ PHOTO_INTERVAL=30
 SCREEN_SAVER_TIMEOUT=5
 ```
 
-Replace all placeholders and sample entity IDs: HTTP Basic username is `beacon`, password is the at-least-16-character `BEACON_PASSWORD`, and privileged actions separately require the 6–8 digit `BEACON_PARENT_PIN`. `BEACON_ALLOWED_ENTITIES` is a CSV of **exact** IDs from HA (include each calendar, todo list, weather entity and media player you use); empty denies HA entity/service access. `HA_URL` must be reachable from **inside the container**. The HA token stays server-side. `BEACON_HOST=0.0.0.0` is needed for the server to accept connections forwarded from Docker, **not** a reason to bind the host port publicly. Mount `/data` for persistent family data.
+Replace the HA URL/token and set an HTTP Basic `BEACON_PASSWORD` of at least 16 characters (username `beacon`). `BEACON_PARENT_PIN` is optional (6–8 digits if set); without it, Basic-authenticated users receive parent access automatically. `BEACON_BLOCKED_ENTITIES` is an optional CSV of **exact** HA IDs to deny; blank blocks none. The old `BEACON_ALLOWED_ENTITIES` is ignored. `HA_URL` must be reachable from **inside the container**. The HA token stays server-side. `BEACON_HOST=0.0.0.0` is needed for the server to accept connections forwarded from Docker, **not** a reason to bind the host port publicly. Mount `/data` for persistent family data.
 
-`THEME`, `AUTO_DARK_MODE`, `WEATHER_ENTITY`, `PHOTO_DIRECTORY`, `PHOTO_INTERVAL`, and `SCREEN_SAVER_TIMEOUT` are optional **runtime** display defaults in Docker. Match `WEATHER_ENTITY` with an ID in `BEACON_ALLOWED_ENTITIES`; a display's saved preferences may override the defaults. The generated `runtime-config.js` contains these non-secret settings and `ha_available` (a Boolean indicating server-side HA credentials), but **never `HA_URL` or `HA_TOKEN`**. Recreate the container to apply env-file changes. If an earlier version put a long-lived token in browser storage or a `VITE_HA_TOKEN` build, [revoke and replace it](https://github.com/f1f1f1f1f1f1/Family/blob/main/SECURITY.md); clearing the browser copy cannot undo earlier exposure.
+`THEME`, `AUTO_DARK_MODE`, `WEATHER_ENTITY`, `PHOTO_DIRECTORY`, `PHOTO_INTERVAL`, and `SCREEN_SAVER_TIMEOUT` are optional **runtime** display defaults in Docker. Do not block `WEATHER_ENTITY` if you want forecasts; a display's saved preferences may override the defaults. The generated `runtime-config.js` contains these non-secret settings, `ha_available`, and `parent_pin_required` (Booleans), but **never `HA_URL`, `HA_TOKEN`, or the PIN**. Recreate the container to apply env-file changes. If an earlier version put a long-lived token in browser storage or a `VITE_HA_TOKEN` build, [revoke and replace it](https://github.com/f1f1f1f1f1f1/Family/blob/main/SECURITY.md); clearing the browser copy cannot undo earlier exposure.
 
 ### Run with Docker
 
@@ -64,7 +65,7 @@ docker run -d --name family --restart unless-stopped \
 
 Replace `vX.Y.Z` with a published version. HTTP Basic is not encryption: only open `http://127.0.0.1:3000` on the host; provide remote/tablet access through an **HTTPS reverse proxy**. Never change `-p 127.0.0.1:3000:3000` to a LAN/all-interface HTTP bind.
 
-After signing in with Basic username `beacon` and password `BEACON_PASSWORD`, unlock privileged controls with the separate 6–8 digit `BEACON_PARENT_PIN`. That parent session expires **10 minutes from PIN entry**, even while the app polls; re-enter the PIN afterward. Kid Display sessions instead renew on normal session polling for a sliding 24-hour period.
+After signing in with Basic username `beacon` and password `BEACON_PASSWORD`, the app grants parent access automatically when `BEACON_PARENT_PIN` is blank. If you configure a 6–8 digit PIN, parent unlock expires **10 minutes from PIN entry**, even while the app polls; re-enter it afterward. Kid Display sessions instead renew on normal session polling for a sliding 24-hour period.
 
 ### Pull by immutable digest
 
@@ -299,12 +300,12 @@ You can run Beacon on multiple displays simultaneously. Each display:
 
 1. Check container logs: `docker logs family` (or **Settings > Add-ons > Family > Log** for the add-on).
 2. Check health status: `docker inspect --format '{{.State.Health.Status}}' family`. The health endpoint is intended for local requests inside the container; a failed HA API readiness check is **unhealthy** even if static assets load.
-3. For standalone Docker, verify `HA_URL` is reachable from the **container** and `HA_TOKEN`, `BEACON_PASSWORD`, `BEACON_PARENT_PIN`, and `BEACON_ALLOWED_ENTITIES` are configured in the private environment file. For the add-on, check the Supervisor connection plus `parent_pin` and `allowed_entities` options.
+3. For standalone Docker, verify `HA_URL` is reachable from the **container** and `HA_TOKEN` and `BEACON_PASSWORD` are configured in the private environment file. For the add-on, check Supervisor connectivity. If either deployment has a parent PIN set, it must contain 6–8 digits.
 
 ### Beacon loads but HA data is missing
 
 1. Check the Home Assistant server is running. In Docker mode, use an `HA_URL` reachable from within the container and a valid server-side `HA_TOKEN`.
-2. Check Family server logs for denied or failed HA API requests and make sure every needed entity ID appears in `allowed_entities` (add-on) or `BEACON_ALLOWED_ENTITIES` (Docker). An empty list blocks HA entity/service access. In add-on mode, make sure you opened it through an authenticated HA ingress session.
+2. Check Family server logs for denied or failed HA API requests. Remove any entity you need from `blocked_entities` (add-on) or `BEACON_BLOCKED_ENTITIES` (Docker). Blank blocks no entity IDs; the HA service/path restrictions still apply. In add-on mode, make sure you opened it through an authenticated HA ingress session.
 3. Do not fix this by placing an HA token in `VITE_HA_TOKEN`, `runtime-config.js`, or the browser.
 
 ### Display goes to sleep / screen turns off

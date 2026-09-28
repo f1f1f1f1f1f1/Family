@@ -90,11 +90,11 @@ weather_entity: "weather.home"
 photo_directory: "/media/beacon/photos"
 photo_interval: 30
 screen_saver_timeout: 5
-parent_pin: "REPLACE_WITH_6_TO_8_DIGIT_PIN"
-allowed_entities: "calendar.family,todo.shopping_list,weather.home,media_player.living_room"
+parent_pin: ""
+blocked_entities: ""
 ```
 
-3. Replace the `parent_pin` placeholder with a private 6–8 digit code to unlock privileged actions. Replace `"weather.home"` and every sample `allowed_entities` ID with the actual IDs in your HA instance (**Developer Tools > States**). List every calendar, todo list (including a Google Tasks list if used for chores), weather entity and media player you want Family to access. The comma-separated allowlist is **required for HA entity/service access**; an empty value denies it.
+3. Both new options default to blank and may be left that way. Optionally set `parent_pin` to a private 6–8 digit code to require parent unlock, and `blocked_entities` to comma-separated exact HA IDs (for example `switch.garage,todo.private`) to deny those entities. Blank blocks none. Find IDs in **Developer Tools > States**. Older `allowed_entities` values are ignored; remove that obsolete option from an existing configuration when upgrading.
 4. Click **Save**
 
 No HA URL or token needs to be configured in the add-on: its server uses the Supervisor token, and `runtime-config.js` contains no HA token.
@@ -109,7 +109,7 @@ No HA URL or token needs to be configured in the add-on: its server uses the Sup
 > **What you should see**: The Beacon dashboard with a large clock, the current date, a personalized greeting, and (if weather is configured) the current temperature. If you have not connected any calendars yet, the calendar view will be empty.
 
 The add-on is **ingress-only**: use an authenticated Home Assistant session, not a direct `:3000` URL or a reverse proxy to the add-on's internal port.
-The parent PIN unlock lasts **10 minutes from entry** even if the dashboard keeps polling; enter the configured 6–8 digit PIN again when privileged controls relock. A Kid Display session renews during normal session polling for a sliding 24-hour period.
+With a blank `parent_pin`, HA-authenticated ingress users receive parent access automatically and can exit Kid Display without a PIN. If a PIN is configured, parent unlock lasts **10 minutes from entry** even if the dashboard keeps polling; enter it again when controls relock. A Kid Display session renews during normal session polling for a sliding 24-hour period.
 
 ### Step 5: Enable auto-start (optional)
 
@@ -138,14 +138,15 @@ Create an environment file **outside your repository** (for example `/secure/pat
 HA_URL=http://homeassistant.local:8123
 HA_TOKEN=replace-with-your-long-lived-access-token
 BEACON_PASSWORD=replace-with-a-strong-unique-password
-BEACON_PARENT_PIN=REPLACE_WITH_6_TO_8_DIGIT_PIN
-BEACON_ALLOWED_ENTITIES=calendar.family,todo.shopping_list,weather.home,media_player.living_room
+# Optional: require a parent PIN or block specific HA entities
+# BEACON_PARENT_PIN=123456
+# BEACON_BLOCKED_ENTITIES=switch.garage,todo.private
 BEACON_HOST=0.0.0.0
 THEME=skylight
 WEATHER_ENTITY=weather.home
 ```
 
-Replace all placeholders and sample entity IDs, including a password of at least 16 characters, a private **6–8 digit** parent PIN, and the CSV of exact HA IDs needed for your features. Without `BEACON_ALLOWED_ENTITIES`, HA entity/service requests are denied. `HA_URL` must be reachable **from the container**; `localhost` inside Docker is not your HA host. The HA token and passwords are server-only and must never be added to `VITE_*` variables, committed, or included in `runtime-config.js`. Non-secret `THEME` and `WEATHER_ENTITY` are Docker startup defaults; you can also set `AUTO_DARK_MODE`, `PHOTO_DIRECTORY`, `PHOTO_INTERVAL`, and `SCREEN_SAVER_TIMEOUT`. See [Configuration](/docs/customization/configuration/) for defaults and UI overrides.
+Replace the HA URL/token and use a browser password of at least 16 characters. `BEACON_PARENT_PIN` is optional (6–8 digits if set), as is `BEACON_BLOCKED_ENTITIES` (comma-separated exact IDs to deny). With neither set, Basic-authenticated users get parent access and no valid HA entity IDs are blocked; the supported HA service/path restrictions still apply. The old `BEACON_ALLOWED_ENTITIES` setting is ignored. `HA_URL` must be reachable **from the container**; `localhost` inside Docker is not your HA host. The HA token and passwords are server-only and must never be added to `VITE_*` variables, committed, or included in `runtime-config.js`. Non-secret `THEME` and `WEATHER_ENTITY` are Docker startup defaults; you can also set `AUTO_DARK_MODE`, `PHOTO_DIRECTORY`, `PHOTO_INTERVAL`, and `SCREEN_SAVER_TIMEOUT`. See [Configuration](/docs/customization/configuration/) for defaults and UI overrides.
 
 ### Step 3: Run a published version
 
@@ -159,7 +160,7 @@ docker run -d --name family --restart unless-stopped \
   ghcr.io/f1f1f1f1f1f1/family:vX.Y.Z
 ```
 
-Open `http://127.0.0.1:3000` on the Docker host and enter HTTP Basic username `beacon` and password `BEACON_PASSWORD` when prompted. Unlock privileged controls separately with `BEACON_PARENT_PIN`. To use a tablet or access the app remotely, put an **HTTPS reverse proxy** in front of that loopback port; never bind the container's plain-HTTP port directly to the LAN (Basic is not encryption). See [Deployment](/docs/getting-started/deployment/) for an example.
+Open `http://127.0.0.1:3000` on the Docker host and enter HTTP Basic username `beacon` and password `BEACON_PASSWORD` when prompted. A separate parent unlock is required only if you set `BEACON_PARENT_PIN`. To use a tablet or access the app remotely, put an **HTTPS reverse proxy** in front of that loopback port; never bind the container's plain-HTTP port directly to the LAN (Basic is not encryption). See [Deployment](/docs/getting-started/deployment/) for an example.
 
 **Migrating from an earlier build?** Family removes previously stored browser HA credentials when the server-backed app starts. Still [revoke/rotate any long-lived token](https://github.com/f1f1f1f1f1f1/Family/blob/main/SECURITY.md) that was stored in a browser or bundled with `VITE_HA_TOKEN`; copies may remain in old bundles, caches, or on devices.
 
@@ -308,7 +309,7 @@ This creates a `calendar.family_calendar` entity. Events you create in Beacon wi
 
 3. Set the entity in Beacon's configuration:
    - For add-on: Configuration tab > set `weather_entity`
-   - For Docker: set the `WEATHER_ENTITY` runtime environment variable and include the same entity ID in `BEACON_ALLOWED_ENTITIES`, or choose it in Beacon's Settings
+   - For Docker: set the `WEATHER_ENTITY` runtime environment variable (unless that entity is in `BEACON_BLOCKED_ENTITIES`), or choose it in Beacon's Settings
    - For development: choose it in Settings or set the non-secret `VITE_HA_WEATHER_ENTITY`
 
 ### Mounting and displaying on a tablet

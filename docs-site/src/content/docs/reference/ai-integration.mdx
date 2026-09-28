@@ -46,7 +46,7 @@ The skill files describe Beacon concepts, but do not supply a functional MCP bac
 
 ## Voice API (built-in)
 
-Family's server exposes a REST endpoint for natural-language commands. It uses keyword matching without an LLM. Calls require an authenticated **parent session** through HA ingress (add-on) or an HTTPS reverse proxy (Docker). The parent session expires **10 minutes from PIN entry**, even if the app polls; re-enter the configured 6–8 digit PIN afterward. Standalone access first uses HTTP Basic username `beacon` and password `BEACON_PASSWORD`, then the separate `BEACON_PARENT_PIN` unlocks privileged controls; HA service targets must appear in `allowed_entities`/`BEACON_ALLOWED_ENTITIES`. Never expose this endpoint on a direct plain-HTTP LAN port.
+Family's server exposes a REST endpoint for natural-language commands. It uses keyword matching without an LLM. Calls require an authenticated **parent session** through HA ingress (add-on) or an HTTPS reverse proxy (Docker). With a blank parent PIN, authenticated users receive parent access automatically; if set, the PIN unlock expires **10 minutes from entry**, even while the app polls. Standalone access first uses HTTP Basic username `beacon` and password `BEACON_PASSWORD`. HA service targets cannot appear in `blocked_entities`/`BEACON_BLOCKED_ENTITIES`; a blank blocklist blocks none. The service/path allowlist still applies. Never expose this endpoint on a direct plain-HTTP LAN port.
 
 ### Endpoint
 
@@ -90,7 +90,7 @@ The API resolves list names and media players by fuzzy-matching against availabl
 
 The [Model Context Protocol](https://modelcontextprotocol.io/) (MCP) details below describe a separate legacy process, **not** the Family web server. This plugin/MCP integration is **unsupported until `mcp-server.cjs` exists again**; the historical tools below cannot be called from this fork. Neither the add-on nor standalone Docker exposes an MCP port, and `SUPERVISOR_TOKEN` is never a standalone Family configuration option.
 
-The earlier stdio/HTTP setup examples are not installable from this repository. To run the Family server, use `HA_URL`, server-only `HA_TOKEN`, HTTP Basic (`BEACON_PASSWORD` with username `beacon`), a separate `BEACON_PARENT_PIN`, and the explicit `BEACON_ALLOWED_ENTITIES` CSV. Follow [Deployment](/docs/getting-started/deployment/) instead of a missing MCP command.
+The earlier stdio/HTTP setup examples are not installable from this repository. To run the Family server, use `HA_URL`, server-only `HA_TOKEN`, and HTTP Basic (`BEACON_PASSWORD` with username `beacon`); `BEACON_PARENT_PIN` and `BEACON_BLOCKED_ENTITIES` are optional. Follow [Deployment](/docs/getting-started/deployment/) instead of a missing MCP command.
 
 ### Historical tool names (not currently bundled)
 

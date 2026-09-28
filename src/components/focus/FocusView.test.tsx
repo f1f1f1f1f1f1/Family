@@ -53,6 +53,8 @@ beforeEach(() => {
   vi.useFakeTimers();
   mocks.refreshRoutines.mockClear();
   mocks.refreshChores.mockClear();
+  mocks.unlockParent.mockClear();
+  mocks.getParentPinMembers.mockClear();
   mocks.getParentPinMembers.mockResolvedValue([]);
 });
 
@@ -103,5 +105,20 @@ describe('FocusView over time', () => {
     await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Exit' })); });
     expect(onExit).toHaveBeenCalledOnce();
     expect(mocks.unlockParent).toHaveBeenCalledWith('123456', undefined);
+  });
+
+  it('exits without asking for a PIN when the server has no parent PIN configured', async () => {
+    window.__BEACON_CONFIG__ = { addon_slug: 'family_family', parent_pin_required: false };
+    const onExit = vi.fn();
+    mocks.unlockParent.mockResolvedValueOnce({ role: 'parent' });
+    render(<FocusView memberId="kai" settings={settings} onExit={onExit} parentPinRequired={false} />);
+
+    for (let i = 0; i < 5; i++) fireEvent.click(screen.getByRole('button', { name: 'Clock' }));
+    expect(screen.queryByLabelText('Parent PIN')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Exit' })).toBeEnabled();
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Exit' })); });
+    expect(mocks.unlockParent).toHaveBeenCalledWith('', undefined);
+    expect(mocks.getParentPinMembers).not.toHaveBeenCalled();
+    expect(onExit).toHaveBeenCalledOnce();
   });
 });

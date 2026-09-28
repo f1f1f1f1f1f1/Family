@@ -14,35 +14,35 @@ Install **Family** from `https://github.com/f1f1f1f1f1f1/Family`, then edit **Se
 
 | Option | Default | Description |
 |--------|---------|-------------|
-| `parent_pin` | Required | Private 6–8 digit PIN for privileged actions; separate from Home Assistant's ingress login |
+| `parent_pin` | Blank (optional) | Set a private 6–8 digit PIN to require parent unlock; blank lets authenticated ingress users manage Family |
 | `theme` | `skylight` | Initial theme; a browser's theme selection can override it |
 | `auto_dark_mode` | `true` | Automatically switch themes when the UI is set to auto |
 | `weather_entity` | `weather.home` | HA weather entity ID |
 | `photo_directory` | `/media/beacon/photos` | Directory shown in the photo view |
 | `photo_interval` | `30` | Seconds between photos |
 | `screen_saver_timeout` | `5` | Minutes before dimming (clock screensaver follows later) |
-| `allowed_entities` | Empty (denies access) | Required for HA entity discovery and services: CSV of exact entity IDs, e.g. `calendar.family,todo.shopping_list,weather.home` |
+| `blocked_entities` | Blank (blocks none) | Optional CSV of exact HA entity IDs to deny, e.g. `switch.garage,todo.private` |
 
 Example options:
 
 ```yaml
-parent_pin: "REPLACE_WITH_6_TO_8_DIGIT_PIN"
+parent_pin: ""
 theme: "midnight"
 auto_dark_mode: true
 weather_entity: "weather.home"
 photo_directory: "/media/beacon/photos"
 photo_interval: 30
 screen_saver_timeout: 5
-allowed_entities: "calendar.family,todo.shopping_list,weather.home,media_player.living_room"
+blocked_entities: ""
 ```
 
-Replace sample entity IDs with those in your Home Assistant **Developer Tools > States** (also include the Google Tasks todo entity if syncing chores). An empty list blocks HA entity/service access; the allowlist does not accept wildcards or area/device targeting. Save and restart the add-on after changing options. Open it through **authenticated Home Assistant ingress**, not a direct exposed port. The server receives `SUPERVISOR_TOKEN` from Supervisor, uses it to proxy allowed HA API requests, and does not include it in `runtime-config.js`.
+Both settings can stay blank. To require an additional parent unlock, set `parent_pin` to 6–8 digits. To deny specific entities, set `blocked_entities` to their exact IDs from **Developer Tools > States**; wildcards and area/device targeting are not accepted. An empty blocklist denies no valid entity IDs, though the server still limits HA API paths and services. On existing installs, the former `allowed_entities` option is accepted for upgrade compatibility but **ignored**; remove it when editing the configuration and use `blocked_entities` if needed. Save and restart the add-on after changing options. Open it through **authenticated Home Assistant ingress**, not a direct exposed port. The server receives `SUPERVISOR_TOKEN` from Supervisor, uses it to proxy supported HA API requests, and does not include it in `runtime-config.js`.
 
 ### Parent and display sessions
 
 | Session | Lifetime | Renewal |
 |---------|----------|---------|
-| Parent | **10 minutes from PIN unlock** | Absolute: app activity and session polling do **not** extend it. Re-enter the configured 6–8 digit `parent_pin` (or standalone `BEACON_PARENT_PIN`) to unlock privileged actions again. |
+| Parent | **10 minutes from PIN unlock, when configured** | Absolute: app activity and session polling do **not** extend a PIN-protected session. With a blank `parent_pin`/`BEACON_PARENT_PIN`, authenticated users receive parent access automatically. |
 | Kid Display | **24 hours since last session poll** | Sliding: the active display refreshes its session during normal polling. After it expires, unlock again with that member's PIN if one is set. |
 
 These app sessions are separate from HA ingress authentication and standalone HTTP Basic. A server restart can also require re-authentication.
@@ -58,11 +58,11 @@ Store the following in an environment file **outside the repository**, readable 
 | `HA_URL` | Yes | HA base URL reachable **from the container**; not `localhost` unless HA runs inside it |
 | `HA_TOKEN` | Yes | HA long-lived access token used only by the server |
 | `BEACON_PASSWORD` | Yes | HTTP Basic password (at least 16 characters; username `beacon`) required to access the standalone app |
-| `BEACON_PARENT_PIN` | Yes | Private 6–8 digit PIN required for privileged actions |
+| `BEACON_PARENT_PIN` | No | Optional 6–8 digit PIN; blank grants parent access to users with the browser password |
 | `BEACON_HOST` | Set to `0.0.0.0` | Listen on the container interface so Docker port forwarding works; bind the **host** port to `127.0.0.1` |
 | `BEACON_PORT` | No | Server port (default `3000`) |
 | `BEACON_DATA` | No | Persistent data directory (default `/data`); mount a volume here |
-| `BEACON_ALLOWED_ENTITIES` | For HA access | CSV of exact HA entity IDs; empty denies entity discovery and services |
+| `BEACON_BLOCKED_ENTITIES` | No | Optional CSV of exact HA entity IDs to deny; blank blocks none |
 
 Standalone display defaults are read **at container startup**, not baked into Vite assets:
 
@@ -70,7 +70,7 @@ Standalone display defaults are read **at container startup**, not baked into Vi
 |----------|---------|-----------------|
 | `THEME` | `skylight` | Initial theme; a saved theme selection in the browser can override it |
 | `AUTO_DARK_MODE` | `true` | Whether auto dark mode is enabled |
-| `WEATHER_ENTITY` | `weather.home` | HA weather entity ID (also include it in `BEACON_ALLOWED_ENTITIES`) |
+| `WEATHER_ENTITY` | `weather.home` | HA weather entity ID (do not include it in `BEACON_BLOCKED_ENTITIES` to show forecasts) |
 | `PHOTO_DIRECTORY` | `/media/beacon/photos` | Photo directory available to HA |
 | `PHOTO_INTERVAL` | `30` | Seconds between photos |
 | `SCREEN_SAVER_TIMEOUT` | `5` | Minutes before dimming |
@@ -81,8 +81,9 @@ For example:
 HA_URL=http://homeassistant.local:8123
 HA_TOKEN=replace-with-a-dedicated-HA-long-lived-access-token
 BEACON_PASSWORD=replace-with-a-strong-unique-password
-BEACON_PARENT_PIN=REPLACE_WITH_6_TO_8_DIGIT_PIN
-BEACON_ALLOWED_ENTITIES=calendar.family,todo.shopping_list,weather.home,media_player.living_room
+# Optional: require a parent PIN or block specific HA entities
+# BEACON_PARENT_PIN=123456
+# BEACON_BLOCKED_ENTITIES=switch.garage,todo.private
 BEACON_HOST=0.0.0.0
 THEME=midnight
 AUTO_DARK_MODE=true
@@ -92,7 +93,7 @@ PHOTO_INTERVAL=30
 SCREEN_SAVER_TIMEOUT=5
 ```
 
-Replace every sample entity ID with one present in your HA instance (add all calendars, todo lists, weather and media players you want Family to use). Run with `-p 127.0.0.1:3000:3000 --env-file /secure/path/family.env -v family-data:/data`. Log in with Basic username `beacon` and password `BEACON_PASSWORD`, then unlock privileged controls separately using `BEACON_PARENT_PIN`. HTTP Basic does not encrypt credentials: use an **HTTPS reverse proxy** for other devices, never a publicly or LAN-bound plain-HTTP container port. See [Deployment](/docs/getting-started/deployment/) for complete run, Compose, and proxy examples.
+Run with `-p 127.0.0.1:3000:3000 --env-file /secure/path/family.env -v family-data:/data`. Log in with Basic username `beacon` and password `BEACON_PASSWORD`; a separate parent unlock is needed only when you configure `BEACON_PARENT_PIN`. The old `BEACON_ALLOWED_ENTITIES` variable is ignored, not treated as a blocklist. HTTP Basic does not encrypt credentials: use an **HTTPS reverse proxy** for other devices, never a publicly or LAN-bound plain-HTTP container port. See [Deployment](/docs/getting-started/deployment/) for complete run, Compose, and proxy examples.
 
 Do not use `SUPERVISOR_TOKEN` as a standalone long-lived token; that variable is reserved for Supervisor-managed add-ons. Standalone display defaults can be set with the Docker variables above or changed in the app (a browser's saved settings may take precedence). In add-on mode, Supervisor options take precedence over these environment variables. Recreate the standalone container to pick up edited env values. These variables configure runtime behavior, **not** Vite's browser bundle.
 
@@ -113,6 +114,7 @@ window.__BEACON_CONFIG__ = {
   ha_url: "",
   ha_token: "",
   ha_available: true, // whether server-side HA credentials are configured
+  parent_pin_required: false, // whether a parent PIN must be entered
   theme: "skylight",
   weather_entity: "weather.home",
   // Other non-secret display settings and the add-on slug
@@ -127,5 +129,5 @@ The root `config.yaml` defines **Family** (`slug: family`, `ingress: true`, `ing
 
 - **Changed add-on options?** Save and restart the add-on so `runtime-config.js` is regenerated. A browser's saved theme choice can override the configured initial theme.
 - **Changed standalone environment variables?** Recreate the container; restarting it without recreating will not pick up changes to its env file.
-- **401 or locked controls?** Check the standalone `BEACON_PASSWORD` or the deployment's parent PIN. Add-on access also requires an active Home Assistant ingress session.
+- **401 or locked controls?** Check the standalone `BEACON_PASSWORD` and any optional parent PIN you configured. Add-on access also requires an active Home Assistant ingress session. Older `allowed_entities`/`BEACON_ALLOWED_ENTITIES` values are ignored; use `blocked_entities`/`BEACON_BLOCKED_ENTITIES` only to deny specific IDs.
 - **Missing HA data or unhealthy container?** Check HA connectivity from the container and its server-side token. The health check calls `GET /beacon-action/health` on `127.0.0.1` inside the container; never try to fix HA authentication by embedding a token in frontend assets.

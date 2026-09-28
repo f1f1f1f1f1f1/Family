@@ -109,11 +109,11 @@ Click the palette icon at the bottom of the sidebar. A dropdown shows all 7 them
 
 ### How do I change the weather entity?
 
-In the add-on, set the `weather_entity` option to your HA weather entity ID (e.g., `weather.home`). In standalone Docker, set `WEATHER_ENTITY` as a non-secret startup default or choose it in Beacon's settings. Include that exact entity in `allowed_entities`/`BEACON_ALLOWED_ENTITIES`. Find the ID in **Settings > Devices & Services > Entities** in HA. See [Configuration](/docs/customization/configuration/).
+In the add-on, set the `weather_entity` option to your HA weather entity ID (e.g., `weather.home`). In standalone Docker, set `WEATHER_ENTITY` as a non-secret startup default or choose it in Beacon's settings. Make sure the entity is **not** in `blocked_entities`/`BEACON_BLOCKED_ENTITIES`. Find the ID in **Settings > Devices & Services > Entities** in HA. See [Configuration](/docs/customization/configuration/).
 
 ### How do I connect multiple calendars?
 
-Add multiple calendar integrations in Home Assistant (Google Calendar, CalDAV, Local Calendar, etc.). List their exact `calendar.*` entity IDs in `allowed_entities` (add-on) or `BEACON_ALLOWED_ENTITIES` (Docker); Beacon discovers only allowed entities. Show or hide specific calendars in **Settings > Calendar**.
+Add multiple calendar integrations in Home Assistant (Google Calendar, CalDAV, Local Calendar, etc.). Beacon discovers available `calendar.*` entities automatically unless you list their exact IDs in `blocked_entities` (add-on) or `BEACON_BLOCKED_ENTITIES` (Docker). Show or hide specific calendars in **Settings > Calendar**.
 
 ### How do I set up family members?
 
@@ -121,7 +121,7 @@ Click the gear icon in the sidebar to open the Family Members modal. Click "+ Ad
 
 ### Why did parent controls lock while the app was open?
 
-A parent session expires **10 minutes after the PIN is entered**, even when the app is active or polling. Re-enter the configured 6–8 digit add-on `parent_pin` or standalone `BEACON_PARENT_PIN` to continue privileged actions. Kid Display sessions instead slide for **24 hours from their most recent session poll**. Neither session replaces HA ingress login or Docker's HTTP Basic password.
+If you configured a 6–8 digit add-on `parent_pin` or standalone `BEACON_PARENT_PIN`, a parent session expires **10 minutes after the PIN is entered**, even when the app is active or polling. Re-enter it to continue privileged actions. With the PIN blank, authenticated users receive parent access automatically. Kid Display sessions instead slide for **24 hours from their most recent session poll**. Neither session replaces HA ingress login or Docker's HTTP Basic password.
 
 ---
 
@@ -164,8 +164,8 @@ Do not rely on a browser localStorage export as the primary backup of server-bac
 
 Check:
 1. Home Assistant is running. In Docker, the server has `HA_URL` reachable **from its container** and a valid server-only `HA_TOKEN`; in the add-on, check Supervisor connectivity and authenticated HA ingress.
-2. Standalone HTTP Basic username `beacon` and password `BEACON_PASSWORD` are configured; the separate parent PIN unlocks privileged actions as described in [Configuration](/docs/customization/configuration/).
-3. `allowed_entities` (add-on) or `BEACON_ALLOWED_ENTITIES` (Docker) lists **exact** IDs for the calendars, todo lists, weather entities and media players Family needs. An empty list denies HA entity/service access. Check logs for denied calls; do not put an HA token in `VITE_HA_TOKEN` or `runtime-config.js` to work around missing data.
+2. Standalone HTTP Basic username `beacon` and password `BEACON_PASSWORD` are configured; a separate parent PIN is needed only if one was set, as described in [Configuration](/docs/customization/configuration/).
+3. Check that the entities you want are not listed in `blocked_entities` (add-on) or `BEACON_BLOCKED_ENTITIES` (Docker). Blank blocks none; the old `allowed_entities`/`BEACON_ALLOWED_ENTITIES` settings are ignored. Check logs for denied calls; do not put an HA token in `VITE_HA_TOKEN` or `runtime-config.js` to work around missing data.
 
 For direct development/native login, use the app's onboarding flow rather than a token bundled into Vite.
 

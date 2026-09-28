@@ -19,6 +19,7 @@ interface FocusViewProps {
   memberId: string;
   settings: BeaconSettings;
   onExit: () => void;
+  parentPinRequired?: boolean;
 }
 
 const GREETINGS = {
@@ -41,7 +42,7 @@ function FocusClock({ timeFormat, onTap }: { timeFormat: BeaconSettings['timeFor
   );
 }
 
-export function FocusView({ memberId, settings, onExit }: FocusViewProps) {
+export function FocusView({ memberId, settings, onExit, parentPinRequired = true }: FocusViewProps) {
   const { members } = useFamily();
   const routinesApi = useRoutines(memberId);
   const choresApi = useChores();
@@ -70,7 +71,7 @@ export function FocusView({ memberId, settings, onExit }: FocusViewProps) {
   const [parentId, setParentId] = useState('');
   const [parents, setParents] = useState<Array<{ id: string; name: string }>>([]);
   useEffect(() => {
-    if (!showExitConfirm || !isAddOn()) return;
+    if (!showExitConfirm || !isAddOn() || !parentPinRequired) return;
     let active = true;
     getParentPinMembers().then((list) => {
       if (active) setParents(list);
@@ -78,7 +79,7 @@ export function FocusView({ memberId, settings, onExit }: FocusViewProps) {
       if (active) setExitError(err instanceof Error ? err.message : 'Could not load parent profiles');
     });
     return () => { active = false; };
-  }, [showExitConfirm]);
+  }, [showExitConfirm, parentPinRequired]);
   const cancelExit = () => {
     setExitPin('');
     setExitError('');
@@ -93,7 +94,8 @@ export function FocusView({ memberId, settings, onExit }: FocusViewProps) {
     setCheckingPin(true);
     setExitError('');
     try {
-      const session = await unlockParent(exitPin, parentId || undefined);
+      const session = await unlockParent(parentPinRequired ? exitPin : '',
+        parentPinRequired ? parentId || undefined : undefined);
       if (session.role !== 'parent') throw new Error('Parent access was not granted');
       onExit();
     } catch (err) {
@@ -198,7 +200,7 @@ export function FocusView({ memberId, settings, onExit }: FocusViewProps) {
         <div className="focus-exit-backdrop" onClick={cancelExit}>
           <div className="focus-exit-dialog" onClick={(e) => e.stopPropagation()}>
             <p>Exit {member.name}&rsquo;s display?</p>
-            {isAddOn() && parents.length > 0 && (
+            {isAddOn() && parentPinRequired && parents.length > 0 && (
               <label className="focus-exit-pin">
                 Parent profile
                 <select value={parentId} onChange={(e) => { setParentId(e.target.value); setExitError(''); }}>
@@ -209,7 +211,7 @@ export function FocusView({ memberId, settings, onExit }: FocusViewProps) {
                 </select>
               </label>
             )}
-            {isAddOn() && (
+            {isAddOn() && parentPinRequired && (
               <label className="focus-exit-pin">
                 Parent PIN
                 <input
@@ -231,7 +233,7 @@ export function FocusView({ memberId, settings, onExit }: FocusViewProps) {
                 type="button"
                 className="settings-btn settings-btn--primary"
                 onClick={() => void confirmExit()}
-                disabled={checkingPin || (isAddOn() && exitPin.length < (parentId ? 4 : 6))}
+                disabled={checkingPin || (isAddOn() && parentPinRequired && exitPin.length < (parentId ? 4 : 6))}
               >
                 Exit
               </button>
