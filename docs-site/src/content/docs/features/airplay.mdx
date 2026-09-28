@@ -1,0 +1,61 @@
+---
+title: "AirPlay"
+description: "Show an iPhone, iPad or Mac screen, or the music it's playing, on the display. Built in, but not yet turned on in the add-on."
+order: 12
+---
+
+# AirPlay
+
+Family has an AirPlay screen. Mirror an iPhone, iPad or Mac to the display, or play music to it from any app with AirPlay, and the display shows the mirrored screen, or the cover and title of what's playing, with the sound.
+
+> **Not available yet.** The add-on doesn't include an AirPlay receiver yet, and it would also have to run on your Home Assistant machine's own network for iPhones to find it. Until both change, the AirPlay screen doesn't appear. What turning it on involves is in [`docs/airplay.md`](https://github.com/f1f1f1f1f1f1/Family/blob/main/docs/airplay.md).
+
+---
+
+## Sending to the display
+
+- **A screen, from an iPhone or iPad:** open Control Center, tap **Screen Mirroring**, and choose **Family** (or the name set with `airplay_name`).
+- **A screen, from a Mac:** Screen Mirroring is in Control Center too.
+- **Music:** tap the AirPlay button in the app and choose **Family**.
+
+If `airplay_password` is set, the device asks for it the first time.
+
+---
+
+## The AirPlay screen
+
+While the add-on's receiver is on, the sidebar has an **AirPlay** icon after Photos (in the phone layout, it's under **More**).
+
+- Like the photo frame, it covers the whole display. **Tap** to show the back arrow (top left); it hides again after 5 seconds. While nothing is being sent, the screen shows how to send to it, and the back arrow stays.
+- For music, it shows the cover art, title, artist and album.
+- Browsers keep the sound off until the page has been tapped. If the screen shows **Tap for sound**, tap anywhere.
+- While it shows a mirrored screen or music, the display stays on and the screen saver waits.
+
+---
+
+## Opening by itself
+
+**Settings > Display > Open AirPlay Automatically** (shown while the receiver is on, and on unless turned off):
+
+- When a device starts sending, the display switches to the AirPlay screen. When it stops, the display goes back to the screen it was on, unless someone has moved on since.
+- **Each display has its own choice.** Every display that opens the AirPlay screen plays the sound too, so with several displays, turn it off on the ones that shouldn't.
+- Kid Displays never show it.
+
+---
+
+## Options
+
+| Option | Default | What it does |
+|--------|---------|--------------|
+| `airplay` | `true` | `false` turns the receiver off |
+| `airplay_name` | `Family` | The name devices show |
+| `airplay_password` | none | A password devices must give (at least 4 characters) |
+
+---
+
+## Limitations
+
+- On an iPhone or iPad used as the display, the mirrored screen needs iOS or iPadOS 17.1 or later. Before that, the sound still plays.
+- The sound can be a little behind the picture.
+- A video app's own AirPlay button, which hands over the video's web address rather than the screen, isn't supported: use Screen Mirroring instead.
+- One device at a time: a second one takes over from the first.
