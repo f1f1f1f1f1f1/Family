@@ -1,12 +1,14 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import type { Chore, FamilyMember } from '../types/family';
+import type { Chore, ChoreCompletion, FamilyMember } from '../types/family';
 
 const mocks = vi.hoisted(() => ({
   addChore: vi.fn(),
+  uncompleteChore: vi.fn(),
   settings: { currencySymbol: '$' },
   chores: [] as Chore[],
+  completions: [] as ChoreCompletion[],
 }));
 
 const sam: FamilyMember = { id: 'sam', name: 'Sam', avatar: '👧', color: '#ec4899', role: 'child' };
@@ -20,7 +22,8 @@ vi.mock('../hooks/useChores', () => ({
     updateChore: vi.fn(),
     removeChore: vi.fn(),
     completeChore: vi.fn(),
-    uncompleteChore: vi.fn(),
+    uncompleteChore: mocks.uncompleteChore,
+    currentCompletions: mocks.completions,
     isChoreDone: () => false,
     getStreakForMember: (id: string) => ({ member_id: id, current: 0, longest: 0, last_completed: '' }),
     getChoresForMember: () => [],
@@ -105,6 +108,8 @@ describe('ChoresView chore value', () => {
 describe('ChoresView open chores', () => {
   afterEach(() => {
     mocks.chores = [];
+    mocks.completions = [];
+    mocks.uncompleteChore.mockReset();
   });
 
   // A chore whose people had all been removed from the family showed in no
@@ -115,5 +120,26 @@ describe('ChoresView open chores', () => {
 
     expect(screen.getByRole('heading', { name: 'Open Chores' })).toBeInTheDocument();
     expect(screen.getByText('Walk the dog')).toBeInTheDocument();
+  });
+
+  it('offers Complete for an open chore no one has done', () => {
+    mocks.chores = [{ id: 'c2', name: 'Feed the cat', assigned_to: [], frequency: 'daily', value_cents: 0 }];
+    render(<ChoresView />);
+
+    expect(screen.getByRole('button', { name: 'Complete' })).toBeInTheDocument();
+    expect(screen.queryByText(/Done by/)).toBeNull();
+  });
+
+  // Completing an open chore left it looking open, with no sign of who had
+  // done it and no way to undo it, while the dashboard showed it done.
+  it('shows who did an open chore, with an undo', () => {
+    mocks.chores = [{ id: 'c2', name: 'Feed the cat', assigned_to: [], frequency: 'daily', value_cents: 0 }];
+    mocks.completions = [{ id: 'k1', chore_id: 'c2', member_id: 'sam', completed_at: '2026-09-28T08:00:00Z' }];
+    render(<ChoresView />);
+
+    expect(screen.getByText('Done by Sam')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Complete' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Undo Feed the cat for Sam' }));
+    expect(mocks.uncompleteChore).toHaveBeenCalledWith('c2', 'sam');
   });
 });

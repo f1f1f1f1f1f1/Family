@@ -88,8 +88,11 @@ function ChoreValueInput({ valueCents, currencySymbol, onChange }: {
 interface UnassignedChoreCardProps {
   chore: Chore;
   members: FamilyMember[];
+  /** Who has done it this round (today, this week, or ever for a one-off). */
+  doneBy: FamilyMember[];
   onClaim: (choreId: string, memberId: string) => void;
   onComplete: (choreId: string, memberId: string) => void;
+  onUndo: (choreId: string, memberId: string) => void;
   onEdit: () => void;
   onDelete: () => void;
   currencySymbol?: string;
@@ -98,8 +101,10 @@ interface UnassignedChoreCardProps {
 function UnassignedChoreCard({
   chore,
   members,
+  doneBy,
   onClaim,
   onComplete,
+  onUndo,
   onEdit,
   onDelete,
   currencySymbol = '$',
@@ -128,15 +133,21 @@ function UnassignedChoreCard({
   };
 
   const value = formatChoreValue(chore.value_cents, currencySymbol);
+  const done = doneBy.length > 0;
 
   return (
-    <div className="unassigned-chore-card">
+    <div className={`unassigned-chore-card ${done ? 'unassigned-chore-card--done' : ''}`}>
       <div className="chore-card-body">
-        <span className="chore-card-name">
+        <span className={`chore-card-name ${done ? 'chore-card-name--done' : ''}`}>
           {chore.icon && <span className="chore-card-icon">{chore.icon}</span>}
           {chore.name}
         </span>
         {value && <span className="chore-card-value">{value}</span>}
+        {done && (
+          <span className="unassigned-chore-done-by">
+            Done by {doneBy.map((m) => m.name).join(', ')}
+          </span>
+        )}
       </div>
 
       <div className="chore-card-actions">
@@ -150,16 +161,30 @@ function UnassignedChoreCard({
         >
           Claim
         </button>
-        <button
-          type="button"
-          className="btn btn--sm btn--primary"
-          onClick={() => {
-            setPickerAction('complete');
-            setShowMemberPicker(true);
-          }}
-        >
-          Complete
-        </button>
+        {done ? (
+          doneBy.map((m) => (
+            <button
+              key={m.id}
+              type="button"
+              className="btn btn--sm btn--secondary"
+              onClick={() => onUndo(chore.id, m.id)}
+              aria-label={`Undo ${chore.name} for ${m.name}`}
+            >
+              {doneBy.length > 1 ? `Undo ${m.name}` : 'Undo'}
+            </button>
+          ))
+        ) : (
+          <button
+            type="button"
+            className="btn btn--sm btn--primary"
+            onClick={() => {
+              setPickerAction('complete');
+              setShowMemberPicker(true);
+            }}
+          >
+            Complete
+          </button>
+        )}
         <button
           type="button"
           className="chore-card-action-btn"
@@ -230,6 +255,7 @@ export function ChoresView() {
     removeChore,
     completeChore,
     uncompleteChore,
+    currentCompletions,
     isChoreDone,
     getStreakForMember,
     getChoresForMember,
@@ -327,6 +353,13 @@ export function ChoresView() {
   // showed nowhere, so couldn't be reassigned or deleted.
   const memberIds = new Set(members.map((m) => m.id));
   const unassignedChores = chores.filter((c) => !c.assigned_to.some((id) => memberIds.has(id)));
+
+  // Anyone can do an open chore, so it's done once someone has, as on the
+  // dashboard. It used to stay open after Complete, with no undo.
+  const memberById = new Map(members.map((m) => [m.id, m]));
+  const doneBy = (choreId: string) =>
+    [...new Set(currentCompletions.filter((c) => c.chore_id === choreId).map((c) => c.member_id))]
+      .flatMap((id) => memberById.get(id) ?? []);
 
   const handleClaimChore = (choreId: string, memberId: string) => {
     const chore = chores.find((c) => c.id === choreId);
@@ -439,8 +472,10 @@ export function ChoresView() {
                     key={chore.id}
                     chore={chore}
                     members={members}
+                    doneBy={doneBy(chore.id)}
                     onClaim={handleClaimChore}
                     onComplete={handleCompleteUnassigned}
+                    onUndo={uncompleteChore}
                     onEdit={() => handleStartEdit(chore)}
                     onDelete={() => handleDeleteChore(chore.id)}
                     currencySymbol={settings.currencySymbol}
