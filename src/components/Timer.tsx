@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { Play, Pause, RotateCcw, Flag, X, Plus, Volume2, BellOff, BellRing } from 'lucide-react';
-import { loadSavedTimers, saveTimers, type SavedTimer } from '../utils/saved-timers';
+import { loadSavedStopwatch, loadSavedTimers, saveStopwatch, saveTimers, type SavedTimer } from '../utils/saved-timers';
 import '../styles/timer.css';
 
 const PRESETS = [
@@ -190,6 +190,18 @@ function toSaved(t: TimerInstance): SavedTimer {
   };
 }
 
+/** The stopwatch saved before the page was reloaded, counted on to now if it was running. */
+function restoreStopwatch() {
+  const saved = loadSavedStopwatch();
+  const ranOn = saved?.running ? Math.max(0, Date.now() - saved.savedAt) : 0;
+  return {
+    running: saved?.running ?? false,
+    elapsedMs: (saved?.elapsedMs ?? 0) + ranOn,
+    startedAt: performance.now(),
+    laps: saved?.laps ?? [],
+  };
+}
+
 export function Timer({ compact = false, shown = true, onShow }: TimerProps) {
   const [mode, setMode] = useState<TimerMode>('timers');
   const [sound, setSound] = useState<SoundName>(getStoredSound);
@@ -244,12 +256,13 @@ export function Timer({ compact = false, shown = true, onShow }: TimerProps) {
     };
   }, []);
 
-  // --- Stopwatch state ---
-  const [swRunning, setSwRunning] = useState(false);
-  const [swElapsed, setSwElapsed] = useState(0);
-  const [laps, setLaps] = useState<number[]>([]);
-  const swStartRef = useRef<number>(0);
-  const swBaseRef = useRef<number>(0);
+  // --- Stopwatch state (restored after a reload, like the timers) ---
+  const [restoredSw] = useState(restoreStopwatch);
+  const [swRunning, setSwRunning] = useState(restoredSw.running);
+  const [swElapsed, setSwElapsed] = useState(restoredSw.elapsedMs);
+  const [laps, setLaps] = useState<number[]>(restoredSw.laps);
+  const swStartRef = useRef<number>(restoredSw.startedAt);
+  const swBaseRef = useRef<number>(restoredSw.elapsedMs);
 
   // We need a ref for sound so the tick callback always sees the latest value
   const soundRef = useRef(sound);
@@ -357,6 +370,19 @@ export function Timer({ compact = false, shown = true, onShow }: TimerProps) {
     const interval = setInterval(redraw, 250);
     return () => clearInterval(interval);
   }, [swRunning, shown, swReading]);
+
+  // Saved on start, pause and lap, so a reload doesn't lose it (a running
+  // one's time is counted on from when it was saved). Reset, which always
+  // sets a new laps array, forgets it.
+  useEffect(() => {
+    const cleared = !swRunning && swBaseRef.current === 0 && laps.length === 0;
+    saveStopwatch(cleared ? null : {
+      elapsedMs: swRunning ? swReading() : swBaseRef.current,
+      savedAt: Date.now(),
+      running: swRunning,
+      laps,
+    });
+  }, [swRunning, laps, swReading]);
 
   const swStart = useCallback(() => {
     swStartRef.current = performance.now();
