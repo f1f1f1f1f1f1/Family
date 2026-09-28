@@ -4,9 +4,10 @@ import { copyFileSync, mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync
 import { connect, createServer } from 'node:net';
 import { createServer as createHttpServer, type Server } from 'node:http';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import WebSocket from 'ws';
 
 /*
  * Starts the real add-on server (server.js) with no Home Assistant behind
@@ -93,11 +94,29 @@ function freePort(): Promise<number> {
   });
 }
 
+/** Opens an AirPlay screen's WebSocket: the refusal's status, or the first message. */
+function openScreen(url: string, headers: Record<string, string>, origin?: string) {
+  return new Promise<{ status: number; first?: string }>((resolve, reject) => {
+    const socket = new WebSocket(url.replace(/^http/, 'ws'), { headers, ...(origin ? { origin } : {}) });
+    socket.on('error', reject);
+    socket.once('unexpected-response', (request, response) => {
+      resolve({ status: response.statusCode ?? 0 });
+      request.destroy();
+    });
+    socket.once('message', (data) => {
+      resolve({ status: 101, first: data.toString() });
+      socket.close();
+    });
+  });
+}
+
 beforeAll(async () => {
   dir = mkdtempSync(join(tmpdir(), 'family-server-'));
   copyFileSync(join(repo, 'server.js'), join(dir, 'server.cjs'));
   copyFileSync(join(repo, 'server-guards.cjs'), join(dir, 'server-guards.cjs'));
   copyFileSync(join(repo, 'chores-sync.cjs'), join(dir, 'chores-sync.cjs'));
+  copyFileSync(join(repo, 'airplay.cjs'), join(dir, 'airplay.cjs'));
+  copyFileSync(join(repo, 'airplay-relay.cjs'), join(dir, 'airplay-relay.cjs'));
   mkdirSync(join(dir, 'dist'));
   writeFileSync(join(dir, 'dist', 'index.html'), '<!doctype html><div id="root"></div>');
 
@@ -274,6 +293,13 @@ describe('add-on server', () => {
       setTimeout(() => { socket.destroy(); resolve(data || 'no answer'); }, 2000);
     });
     expect(answer.split('\r\n')[0]).toBe('HTTP/1.1 404 Not Found');
+  });
+
+  it('has no AirPlay receiver unless the add-on turns it on', async () => {
+    expect(await fetch(`${base}/beacon-action/airplay`).then((r) => r.json())).toEqual({ enabled: false });
+    expect((await fetch(`${base}/beacon-action/airplay/cover`)).status).toBe(404);
+    expect(await openScreen(`${base}/beacon-action/airplay/stream`, { Authorization: basicAuth, Cookie: parentCookie }))
+      .toMatchObject({ status: 404 });
   });
 
   // A failed read counted as "no data yet", so the next write replaced the
@@ -463,6 +489,87 @@ describe('add-on server', () => {
         await new Promise<void>((resolve) => { blankServer.once('exit', () => resolve()); blankServer.kill(); });
       }
     }
+  });
+
+  it('shows parent screens what the AirPlay receiver is doing, and nobody else', async () => {
+    const port = await freePort();
+    const airplayBase = `http://127.0.0.1:${port}`;
+    const airplayServer = spawn(process.execPath, [join(dir, 'server.cjs')], {
+      env: {
+        // Only node on the PATH, so UxPlay can't be found (and nothing starts advertising on the network).
+        PATH: dirname(process.execPath),
+        TMPDIR: join(dir, 'airplay-tmp'),
+        NODE_PATH: join(repo, 'node_modules'),
+        BEACON_PORT: String(port),
+        BEACON_DIST: join(dir, 'dist'),
+        BEACON_DATA: join(dir, 'airplay-data'),
+        BEACON_PASSWORD: browserPassword,
+        BEACON_AIRPLAY: '1',
+        BEACON_AIRPLAY_NAME: 'Kitchen',
+      },
+    });
+    let startup = '';
+    airplayServer.stdout!.on('data', (chunk) => { startup += chunk; });
+    airplayServer.stderr!.on('data', (chunk) => { startup += chunk; });
+    try {
+      await new Promise<void>((resolve, reject) => {
+        const timeout = setTimeout(() => reject(new Error(`Server failed to start with AirPlay on:\n${startup}`)), 10_000);
+        airplayServer.stdout!.on('data', () => {
+          if (startup.includes('listening on port')) {
+            clearTimeout(timeout);
+            resolve();
+          }
+        });
+        airplayServer.once('exit', (code) => reject(new Error(`Server exited (${code}):\n${startup}`)));
+      });
+      // No parent PIN: every browser gets a parent session. Issuing the display one ends the session it's issued from.
+      const parentSession = async () => (await globalThis.fetch(`${airplayBase}/beacon-auth/session`, {
+        headers: { Authorization: basicAuth },
+      })).headers.get('set-cookie')?.split(';')[0] ?? '';
+      const kidParent = await parentSession();
+      await withCookie(kidParent, `${airplayBase}/beacon-collection/beacon_family_members`, {
+        method: 'POST', body: JSON.stringify({ id: 'kid', name: 'Kid', role: 'child' }),
+      });
+      const display = await withCookie(kidParent, `${airplayBase}/beacon-auth/display`, {
+        method: 'POST', body: JSON.stringify({ member_id: 'kid' }),
+      });
+      const displayCookie = display.headers.get('set-cookie')?.split(';')[0] ?? '';
+      const parent = await parentSession();
+
+      let status: Record<string, unknown> = {};
+      for (let attempt = 0; attempt < 50 && !status.error; attempt++) {
+        status = await withCookie(parent, `${airplayBase}/beacon-action/airplay`).then((r) => r.json());
+        if (!status.error) await new Promise<void>((resolve) => setTimeout(resolve, 50));
+      }
+      expect(status).toEqual({
+        enabled: true,
+        available: false,
+        name: 'Kitchen',
+        state: 'idle',
+        passwordRequired: false,
+        metadata: null,
+        coverVersion: 0,
+        error: expect.stringMatching(/isn't installed/),
+      });
+      expect(startup).toContain("[airplay] UxPlay isn't installed");
+      expect((await withCookie(parent, `${airplayBase}/beacon-action/airplay/cover?v=1`)).status).toBe(404);
+      expect((await withCookie(displayCookie, `${airplayBase}/beacon-action/airplay`)).status).toBe(403);
+
+      const stream = `${airplayBase}/beacon-action/airplay/stream`;
+      expect(await openScreen(stream, { Authorization: basicAuth })).toMatchObject({ status: 401 });
+      expect(await openScreen(stream, { Authorization: basicAuth, Cookie: displayCookie })).toMatchObject({ status: 403 });
+      expect(await openScreen(stream, { Cookie: parent })).toMatchObject({ status: 403 });
+      expect(await openScreen(stream, { Authorization: basicAuth, Cookie: parent }, 'https://evil.example'))
+        .toMatchObject({ status: 403 });
+      const screen = await openScreen(`${stream}?screen=1`, { Authorization: basicAuth, Cookie: parent }, airplayBase);
+      expect(screen.status).toBe(101);
+      expect(JSON.parse(screen.first!)).toMatchObject({ enabled: true, name: 'Kitchen', state: 'idle' });
+    } finally {
+      if (airplayServer.exitCode === null && airplayServer.signalCode === null) {
+        await new Promise<void>((resolve) => { airplayServer.once('exit', () => resolve()); airplayServer.kill(); });
+      }
+    }
+    expect(airplayServer.exitCode).toBe(0); // it stops AirPlay, then exits cleanly
   });
 
   it('filters HA discovery and blocks direct access to listed entities', async () => {

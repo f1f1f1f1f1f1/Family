@@ -17,6 +17,7 @@ const http = require('http');
 const https = require('https');
 const fs = require('fs');
 const fsp = require('fs/promises');
+const os = require('os');
 const path = require('path');
 const { createHash, randomBytes, scryptSync, timingSafeEqual } = require('crypto');
 const WebSocket = require('ws');
@@ -28,9 +29,11 @@ const {
   isEntityAllowed,
   isServiceTargetAllowed,
   isCrossOriginWrite,
+  isCrossOriginRequest,
   describeRequester,
 } = require('./server-guards.cjs');
 const { createChoresSync, dayKeyFormatter } = require('./chores-sync.cjs');
+const { createAirPlay } = require('./airplay.cjs');
 
 const PORT = Number(process.env.BEACON_PORT) || 3000;
 const DIST = process.env.BEACON_DIST || '/app/dist';
@@ -1815,6 +1818,43 @@ const choresSync = createChoresSync({
 });
 
 /**
+ * The AirPlay receiver (airplay.cjs), on when run.sh sets BEACON_AIRPLAY.
+ * UxPlay's key stays in the data directory, so devices that trusted the
+ * receiver still know it after an update.
+ */
+const airplay = createAirPlay({
+  runDir: path.join(os.tmpdir(), 'airplay'),
+  keyFile: path.join(DATA_DIR, 'airplay', 'uxplay.pem'),
+  log: (line) => console.log(`[airplay] ${line}`),
+});
+const AIRPLAY_STREAM_PATH = '/beacon-action/airplay/stream';
+const airplayScreens = airplay.enabled
+  ? new WebSocket.Server({ noServer: true, clientTracking: false, maxPayload: 4096, perMessageDeflate: false })
+  : null;
+
+/**
+ * GET /beacon-action/airplay       → what the receiver is doing (airplay.status())
+ * GET /beacon-action/airplay/cover → the cover art of what's playing, or 404
+ */
+function handleAirPlayAction(req, res, pathname) {
+  if (req.method !== 'GET') {
+    sendJson(res, 405, { error: 'Method not allowed' });
+    return;
+  }
+  if (pathname === '/beacon-action/airplay') {
+    sendJson(res, 200, airplay.status());
+    return;
+  }
+  const cover = airplay.cover();
+  if (!cover) {
+    sendJson(res, 404, { error: 'No cover art' });
+    return;
+  }
+  res.writeHead(200, { 'Content-Type': cover.type, 'Content-Length': cover.data.length });
+  res.end(cover.data);
+}
+
+/**
  * GET  /beacon-action/chores-sync → sync status (last synced, last error,
  *                                   when it last changed Family's data)
  * POST /beacon-action/chores-sync → run a pass now ("Sync Now"), write its
@@ -2133,6 +2173,13 @@ const server = http.createServer((req, res) => {
     return;
   }
 
+  // AirPlay receiver: status and cover art (the stream is a WebSocket, below)
+  const actionPath = req.url.split('?')[0];
+  if (actionPath === '/beacon-action/airplay' || actionPath === '/beacon-action/airplay/cover') {
+    handleAirPlayAction(req, res, actionPath);
+    return;
+  }
+
   // Chores sync diagnostic report from older builds -> add-on log
   if (req.url === '/beacon-action/log') {
     handleClientLog(req, res);
@@ -2190,16 +2237,34 @@ const server = http.createServer((req, res) => {
   sendJson(res, 404, { error: 'Unknown API route' });
 });
 
-// No WebSocket proxy: Family's pages talk to Home Assistant over REST
-// through this server (the browser holds no token in the add-on), so
-// nothing opens one. The proxy that was here only added risk: a client
-// resetting its connection mid-upgrade crashed the add-on.
-server.on('upgrade', (req, socket) => {
+// The only WebSocket is the AirPlay screen's stream. Family's pages talk to
+// Home Assistant over REST through this server (the browser holds no token
+// in the add-on), so there's no WebSocket proxy: the one that was here only
+// added risk (a client resetting its connection mid-upgrade crashed the
+// add-on).
+server.on('upgrade', (req, socket, head) => {
   socket.on('error', () => {});
+  const refuse = (status) => socket.end(`HTTP/1.1 ${status}\r\nConnection: close\r\nContent-Length: 0\r\n\r\n`);
   const allowed = IS_ADDON
     ? isTrustedIngressAddress(req.socket.remoteAddress)
     : isStandaloneAuthenticated(req);
-  socket.end(`HTTP/1.1 ${allowed ? '404 Not Found' : '403 Forbidden'}\r\nConnection: close\r\nContent-Length: 0\r\n\r\n`);
+  if (!allowed) return refuse('403 Forbidden');
+  if (!airplayScreens || req.url.split('?')[0] !== AIRPLAY_STREAM_PATH) return refuse('404 Not Found');
+  if (isCrossOriginRequest(req.headers)) {
+    console.warn(
+      `[blocked] cross-origin AirPlay stream origin=${JSON.stringify(req.headers.origin || '')} `
+      + describeRequester(req.headers),
+    );
+    return refuse('403 Forbidden');
+  }
+  const session = readSession(req);
+  if (!session) return refuse('401 Unauthorized');
+  if (session.role !== 'parent') return refuse('403 Forbidden');
+  airplayScreens.handleUpgrade(req, socket, head, (screen) => {
+    screen.on('error', () => {});
+    screen.on('close', () => airplay.removeScreen(screen));
+    airplay.addScreen(screen);
+  });
 });
 
 server.listen(PORT, HOST, () => {
@@ -2211,4 +2276,13 @@ server.listen(PORT, HOST, () => {
     server.close();
     process.exitCode = 1;
   });
+  airplay.start().catch((err) => console.error('[airplay] Could not start:', err));
 });
+
+// Stop UxPlay with the add-on, so devices stop listing the receiver now
+// rather than when their cached announcement runs out.
+if (airplay.enabled) {
+  process.once('SIGTERM', () => {
+    airplay.stop().catch(() => {}).finally(() => process.exit(0));
+  });
+}

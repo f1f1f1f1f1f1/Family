@@ -14,6 +14,7 @@ const {
   isEntityAllowed,
   isServiceTargetAllowed,
   isCrossOriginWrite,
+  isCrossOriginRequest,
   describeRequester,
 } = require('../server-guards.cjs') as {
   TOGGLE_DOMAINS: string[];
@@ -24,6 +25,7 @@ const {
   isEntityAllowed: (id: unknown, blocked: Set<string>, domain?: string) => boolean;
   isServiceTargetAllowed: (domain: string, data: unknown, blocked: Set<string>) => boolean;
   isCrossOriginWrite: (method: string, headers: Record<string, string | undefined>) => boolean;
+  isCrossOriginRequest: (headers: Record<string, string | undefined>) => boolean;
   describeRequester: (headers: Record<string, string | undefined>) => string;
 };
 
@@ -263,6 +265,24 @@ describe('isCrossOriginWrite', () => {
 
   it('allows requests with neither header (curl, HA rest_command, other add-ons)', () => {
     expect(isCrossOriginWrite('POST', { 'content-type': 'application/json', host: 'addon:3000' })).toBe(false);
+  });
+});
+
+// A WebSocket handshake is a GET, so isCrossOriginWrite lets it through.
+describe('isCrossOriginRequest', () => {
+  const HA = 'homeassistant.local:8123';
+
+  it('blocks a request from another website whatever its method', () => {
+    expect(isCrossOriginRequest({ 'sec-fetch-site': 'cross-site', origin: 'https://evil.example', 'x-forwarded-host': HA })).toBe(true);
+    expect(isCrossOriginRequest({ 'sec-fetch-site': 'same-site', origin: 'http://homeassistant.local:8080', 'x-forwarded-host': HA })).toBe(true);
+    expect(isCrossOriginRequest({ origin: 'https://evil.example', 'x-forwarded-host': HA })).toBe(true);
+    expect(isCrossOriginRequest({ origin: 'null', 'x-forwarded-host': HA })).toBe(true);
+  });
+
+  it("allows Family's own pages, and clients that aren't browsers", () => {
+    expect(isCrossOriginRequest({ 'sec-fetch-site': 'same-origin', origin: `http://${HA}`, 'x-forwarded-host': HA })).toBe(false);
+    expect(isCrossOriginRequest({ origin: `http://${HA}`, 'x-forwarded-host': HA, host: 'addon:3000' })).toBe(false);
+    expect(isCrossOriginRequest({ host: 'addon:3000' })).toBe(false);
   });
 });
 
