@@ -7,9 +7,9 @@
 const viewport = { width: 1920, height: 1080 };
 const haUrl = 'http://homeassistant.local:8123';
 const parentPin = process.env.BEACON_PARENT_PIN;
-const allowedEntities = process.env.BEACON_ALLOWED_ENTITIES;
-if (!parentPin || !/^\d{6,8}$/.test(parentPin) || !allowedEntities) {
-  throw new Error('Set BEACON_PARENT_PIN and BEACON_ALLOWED_ENTITIES before recording');
+const blockedEntities = process.env.BEACON_BLOCKED_ENTITIES;
+if (parentPin && !/^\d{6,8}$/.test(parentPin)) {
+  throw new Error('BEACON_PARENT_PIN must be 6-8 digits when set');
 }
 
 // Scene 1: Add Repository (0s–10s)
@@ -33,11 +33,13 @@ click('.addon-card[data-addon="family"]'); // find Family in the list
 wait(1000);
 click('.install-button');
 wait(5000); // install progress (speed up in post-production)
-click('.configuration-tab');
-type('.parent-pin-input', parentPin);
-type('.allowed-entities-input', allowedEntities);
-click('.save-button');
-click('.info-tab');
+if (parentPin || blockedEntities) {
+  click('.configuration-tab');
+  if (parentPin) type('.parent-pin-input', parentPin);
+  if (blockedEntities) type('.blocked-entities-input', blockedEntities);
+  click('.save-button');
+  click('.info-tab');
+}
 click('.start-button');
 wait(2000); // add-on starts
 stopRecording();

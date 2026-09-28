@@ -39,7 +39,7 @@ Beacon runs on any screen with a web browser. Here are tested and recommended se
    chromium-browser --kiosk --noerrdialogs 'https://YOUR-HA-HOST/'
    ```
 
-For a separately managed [standalone Docker deployment](https://beacon-family-docs.netlify.app/docs/getting-started/deployment/), use its HTTPS reverse-proxy URL instead. Docker requires server-side HA credentials, HTTP Basic, a parent PIN, and a loopback-bound host port; do not use an unauthenticated plain-HTTP kiosk URL.
+For a separately managed [standalone Docker deployment](https://beacon-family-docs.netlify.app/docs/getting-started/deployment/), use its HTTPS reverse-proxy URL instead. Docker requires server-side HA credentials, HTTP Basic, and a loopback-bound host port; a parent PIN is optional. Do not use an unauthenticated plain-HTTP kiosk URL.
 
 ## Display Recommendations by Size
 

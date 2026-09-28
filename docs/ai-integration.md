@@ -4,7 +4,7 @@ This fork includes the authenticated built-in voice API and Home Assistant Assis
 
 | Approach | Best for | Requires LLM? | Setup |
 |----------|----------|----------------|-------|
-| [Voice API](#voice-api) | Authenticated commands | No | Parent session and HA entity allowlist |
+| [Voice API](#voice-api) | Authenticated commands | No | Parent session and optional HA entity blocklist |
 | [MCP Server](#mcp-server) | Historical interface (not bundled) | Yes | Not currently installable from this fork |
 | [HA Custom Sentences](#ha-custom-sentences) | Home Assistant Assist voice | No | Copy two files |
 
@@ -12,7 +12,7 @@ This fork includes the authenticated built-in voice API and Home Assistant Assis
 
 ## Voice API
 
-Family's server exposes a REST endpoint for natural-language commands. It uses keyword matching (no LLM required). Access it **only** through authenticated Home Assistant ingress (add-on) or the standalone HTTPS reverse proxy; there is no unauthenticated `:8099` listener. A parent session is required for privileged requests; it expires **10 minutes after PIN entry** and is not renewed by app polling. In Docker mode, first authenticate with HTTP Basic username `beacon` and password `BEACON_PASSWORD`, then unlock the parent session with `BEACON_PARENT_PIN` (re-enter it after expiry). The target HA entities must be listed in `allowed_entities` (add-on) or `BEACON_ALLOWED_ENTITIES` (Docker).
+Family's server exposes a REST endpoint for natural-language commands. It uses keyword matching (no LLM required). Access it **only** through authenticated Home Assistant ingress (add-on) or the standalone HTTPS reverse proxy; there is no unauthenticated `:8099` listener. A parent session is required for privileged requests. With a blank parent PIN, authenticated users receive one automatically; if a PIN is set, it expires **10 minutes after entry** and is not renewed by app polling. In Docker mode, first authenticate with HTTP Basic username `beacon` and password `BEACON_PASSWORD`, then unlock the parent session with `BEACON_PARENT_PIN` only if configured. The target HA entities cannot be listed in `blocked_entities` (add-on) or `BEACON_BLOCKED_ENTITIES` (Docker); a blank blocklist denies none. The server's HA service/path allowlist remains in place.
 
 ### Endpoint
 
@@ -57,7 +57,7 @@ Post the JSON payload to `/beacon-action/voice` from a signed-in parent session 
 
 The voice API automatically finds the best media player: it prefers one that is currently playing, then paused, then falls back to the first available.
 
-Media commands require the target `media_player.*` entity in the configured allowlist.
+Media commands require the target `media_player.*` entity not to be in the configured blocklist.
 
 #### Navigation
 
@@ -76,7 +76,7 @@ Navigation commands use the same authenticated endpoint; no direct add-on port i
 | `what's on today` / `today's schedule` | Fetches today's calendar events |
 | `what's the weather` / `weather today` | Returns current weather |
 
-Information queries are also subject to the HA entity allowlist.
+Information queries are also subject to the optional HA entity blocklist.
 
 ### How it works
 
@@ -92,7 +92,7 @@ The MCP description below refers to a **separate, historical process**, not Fami
 
 ### Standalone Family configuration (not an MCP setup)
 
-Run the Family web server with server-only `HA_URL` and `HA_TOKEN`, HTTP Basic (`BEACON_PASSWORD`), a separate `BEACON_PARENT_PIN`, and an explicit `BEACON_ALLOWED_ENTITIES` CSV. Set `BEACON_HOST=0.0.0.0` **inside Docker** and publish its host port only on `127.0.0.1`, behind an HTTPS reverse proxy for remote access. `SUPERVISOR_TOKEN` belongs to Supervisor-managed add-ons; it is **not** a standalone Family setting. See [Installation](https://beacon-family-docs.netlify.app/docs/getting-started/installation/) for the supported run commands.
+Run the Family web server with server-only `HA_URL` and `HA_TOKEN` and HTTP Basic (`BEACON_PASSWORD`); `BEACON_PARENT_PIN` and `BEACON_BLOCKED_ENTITIES` are optional. Set `BEACON_HOST=0.0.0.0` **inside Docker** and publish its host port only on `127.0.0.1`, behind an HTTPS reverse proxy for remote access. `SUPERVISOR_TOKEN` belongs to Supervisor-managed add-ons; it is **not** a standalone Family setting. See [Installation](https://beacon-family-docs.netlify.app/docs/getting-started/installation/) for the supported run commands.
 
 ### Historical MCP tool interface (not currently bundled)
 

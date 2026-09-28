@@ -35,7 +35,7 @@ There are two ways to put a device into Kid Display Mode.
 
 Append `?display=<memberId>` to Beacon's URL. On standalone Docker, bookmark your **HTTPS reverse-proxy URL**; on the add-on, first open Family from an authenticated Home Assistant session on the kiosk device, since session-specific ingress links can expire. A Kid Display URL is not an authentication bypass: a member's PIN may be required before their display session starts.
 
-An active Kid Display session lasts **24 hours from its latest session poll**; normal display polling renews it. After a long offline period or a server restart, the display may need that member's PIN again. A parent's separate unlock expires absolutely after **10 minutes** regardless of polling, so exiting or changing the display later requires re-entering the configured 6–8 digit parent PIN.
+An active Kid Display session lasts **24 hours from its latest session poll**; normal display polling renews it. After a long offline period or a server restart, the display may need that member's PIN again. If a parent PIN is configured, its separate unlock expires after **10 minutes** regardless of polling, so exiting or changing the display later requires re-entering it. With no parent PIN, authenticated users can exit without one.
 
 ### Settings > Display
 
@@ -80,9 +80,9 @@ Routine task completions **reset every day** automatically. Chore completions fe
 Kid Display Mode is intentionally hard to exit by accident:
 
 1. Tap the **clock** 5 times within 3 seconds
-2. Confirm with the private parent PIN in the dialog that appears
+2. Confirm in the dialog; enter the private parent PIN only if one is configured
 
-Exiting clears the device's Kid Display assignment and strips the `?display=` parameter from the URL. Privileged dashboard controls still require a parent session; do not share the parent PIN with a child display.
+Exiting clears the device's Kid Display assignment and strips the `?display=` parameter from the URL. Privileged dashboard controls still require a parent session, granted automatically to authenticated users when no parent PIN is set. Do not share a configured parent PIN with a child display.
 
 ---
 

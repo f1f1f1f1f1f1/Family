@@ -12,8 +12,8 @@
  *   calendars), plus allowed service calls.
  * - isCrossOriginWrite: refuses writes sent by another website (CSRF).
  * - isTrustedIngressAddress: only the HA ingress proxy may reach the add-on.
- * - isServiceTargetAllowed: the configured entity allowlist applies to
- *   every service, including the server-side chores sync.
+ * - isServiceTargetAllowed: the optional entity blocklist applies to every
+ *   service, including the server-side chores sync.
  *
  * Kept out of server.js so they can be unit-tested
  * (src/server-guards.test.ts). The .cjs extension keeps this CommonJS
@@ -87,27 +87,27 @@ function isTrustedIngressAddress(address) {
   return address === '172.30.32.2' || address === '::ffff:172.30.32.2';
 }
 
-function parseAllowedEntities(value) {
+function parseBlockedEntities(value) {
   const ids = (value || '').split(',').map((id) => id.trim()).filter(Boolean);
   if (ids.some((id) => !ENTITY_ID_PATTERN.test(id))) {
-    throw new Error('BEACON_ALLOWED_ENTITIES must contain comma-separated HA entity IDs');
+    throw new Error('BEACON_BLOCKED_ENTITIES must contain comma-separated HA entity IDs');
   }
   return new Set(ids);
 }
 
-function isEntityAllowed(id, allowedEntities, domain) {
+function isEntityAllowed(id, blockedEntities, domain) {
   return typeof id === 'string' && ENTITY_ID_PATTERN.test(id)
-    && (!domain || id.startsWith(`${domain}.`)) && allowedEntities.has(id);
+    && (!domain || id.startsWith(`${domain}.`)) && !blockedEntities.has(id);
 }
 
-function isServiceTargetAllowed(domain, data, allowedEntities) {
+function isServiceTargetAllowed(domain, data, blockedEntities) {
   if (!data || typeof data !== 'object' || Array.isArray(data)
       || ['area_id', 'device_id', 'floor_id', 'label_id', 'target']
         .some((selector) => Object.hasOwn(data, selector))) return false;
   const entityIds = data?.entity_id;
   const ids = Array.isArray(entityIds) ? entityIds : [entityIds];
   return ids.length > 0 && ids.every((id) =>
-    isEntityAllowed(id, allowedEntities, domain === 'homeassistant' ? undefined : domain));
+    isEntityAllowed(id, blockedEntities, domain === 'homeassistant' ? undefined : domain));
 }
 
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
@@ -175,7 +175,7 @@ module.exports = {
   isServiceAllowed,
   isProxyRequestAllowed,
   isTrustedIngressAddress,
-  parseAllowedEntities,
+  parseBlockedEntities,
   isEntityAllowed,
   isServiceTargetAllowed,
   isCrossOriginWrite,

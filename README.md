@@ -62,13 +62,13 @@ Or install manually:
 2. Click the overflow menu (**...**) and select **Repositories**
 3. Add: `https://github.com/f1f1f1f1f1f1/Family`
 4. Find **Family** in the store and click **Install** (Home Assistant builds it from this repository's root `Dockerfile`; it does not pull the standalone GHCR image). Supervisor rebuilds only after the add-on manifest version changes through semantic-release.
-5. In **Configuration**, set a private 6–8 digit `parent_pin` and list the HA entity IDs Family may access in `allowed_entities` (for example `calendar.family,todo.shopping_list,weather.home`); save, then start the add-on and click **Open Web UI** through Home Assistant ingress
+5. Leave `parent_pin` and `blocked_entities` blank for the default setup, or set an optional 6–8 digit parent PIN and a comma-separated list of HA entity IDs to block. Save, start the add-on, then click **Open Web UI** through Home Assistant ingress. Existing `allowed_entities` values from older versions are ignored; remove that obsolete option when editing the configuration.
 
 > **Tip:** Enable **Show in sidebar** in the add-on's Info tab for a wall-mounted tablet. Sign in to Home Assistant on each display; the add-on is ingress-only, not available at a direct unauthenticated port.
 
 ### Standalone Docker (Home Assistant without Supervisor)
 
-Choose a published `vX.Y.Z` tag from the [fork's GHCR package](https://github.com/f1f1f1f1f1f1/Family/pkgs/container/family). Images are published only for new releases after the image workflow is enabled; there is no `latest` tag. In an environment file **outside the repository** (restrict it to the container operator), set `HA_URL`, `HA_TOKEN` (a Home Assistant long-lived access token), `BEACON_PASSWORD` (at least 16 characters), `BEACON_PARENT_PIN` (6–8 digits), `BEACON_ALLOWED_ENTITIES` (CSV of exact HA entity IDs), and `BEACON_HOST=0.0.0.0`. An empty allowlist blocks HA entity access. The token remains server-side.
+Choose a published `vX.Y.Z` tag from the [fork's GHCR package](https://github.com/f1f1f1f1f1f1/Family/pkgs/container/family). Images are published only for new releases after the image workflow is enabled; there is no `latest` tag. In an environment file **outside the repository** (restrict it to the container operator), set `HA_URL`, `HA_TOKEN` (a Home Assistant long-lived access token), `BEACON_PASSWORD` (at least 16 characters), and `BEACON_HOST=0.0.0.0`. `BEACON_PARENT_PIN` (6–8 digits) and `BEACON_BLOCKED_ENTITIES` (CSV of exact HA entity IDs) are optional and default to blank; a blank blocklist blocks no entities. The token remains server-side.
 
 ```bash
 docker run -d --name family --restart unless-stopped \
@@ -77,7 +77,7 @@ docker run -d --name family --restart unless-stopped \
   ghcr.io/f1f1f1f1f1f1/family:vX.Y.Z
 ```
 
-Replace `vX.Y.Z` with an available version tag. Browse `http://127.0.0.1:3000` locally; for other devices use an **HTTPS reverse proxy** in front of this loopback port. Log in with HTTP Basic username `beacon` and password `BEACON_PASSWORD`, then enter the separate parent PIN to unlock privileged actions. Parent unlock lasts **10 minutes from PIN entry**, even if the app stays open; re-enter the configured PIN afterward. Never bind the container's plain-HTTP port to the LAN—even with Basic, the password is not encrypted in transit. See the [deployment guide](https://beacon-family-docs.netlify.app/docs/getting-started/deployment/) for a Compose example.
+Replace `vX.Y.Z` with an available version tag. Browse `http://127.0.0.1:3000` locally; for other devices use an **HTTPS reverse proxy** in front of this loopback port. Log in with HTTP Basic username `beacon` and password `BEACON_PASSWORD`. With no parent PIN configured, authenticated users have parent access; if you set one, enter it to unlock for **10 minutes from PIN entry**. Never bind the container's plain-HTTP port to the LAN—even with Basic, the password is not encrypted in transit. See the [deployment guide](https://beacon-family-docs.netlify.app/docs/getting-started/deployment/) for a Compose example.
 
 The release workflow refuses to overwrite an existing version tag. For content-addressed deployment, use `ghcr.io/f1f1f1f1f1f1/family@sha256:<index-digest>` instead; the [deployment guide](https://beacon-family-docs.netlify.app/docs/getting-started/deployment/) shows how to find and pull that digest.
 
@@ -101,8 +101,8 @@ Beacon is configured through the Home Assistant add-on options panel:
 | Option | Default | Description |
 |--------|---------|-------------|
 | `weather_entity` | `weather.home` | Home Assistant weather entity ID |
-| `parent_pin` | (required) | Unlocks privileged add-on actions; keep it private from shared displays |
-| `allowed_entities` | empty (denies HA entity access) | Required for HA entities/services: comma-separated exact IDs (e.g. `calendar.family,todo.shopping_list,weather.home`) |
+| `parent_pin` | blank (optional) | Set a 6–8 digit PIN to require parent unlock; blank grants parent access to authenticated ingress users |
+| `blocked_entities` | blank (blocks none) | Optional comma-separated exact HA entity IDs to deny (e.g. `switch.garage,todo.private`) |
 
 Additional settings (themes, family members, chores, calendar sources, list providers) are configured through the Beacon UI or the supported non-secret Docker env defaults above. Add-on HA access uses a server-side Supervisor token and Home Assistant ingress; `runtime-config.js` never contains an HA token.
 

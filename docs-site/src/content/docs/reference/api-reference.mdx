@@ -8,7 +8,7 @@ order: 2
 
 This document covers the internal APIs that Beacon uses to communicate with Home Assistant and manage data. It is intended for developers who want to understand Beacon's data layer or build extensions.
 
-> **Deployment note:** The Home Assistant WebSocket examples below describe the **direct development/native login** path and are not instructions for the Family add-on or standalone Docker. In those deployments, browsers must not receive an HA token: the server proxies supported same-origin REST requests with its server-side `SUPERVISOR_TOKEN` (add-on) or `HA_TOKEN` (Docker). Use authenticated HA ingress, a 6–8 digit parent PIN, and a nonempty `allowed_entities` CSV in the add-on; use HTTP Basic username `beacon`/password `BEACON_PASSWORD`, a separate `BEACON_PARENT_PIN`, and `BEACON_ALLOWED_ENTITIES` behind HTTPS for standalone Docker. Never put `VITE_HA_TOKEN` in a production build.
+> **Deployment note:** The Home Assistant WebSocket examples below describe the **direct development/native login** path and are not instructions for the Family add-on or standalone Docker. In those deployments, browsers must not receive an HA token: the server proxies supported same-origin REST requests with its server-side `SUPERVISOR_TOKEN` (add-on) or `HA_TOKEN` (Docker). Use authenticated HA ingress for the add-on and HTTP Basic username `beacon`/password `BEACON_PASSWORD` behind HTTPS for standalone Docker. A 6–8 digit `parent_pin`/`BEACON_PARENT_PIN` is optional; blank skips parent unlock. `blocked_entities`/`BEACON_BLOCKED_ENTITIES` optionally denies exact HA IDs; blank blocks none. Never put `VITE_HA_TOKEN` in a production build.
 
 ---
 

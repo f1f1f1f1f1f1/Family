@@ -86,7 +86,7 @@ it('proxies REST and WebSocket to an HTTPS Home Assistant without sending its to
         BEACON_DATA: join(temp, 'data'),
         BEACON_PASSWORD: 'https-browser-password-123',
         BEACON_PARENT_PIN: '654321',
-        BEACON_ALLOWED_ENTITIES: 'switch.lamp,calendar.family',
+        BEACON_BLOCKED_ENTITIES: '',
         HA_URL: `https://127.0.0.1:${haAddress.port}`,
         HA_TOKEN: 'https-test-ha-token',
       },

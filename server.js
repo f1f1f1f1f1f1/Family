@@ -9,7 +9,8 @@
  *
  * The HA token can have admin rights. In add-on mode only HA ingress may
  * connect; standalone mode requires a separate browser password. A parent
- * session and an entity allowlist gate privileged actions in both modes.
+ * session (when a PIN is configured) and an optional entity blocklist
+ * restrict privileged actions in both modes.
  */
 
 const http = require('http');
@@ -23,7 +24,7 @@ const {
   isServiceAllowed,
   isProxyRequestAllowed,
   isTrustedIngressAddress,
-  parseAllowedEntities,
+  parseBlockedEntities,
   isEntityAllowed,
   isServiceTargetAllowed,
   isCrossOriginWrite,
@@ -38,13 +39,13 @@ const SUPERVISOR_TOKEN = process.env.SUPERVISOR_TOKEN || process.env.HA_TOKEN ||
 const HOST = IS_ADDON ? '0.0.0.0' : (process.env.BEACON_HOST || '127.0.0.1');
 const PARENT_PIN = process.env.BEACON_PARENT_PIN || '';
 const BEACON_PASSWORD = process.env.BEACON_PASSWORD || '';
-const ALLOWED_ENTITIES = parseAllowedEntities(process.env.BEACON_ALLOWED_ENTITIES);
+const BLOCKED_ENTITIES = parseBlockedEntities(process.env.BEACON_BLOCKED_ENTITIES);
 
 if (process.env.SUPERVISOR_TOKEN && process.env.HA_TOKEN) {
   throw new Error('Set SUPERVISOR_TOKEN only in the add-on, or HA_TOKEN only in standalone mode');
 }
-if (!/^\d{6,8}$/.test(PARENT_PIN)) {
-  throw new Error('Configure BEACON_PARENT_PIN as a 6-8 digit parent PIN before starting Family');
+if (PARENT_PIN && !/^\d{6,8}$/.test(PARENT_PIN)) {
+  throw new Error('BEACON_PARENT_PIN must be blank or a 6-8 digit parent PIN');
 }
 if (!IS_ADDON && BEACON_PASSWORD.length < 16) {
   throw new Error('Standalone mode requires BEACON_PASSWORD (at least 16 characters)');
@@ -73,7 +74,7 @@ const DISPLAY_SESSION_MS = 24 * 60 * 60 * 1000;
 const PIN_LOCK_MS = 15 * 60 * 1000;
 const MAX_SESSIONS = 1024;
 const SESSION_COOKIE = 'beacon_session';
-const parentPinDigest = createHash('sha256').update(PARENT_PIN).digest();
+const parentPinDigest = PARENT_PIN ? createHash('sha256').update(PARENT_PIN).digest() : null;
 const passwordDigest = createHash('sha256').update(`beacon:${BEACON_PASSWORD}`).digest();
 const sessions = new Map();
 const pinAttempts = new Map();
@@ -345,7 +346,7 @@ function proxyToHA(req, res) {
   collectBody(req).then((body) => {
     const pathname = req.url.split('?')[0];
     const entityPath = /^\/api\/(states|calendars)\/([a-z0-9_]+\.[a-z0-9_]+)$/.exec(pathname);
-    if (entityPath && !isEntityAllowed(entityPath[2], ALLOWED_ENTITIES,
+    if (entityPath && !isEntityAllowed(entityPath[2], BLOCKED_ENTITIES,
       entityPath[1] === 'calendars' ? 'calendar' : undefined)) {
       sendJson(res, 403, { error: 'Entity not allowed' });
       return;
@@ -359,7 +360,7 @@ function proxyToHA(req, res) {
         return;
       }
       const service = /^\/api\/services\/([a-z0-9_]+)\/([a-z0-9_]+)$/.exec(pathname);
-      if (!service || !isServiceTargetAllowed(service[1], data, ALLOWED_ENTITIES)) {
+      if (!service || !isServiceTargetAllowed(service[1], data, BLOCKED_ENTITIES)) {
         sendJson(res, 403, { error: 'Service entity not allowed' });
         return;
       }
@@ -407,7 +408,7 @@ function proxyToHA(req, res) {
           const items = JSON.parse(Buffer.concat(chunks).toString('utf8'));
           if (!Array.isArray(items)) throw new Error('HA entity list was not an array');
           sendJson(res, 200, items.filter((item) =>
-            isEntityAllowed(item?.entity_id, ALLOWED_ENTITIES,
+            isEntityAllowed(item?.entity_id, BLOCKED_ENTITIES,
               pathname === '/api/calendars' ? 'calendar' : undefined)));
         } catch (err) {
           console.error('Invalid Home Assistant entity list:', err);
@@ -481,7 +482,7 @@ function handleServiceCall(req, res) {
         return;
       }
 
-      if (!isServiceTargetAllowed(domain, data, ALLOWED_ENTITIES)) {
+      if (!isServiceTargetAllowed(domain, data, BLOCKED_ENTITIES)) {
         sendJson(res, 403, { error: 'Service entity not allowed' });
         return;
       }
@@ -639,7 +640,7 @@ function handleCalendarEventAction(req, res) {
         res.end(JSON.stringify({ error: 'op must be "create", "update", or "delete"' }));
         return;
       }
-      if (!isEntityAllowed(entity_id, ALLOWED_ENTITIES, 'calendar')) {
+      if (!isEntityAllowed(entity_id, BLOCKED_ENTITIES, 'calendar')) {
         sendJson(res, 403, { error: 'Calendar entity not allowed' });
         return;
       }
@@ -1477,7 +1478,7 @@ function handleVoiceAction(req, res) {
             if (r.status !== 200 || !Array.isArray(r.data)) {
               throw new Error(`Home Assistant states unavailable (HTTP ${r.status})`);
             }
-            return r.data.filter((item) => isEntityAllowed(item?.entity_id, ALLOWED_ENTITIES));
+            return r.data.filter((item) => isEntityAllowed(item?.entity_id, BLOCKED_ENTITIES));
           });
         }
         return _cachedStates;
@@ -1646,7 +1647,7 @@ function handleVoiceAction(req, res) {
         return;
       }
 
-      if (intent.domain && !isServiceTargetAllowed(intent.domain, serviceData, ALLOWED_ENTITIES)) {
+      if (intent.domain && !isServiceTargetAllowed(intent.domain, serviceData, BLOCKED_ENTITIES)) {
         sendJson(res, 403, { error: 'Voice action entity not allowed' });
         return;
       }
@@ -1713,7 +1714,7 @@ async function readSettingsFile() {
 
 /** HA service call for the sync; throws when HA answers with an error. */
 async function callHaServiceForSync(domain, service, data, { returnResponse = false, reason } = {}) {
-  if (!isServiceAllowed(domain, service) || !isServiceTargetAllowed(domain, data, ALLOWED_ENTITIES)) {
+  if (!isServiceAllowed(domain, service) || !isServiceTargetAllowed(domain, data, BLOCKED_ENTITIES)) {
     throw new Error(`Chores sync target is not allowed for ${domain}.${service}`);
   }
   if (domain === 'todo' && service === 'remove_item') logTodoDelete(data, reason, 'chores sync (add-on)');
@@ -1865,6 +1866,10 @@ async function handleAuthorization(req, res) {
         sendJson(res, 400, { error: 'Missing display member' });
         return;
       }
+      if (!displayId && !PARENT_PIN && session?.role !== 'parent') {
+        sendJson(res, 200, issueSession(req, res, 'parent'));
+        return;
+      }
       if (displayId) {
         const member = await getDisplayMember(displayId);
         if (!member) {
@@ -1941,6 +1946,10 @@ async function handleAuthorization(req, res) {
       sendJson(res, 404, { error: 'Unknown authorization action' });
       return;
     }
+    if (url.pathname === '/beacon-auth/parent' && !PARENT_PIN && !data.member_id) {
+      sendJson(res, 200, issueSession(req, res, 'parent'));
+      return;
+    }
     const limiterIdentity = IS_ADDON ? (req.headers['x-remote-user-id'] || identity) : identity;
     const attemptKey = `${limiterIdentity}:${url.pathname}`;
     const globalKey = `all:${url.pathname}`;
@@ -1962,7 +1971,7 @@ async function handleAuthorization(req, res) {
           memberId = member.id;
           role = url.pathname === '/beacon-auth/child' ? 'display' : 'parent';
         }
-      } else {
+      } else if (parentPinDigest) {
         valid = timingSafeEqual(createHash('sha256').update(pin).digest(), parentPinDigest);
       }
     }

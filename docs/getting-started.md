@@ -221,7 +221,7 @@ The settings view is where you configure Beacon's behavior, appearance, and inte
    - **Avatar** -- choose from 55+ emoji options across 5 categories (People, Animals, Nature, Fun, Food)
    - **Color** -- pick from 8 colors (blue, green, purple, orange, pink, teal, yellow, red)
    - **Role** -- Parent or Child
-   - **PIN** (optional) -- a 4-8 digit numeric code for this member; the add-on's separate 6-8 digit `parent_pin` option is required to unlock privileged actions
+   - **PIN** (optional) -- a 4-8 digit numeric code for this member; the add-on's separate 6-8 digit `parent_pin` option is also optional (blank grants authenticated ingress users parent access)
 5. Tap **Add Member**.
 6. Repeat for each family member.
 

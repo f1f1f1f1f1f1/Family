@@ -22,8 +22,8 @@ options:
   photo_directory: "/media/beacon/photos"
   photo_interval: 30
   screen_saver_timeout: 5
-  allowed_entities: ""
-  parent_pin: null
+  blocked_entities: ""
+  parent_pin: ""
 schema:
   theme: str
   auto_dark_mode: bool
@@ -31,5 +31,7 @@ schema:
   photo_directory: str
   photo_interval: int
   screen_saver_timeout: int
-  allowed_entities: str
-  parent_pin: password
+  blocked_entities: str
+  parent_pin: password?
+  # Accept old installations' setting during upgrade, but do not use it.
+  allowed_entities: str?

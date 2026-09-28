@@ -10,6 +10,7 @@ export interface BeaconConfig {
   ha_url: string;
   ha_token: string;
   ha_available: boolean;
+  parent_pin_required: boolean;
   theme: string;
   auto_dark_mode: boolean;
   weather_entity: string;
@@ -40,6 +41,7 @@ export function getConfig(): BeaconConfig {
     ha_url: runtime.ha_url ?? import.meta.env.VITE_HA_URL ?? '',
     ha_token: '',
     ha_available: runtime.ha_available ?? true,
+    parent_pin_required: runtime.parent_pin_required ?? true,
     theme: runtime.theme || import.meta.env.VITE_THEME || 'skylight',
     auto_dark_mode: runtime.auto_dark_mode ?? (import.meta.env.VITE_AUTO_DARK_MODE !== 'false'),
     weather_entity: runtime.weather_entity || import.meta.env.VITE_HA_WEATHER_ENTITY || 'weather.home',
