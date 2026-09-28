@@ -1,3 +1,10 @@
+## [1.59.4](https://github.com/f1f1f1f1f1f1/Family/compare/v1.59.3...v1.59.4) (2026-09-28)
+
+
+### Bug Fixes
+
+* secure Family deployments and data handling ([a129c99](https://github.com/f1f1f1f1f1f1/Family/commit/a129c99abe2ef11360d228cded7788d075cee93e))
+
 ## [1.59.3](https://github.com/f1f1f1f1f1f1/Family/compare/v1.59.2...v1.59.3) (2026-09-28)
 
 
