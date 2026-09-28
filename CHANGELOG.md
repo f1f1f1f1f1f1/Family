@@ -1,3 +1,21 @@
+## [1.59.6](https://github.com/f1f1f1f1f1f1/Family/compare/v1.59.5...v1.59.6) (2026-09-28)
+
+
+### Bug Fixes
+
+* an event that's moved still gets its reminder at the new time ([a2c8413](https://github.com/f1f1f1f1f1f1/Family/commit/a2c841337aea5fc19cfb9d0c42f7e5783d0d5d13))
+* an open chore shows who did it, and can be undone, on the Chores screen ([69a4cfc](https://github.com/f1f1f1f1f1f1/Family/commit/69a4cfc3780d7c36213ddaa033c9521aadefcf1e))
+* calendar colours and list choices changed on another display are no longer undone ([e58e576](https://github.com/f1f1f1f1f1f1/Family/commit/e58e57616ec56f26052c05b74c86f4abad846c78))
+* Family added to a home screen gets its icon and opens Family ([86fd72f](https://github.com/f1f1f1f1f1f1/Family/commit/86fd72f7c70e4ea1554dbeae0b5daff56ce117bb))
+* startup no longer waits for the Google Fonts download ([2d1877f](https://github.com/f1f1f1f1f1f1/Family/commit/2d1877f6b220333ec31cefe85af3dae46300e30d))
+* the Inter font comes with Family instead of being downloaded from Google ([4a5fa28](https://github.com/f1f1f1f1f1f1/Family/commit/4a5fa2800b2d27983fcdad6cbb1f7202404de729))
+* the photo slideshow goes on after its controls are shown ([aa7709b](https://github.com/f1f1f1f1f1f1/Family/commit/aa7709bae7c87d09ee17359c0b8b0f8d6bcd31a5))
+* the stopwatch keeps its time and laps across a page reload ([4787644](https://github.com/f1f1f1f1f1f1/Family/commit/478764489fc61bb22b3945494eeb031fc87fa967))
+* the Weather screen keeps the newest reading when refreshes overlap ([922f8e4](https://github.com/f1f1f1f1f1f1/Family/commit/922f8e47dc748c84f4975d1eaea72e9f6bf033ef))
+* the week calendar shows a timed multi-day event's last day, and the phone layout keeps today in view ([ee32fb9](https://github.com/f1f1f1f1f1f1/Family/commit/ee32fb9c9074203f207d409882ee8409b6947cca))
+* timers outlast a page reload, and one that ran out meanwhile rings ([941479a](https://github.com/f1f1f1f1f1f1/Family/commit/941479a00b11700cb3f567187deaeab056a2953d))
+* wrong PINs on one device no longer lock parents out on every device (standalone Docker) ([20248dc](https://github.com/f1f1f1f1f1f1/Family/commit/20248dc5ddcab8eb65cb56089426369ca6c1e234))
+
 ## [1.59.5](https://github.com/f1f1f1f1f1f1/Family/compare/v1.59.4...v1.59.5) (2026-09-28)
 
 
