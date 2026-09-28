@@ -1,6 +1,6 @@
 ---
 title: "AirPlay"
-description: "Show an iPhone, iPad or Mac screen, or the music it's playing, on the display. Built in, but not yet turned on in the add-on."
+description: "Show an iPhone, iPad or Mac screen, or the music it's playing, on the display."
 order: 12
 ---
 
@@ -8,7 +8,7 @@ order: 12
 
 Family has an AirPlay screen. Mirror an iPhone, iPad or Mac to the display, or play music to it from any app with AirPlay, and the display shows the mirrored screen, or the cover and title of what's playing, with the sound.
 
-> **Not available yet.** The add-on doesn't include an AirPlay receiver yet, and it would also have to run on your Home Assistant machine's own network for iPhones to find it. Until both change, the AirPlay screen doesn't appear. What turning it on involves is in [`docs/airplay.md`](https://github.com/f1f1f1f1f1f1/Family/blob/main/docs/airplay.md).
+> **On your Home Assistant machine's network.** The add-on's AirPlay receiver runs on the Home Assistant machine's own network, so iPhones, iPads and Macs on that network can find it. That's also why Home Assistant gives the add-on a lower security rating. Anyone on the network can send to it unless `airplay_password` is set, and `airplay: false` turns it off. Installing and updating the add-on take longer, since your Home Assistant machine builds the receiver (UxPlay) itself. AirPlay is only in the add-on, not the standalone Docker image. How it all works is in [`docs/airplay.md`](https://github.com/f1f1f1f1f1f1/Family/blob/main/docs/airplay.md).
 
 ---
 
@@ -55,6 +55,7 @@ While the add-on's receiver is on, the sidebar has an **AirPlay** icon after Pho
 
 ## Limitations
 
+- It's new: it hasn't yet been tried with a real iPhone, iPad or Mac.
 - On an iPhone or iPad used as the display, the mirrored screen needs iOS or iPadOS 17.1 or later. Before that, the sound still plays.
 - The sound can be a little behind the picture.
 - A video app's own AirPlay button, which hands over the video's web address rather than the screen, isn't supported: use Screen Mirroring instead.

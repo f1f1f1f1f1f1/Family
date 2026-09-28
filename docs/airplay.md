@@ -5,12 +5,13 @@ mirrored screen, or the cover and title of the music it's playing, with
 the sound. It's a screen like the photo frame: it covers the display, and
 a tap brings up the back button.
 
-**It isn't turned on in this add-on.** All of the code is here, but the
-add-on's image doesn't include the AirPlay receiver (UxPlay), and the
-add-on isn't on the host's network, which AirPlay needs. Without both,
-run.sh keeps the receiver off, the sidebar doesn't offer the screen, and
-none of this runs. Each is a decision for whoever maintains the add-on
-(see [Turning it on](#turning-it-on)).
+**It's on unless `airplay` is set to `false`.** The add-on's image
+includes the AirPlay receiver (UxPlay), and the add-on runs on the host's
+network, which AirPlay needs (see [In the add-on](#in-the-add-on)).
+Without either, run.sh keeps the receiver off, the sidebar doesn't offer
+the screen, and none of this runs. The standalone Docker image is built
+from the same Dockerfile, so it has UxPlay too, but keeps it off: AirPlay
+is only for the add-on.
 
 ## How it works
 
@@ -60,47 +61,57 @@ flowchart LR
   it by themselves switch to it when a device starts sending, stay on
   without the screen saver while showing it, and go back when it stops.
 
-## Turning it on
+## In the add-on
 
-Two changes, each a decision to make on purpose.
+### UxPlay in the image
 
-### 1. UxPlay in the image
+The Dockerfile builds UxPlay from its release source in a stage of its
+own, on the add-on's base image (Alpine 3.20), and copies only the
+`uxplay` program and its licences into the add-on. The Supervisor builds
+this add-on on each Home Assistant machine (it doesn't use a published
+image), so UxPlay compiles there, on install and on updates.
 
-UxPlay would have to be built from source in a separate Dockerfile stage
-on the same base image (Alpine), with only its `uxplay` binary copied
-into the runtime stage. The Supervisor builds this add-on on each Home
-Assistant machine (nothing publishes an image), so it would compile there.
-
-- **Version and source:** UxPlay 1.73.6. The GitHub archive
-  `https://github.com/FDH2/UxPlay/archive/refs/tags/v1.73.6.tar.gz` had
-  this sha512 when this was written; check it again, and have the build
-  check it:
-  `b8acd7737e5bbd5dd9f0a4dd08a5fe0eb73c7302f6d08167e4a86f9cc6834efd36320aaa8551ec0fd3597f8c5ebce60fe7abf4a2a0ca0f1957508cfe73bca9dd`
-- **To build it:** CMake, a C/C++ compiler, and the development files for
-  OpenSSL, libplist, Avahi's `dns_sd` compatibility library and GStreamer
-  (with its base plugins). UxPlay's README lists them per distribution.
-- **In the runtime stage:**
-  - the libraries it links against;
-  - the GStreamer elements the `-vrtp`/`-artp` pipelines in airplay.cjs
-    use (`rtph264pay`, `rtpstreampay`, `fdsink`); `gst-inspect-1.0` in
-    the built image shows whether they're there;
-  - `dbus` and `avahi` (the services in `rootfs/etc/services.d` run
-    `dbus-daemon`, `dbus-uuidgen` and `avahi-daemon`);
-  - a system user named `airplay`, e.g.
-    `adduser -S -D -H -s /sbin/nologin airplay`. airplay.cjs won't start
-    UxPlay as root.
-- **Licence:** shipping UxPlay's binary means shipping, or offering, its
-  source (the pinned archive, and any patches) and its licence. Family
+- **Version and source:** UxPlay 1.73.7, from
+  `https://github.com/FDH2/UxPlay/archive/refs/tags/v1.73.7.tar.gz`. The
+  build stops unless the archive matches the SHA-512 in the Dockerfile
+  (`UXPLAY_SHA512`). 1.73.7 fixed a stack overflow, and two crashes, that
+  any device on the network could cause before pairing
+  ([GHSA-479c-ww7g-wgp8](https://github.com/FDH2/UxPlay/security/advisories/GHSA-479c-ww7g-wgp8));
+  image.test.ts fails for anything older. To move to a newer release,
+  change `UXPLAY_VERSION` and `UXPLAY_SHA512` together.
+- **How:** CMake, with `-DNO_MARCH_NATIVE=ON` (on x86, UxPlay would
+  otherwise be built for the building machine's own CPU, which one a
+  backup is restored onto may lack) and `-DNO_X11_DEPS=ON` (it never
+  opens a window here). No release build type, so UxPlay's own checks
+  (`assert`) stay in. The base image pins OpenSSL's libraries and musl
+  to the versions it was made with, which Alpine's development packages
+  have since moved past, so the stage updates those three first. The
+  add-on keeps the base's, and UxPlay runs with them: they're only
+  bug-fix releases apart, which keep the same interface.
+- **In the add-on:** D-Bus, Avahi and its `dns_sd` compatibility library,
+  libplist, and GStreamer with its base, good, bad and libav plugins.
+  Avahi's own SSH and SFTP service files are removed: it would otherwise
+  advertise them, and the add-on has neither. UxPlay runs as the
+  `airplay` user, whose IDs (1500:1500) are the same in every build, so
+  its key in `/data/airplay` stays its own after an update.
+- **Checked while building:** the build fails, rather than AirPlay on the
+  device, if `uxplay -v` doesn't run (it needs every library it links) or
+  GStreamer lacks an element UxPlay or airplay.cjs's `-vrtp`/`-artp`
+  pipelines use.
+- **Licence:** UxPlay is GPL-3.0. The image has its licences, and where
+  its source is (the archive above, unmodified, with its SHA-512), in
+  `/usr/share/licenses/uxplay/`; so does the standalone image the release
+  workflow publishes, which is built from the same Dockerfile. Family
   runs it as a separate program and talks to it only through pipes and
   files, which the GPL generally treats as two programs rather than one
-  combined work, so Family's own code can stay MIT. Worth confirming for
+  combined work, so Family's own code stays MIT. Worth confirming for
   your own distribution.
 
-### 2. The host's network
+### The host's network
 
 iPhones, iPads and Macs find AirPlay receivers with mDNS (Bonjour) on the
 local network, and then connect straight to the receiver's ports. Neither
-reaches an add-on on its own Docker network. In `config.yaml`:
+reaches an add-on on its own Docker network, so `config.yaml` has:
 
 ```yaml
 host_network: true
@@ -108,12 +119,10 @@ host_network: true
 # free port, which run.sh reads and serves on.
 ingress_port: 0
 options:
-  # ...the existing options, and:
   airplay: true
   airplay_name: "Family"
   airplay_password: ""
 schema:
-  # ...the existing schema, and:
   airplay: bool
   airplay_name: str?
   airplay_password: password?
@@ -126,16 +135,22 @@ What that changes:
   ingress proxy (172.30.32.2) and its own health check, for pages and for
   the stream.
 - UxPlay listens for AirPlay on the host's network, as any AirPlay
-  receiver does. Anyone on the network can send to it unless
-  `airplay_password` is set (at least 4 characters, not starting with
-  `-`).
+  receiver does, on free ports it picks each time it starts (so it
+  doesn't clash with another AirPlay receiver on the same machine).
+  Anyone on the network can send to it unless `airplay_password` is set
+  (at least 4 characters, not starting with `-`).
 - Avahi answers for `family-airplay`, beside Home Assistant's own mDNS
   responder, and not on Home Assistant's internal networks.
 - Home Assistant shows a lower security rating for add-ons on the host's
   network.
 
-`airplay: false` turns the receiver off again without either change being
-undone.
+### Turning it off
+
+`airplay: false` in the add-on's configuration turns the receiver off:
+UxPlay, D-Bus and Avahi don't run, and the sidebar doesn't offer the
+screen. The add-on stays on the host's network, which is part of its
+`config.yaml`; with `host_network` taken out of that, run.sh keeps the
+receiver off by itself.
 
 ## What protects it
 
@@ -150,13 +165,20 @@ undone.
 - The status, cover and stream are only for parent sessions: a Kid
   Display gets 403. The stream refuses cross-origin connections.
 - D-Bus and Avahi only run while the receiver is on.
+- It's UxPlay 1.73.7, which fixed a stack overflow any device on the
+  network could cause before pairing (GHSA-479c-ww7g-wgp8), and the build
+  checks its source against a SHA-512.
 
 ## What it costs
 
-- **Building:** UxPlay compiling on each Home Assistant machine when the
-  add-on is installed or updated: minutes on a Raspberry Pi. The image
-  grows by UxPlay, GStreamer, D-Bus and Avahi, roughly 150-250 MB (an
-  estimate; not measured).
+- **Building:** each Home Assistant machine builds the add-on itself, on
+  install and on updates. For UxPlay, that installs up to about 830 MB of
+  compilers and development packages (less on 32-bit ARM) in a stage
+  that's thrown away afterwards, and compiles it: not timed, but expect
+  minutes on a Raspberry Pi.
+- **The image** grows by about 200–300 MB, depending on the processor:
+  GStreamer and its plugins, with the libraries they bring, D-Bus, Avahi
+  and UxPlay. (Both sizes are Alpine 3.20's packages, installed.)
 - **Running:** UxPlay, D-Bus and Avahi use little until something is
   sent. The Home Assistant machine only forwards the stream; each display
   decodes the picture itself. A mirrored screen is a few megabits a
@@ -164,10 +186,16 @@ undone.
 
 ## Limitations
 
-- **Not tested with a real iPhone, iPad or Mac**, on an Echo Show, or in
-  the Home Assistant app. The browser side was checked once, in desktop
-  Chrome, with an H.264 stream made by the browser's own encoder; the
-  catch-up playback rate is covered only by unit tests.
+- **Not tested on a Home Assistant machine, or with a real iPhone, iPad
+  or Mac**, on an Echo Show, or in the Home Assistant app. CI builds the
+  image with UxPlay for amd64 only; aarch64 and armv7 builds haven't been
+  tried, though Alpine compiles its own UxPlay package, unpatched, for
+  both. The browser side was checked once, in desktop Chrome, with an
+  H.264 stream made by the browser's own encoder; the catch-up playback
+  rate is covered only by unit tests.
+- UxPlay picks new ports each time it starts, so a firewall on the Home
+  Assistant machine that only lets known ports through (possible on a
+  Supervised install) blocks it.
 - Screen mirroring and music only, in H.264. A video app's own AirPlay
   button, which hands over a web address rather than the screen
   (UxPlay's HLS mode), isn't supported: use Screen Mirroring instead.

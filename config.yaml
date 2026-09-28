@@ -11,7 +11,12 @@ startup: application
 boot: auto
 init: false
 ingress: true
-ingress_port: 3000
+# 0: the Supervisor picks a free port (on the host's network, 3000 may be
+# taken).
+ingress_port: 0
+# iPhones, iPads and Macs find AirPlay receivers by mDNS on the local
+# network (docs/airplay.md).
+host_network: true
 panel_icon: mdi:calendar-clock
 panel_title: Family
 homeassistant_api: true
@@ -24,6 +29,9 @@ options:
   screen_saver_timeout: 5
   blocked_entities: ""
   parent_pin: ""
+  airplay: true
+  airplay_name: "Family"
+  airplay_password: ""
 schema:
   theme: str
   auto_dark_mode: bool
@@ -33,5 +41,8 @@ schema:
   screen_saver_timeout: int
   blocked_entities: str
   parent_pin: password?
+  airplay: bool
+  airplay_name: str?
+  airplay_password: password?
   # Accept old installations' setting during upgrade, but do not use it.
   allowed_entities: str?

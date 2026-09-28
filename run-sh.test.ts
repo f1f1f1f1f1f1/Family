@@ -214,4 +214,31 @@ describe('run.sh port and AirPlay receiver', () => {
       'find /data -mindepth 1 -maxdepth 1 ! -name airplay -exec chmod go-rwx {} +',
     ]);
   });
+
+  it("puts the add-on on the host's network, with AirPlay on, and the options run.sh reads", () => {
+    const manifest = readFileSync(join(import.meta.dirname, 'config.yaml'), 'utf8');
+    // Devices find AirPlay receivers by mDNS on the local network. There,
+    // 3000 may be taken, so the Supervisor picks ingress's port.
+    expect(manifest).toMatch(/^host_network: true$/m);
+    expect(manifest).toMatch(/^ingress_port: 0$/m);
+    const section = (name: string) => manifest.split(new RegExp(`^${name}:\\n`, 'm'))[1]?.split(/^\S/m)[0] ?? '';
+    const keys = (text: string) => [...text.matchAll(/^ {2}([a-z_]+):/gm)].map((match) => match[1]);
+    const options = section('options');
+    const schema = section('schema');
+    expect(options).toMatch(/^ {2}airplay: true$/m);
+    expect(options).toMatch(/^ {2}airplay_name: "Family"$/m);
+    expect(options).toMatch(/^ {2}airplay_password: ""$/m);
+    expect(schema).toMatch(/^ {2}airplay: bool$/m);
+    expect(schema).toMatch(/^ {2}airplay_name: str\?$/m);
+    expect(schema).toMatch(/^ {2}airplay_password: password\?$/m);
+
+    const script = readFileSync(join(import.meta.dirname, 'run.sh'), 'utf8');
+    const read = [...script.matchAll(/bashio::config '([a-z_]+)'/g)].map((match) => match[1]);
+    expect(read).toEqual(expect.arrayContaining(['airplay', 'airplay_name', 'airplay_password']));
+    for (const option of read) expect(keys(schema), option).toContain(option);
+    // The Supervisor won't start the add-on while a required option has no value.
+    for (const [, option] of schema.matchAll(/^ {2}([a-z_]+): [^?\n]+$/gm)) {
+      expect(keys(options), option).toContain(option);
+    }
+  });
 });

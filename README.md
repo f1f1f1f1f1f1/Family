@@ -40,6 +40,7 @@ Skylight is a polished wall calendar that charges for hardware **and** locks mea
 - **Chore Tracking** -- Assign chores, track streaks, and celebrate completions with a family leaderboard
 - **Music Controls** -- Control Music Assistant, Home Assistant media players, and browse playlists from the display
 - **Photo Slideshow** -- Display family photos between interactions
+- **AirPlay** -- Mirror an iPhone, iPad or Mac to the display, or play its music there (add-on only)
 - **Timer / Countdown** -- On-screen timer for cooking, homework, and more
 - **Screen Saver** -- Automatic screen saver with clock overlay
 - **Weather** -- Real-time weather from your Home Assistant weather entity
@@ -61,7 +62,7 @@ Or install manually:
 1. In Home Assistant, go to **Settings > Add-ons > Add-on Store**
 2. Click the overflow menu (**...**) and select **Repositories**
 3. Add: `https://github.com/f1f1f1f1f1f1/Family`
-4. Find **Family** in the store and click **Install** (Home Assistant builds it from this repository's root `Dockerfile`; it does not pull the standalone GHCR image). Supervisor rebuilds only after the add-on manifest version changes through semantic-release.
+4. Find **Family** in the store and click **Install** (Home Assistant builds it from this repository's root `Dockerfile`, compiling the AirPlay receiver as it does; it does not pull the standalone GHCR image). Supervisor rebuilds only after the add-on manifest version changes through semantic-release.
 5. Leave `parent_pin` and `blocked_entities` blank for the default setup, or set an optional 6–8 digit parent PIN and a comma-separated list of HA entity IDs to block. Save, start the add-on, then click **Open Web UI** through Home Assistant ingress. Existing `allowed_entities` values from older versions are ignored; remove that obsolete option when editing the configuration.
 
 > **Tip:** Enable **Show in sidebar** in the add-on's Info tab for a wall-mounted tablet. Sign in to Home Assistant on each display; the add-on is ingress-only, not available at a direct unauthenticated port.
@@ -103,6 +104,9 @@ Beacon is configured through the Home Assistant add-on options panel:
 | `weather_entity` | `weather.home` | Home Assistant weather entity ID |
 | `parent_pin` | blank (optional) | Set a 6–8 digit PIN to require parent unlock; blank grants parent access to authenticated ingress users |
 | `blocked_entities` | blank (blocks none) | Optional comma-separated exact HA entity IDs to deny (e.g. `switch.garage,todo.private`) |
+| `airplay` | `true` | The AirPlay receiver ([docs/airplay.md](docs/airplay.md)); `false` turns it off |
+| `airplay_name` | `Family` | The name iPhones, iPads and Macs show for it |
+| `airplay_password` | blank (optional) | A password devices must give to send to it (at least 4 characters); blank lets any device on the network |
 
 Additional settings (themes, family members, chores, calendar sources, list providers) are configured through the Beacon UI or the supported non-secret Docker env defaults above. Add-on HA access uses a server-side Supervisor token and Home Assistant ingress; `runtime-config.js` never contains an HA token.
 

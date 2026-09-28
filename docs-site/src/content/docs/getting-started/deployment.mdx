@@ -17,17 +17,18 @@ The simplest deployment. Add `https://github.com/f1f1f1f1f1f1/Family` to the Hom
 **How it works under the hood:**
 
 1. `config.yaml` has no `image:` setting. Home Assistant Supervisor builds the root `Dockerfile` itself on installation/update; it does **not** pull the standalone GHCR image. Releases update the manifest version through semantic-release; do not change it by hand. Supervisor does not rebuild this source-built add-on until the manifest version changes.
-2. The build stage uses Node.js 22 Alpine to run `npm ci --ignore-scripts` and `npm run build`. The runtime stage uses `ghcr.io/hassio-addons/base:16.3.2`, installs Node.js, and copies only the built app, the server and its runtime dependencies, and `run.sh`.
-3. `run.sh` reads add-on options from Supervisor and writes `runtime-config.js` with display settings and an **empty HA token**. The Node server listens on port 3000, serves the SPA, persists family data under `/data`, and proxies allowed HA API requests using the Supervisor token on the server.
+2. The build stage uses Node.js 22 Alpine to run `npm ci --ignore-scripts` and `npm run build`. A second stage builds [UxPlay](https://github.com/FDH2/UxPlay), the AirPlay receiver, from its release source (checked against a SHA-512) on the add-on's base. The runtime stage uses `ghcr.io/hassio-addons/base:16.3.2`, installs Node.js and what the AirPlay receiver runs with (D-Bus, Avahi, GStreamer), and copies only the built app, UxPlay and its licences, the server and its runtime dependencies, and `run.sh`. Compiling UxPlay makes installs and updates slower, especially on a Raspberry Pi.
+3. `run.sh` reads add-on options from Supervisor and writes `runtime-config.js` with display settings and an **empty HA token**. The Node server listens on the port the Supervisor picked for ingress (`ingress_port: 0`), serves the SPA, persists family data under `/data`, and proxies allowed HA API requests using the Supervisor token on the server.
 4. HA ingress authenticates browser sessions and forwards requests to the add-on. A blank `parent_pin` lets authenticated ingress users manage Family without another PIN; optionally set a 6–8 digit PIN to require parent unlock. A blank `blocked_entities` blocks no HA entity IDs; list exact IDs only if you need to deny specific entities. The HA service/path restrictions remain in force. Do not expose the add-on port directly or place it behind an unauthenticated external proxy.
+5. The add-on runs on the host's network (`host_network: true`) so iPhones, iPads and Macs can find its [AirPlay](/docs/features/airplay/) receiver. Its web server is then on the host's addresses too, but accepts only Home Assistant's ingress proxy. Home Assistant shows a lower security rating for add-ons on the host's network.
 
-The image health check makes a local GET to `http://127.0.0.1:3000/beacon-action/health`. This checks server/HA API readiness rather than simply returning the SPA shell.
+The image health check makes a local GET to `/beacon-action/health` on `127.0.0.1`, on the port `run.sh` serves on (3000 in standalone Docker). This checks server/HA API readiness rather than simply returning the SPA shell.
 
 ---
 
 ## Docker standalone deployment
 
-For Home Assistant Core installations without Supervisor, or a separately managed container. This image is published by the fork's release workflow at `ghcr.io/f1f1f1f1f1f1/family:vX.Y.Z` after a new semantic-release tag is created; there is **no `latest` tag**. The workflow refuses to republish a tag that already exists. Existing versions from before the image workflow may not have an image. Choose an available tag on [the GHCR package page](https://github.com/f1f1f1f1f1f1/Family/pkgs/container/family); for the strongest pin, use its content digest below.
+For Home Assistant Core installations without Supervisor, or a separately managed container. This image is published by the fork's release workflow at `ghcr.io/f1f1f1f1f1f1/family:vX.Y.Z` after a new semantic-release tag is created; there is **no `latest` tag**. The workflow refuses to republish a tag that already exists. Existing versions from before the image workflow may not have an image. Choose an available tag on [the GHCR package page](https://github.com/f1f1f1f1f1f1/Family/pkgs/container/family); for the strongest pin, use its content digest below. It's built from the same `Dockerfile` as the add-on, so it includes the AirPlay receiver, but that only runs in the add-on: the standalone image keeps it off.
 
 ### Configure credentials
 
