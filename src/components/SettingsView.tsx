@@ -69,6 +69,10 @@ interface SettingsViewProps {
   calendars: Array<{ id: string; name: string; color?: string }>;
   // Kid Display
   onEnterFocusMode: (memberId: string) => void | Promise<void>;
+  // AirPlay: whether this display opens it by itself; the change handler
+  // is present only while the add-on's receiver is on.
+  airplayAutoOpen?: boolean;
+  onAirPlayAutoOpenChange?: (on: boolean) => void;
 }
 
 // ---------------------------------------------------------------------------
@@ -233,6 +237,8 @@ export function SettingsView({
   haUrl,
   calendars,
   onEnterFocusMode,
+  airplayAutoOpen = true,
+  onAirPlayAutoOpenChange,
 }: SettingsViewProps) {
   const [activeSection, setActiveSection] = useState<SettingsSection>('general');
   const [editingMember, setEditingMember] = useState<string | null>(null);
@@ -1629,6 +1635,21 @@ export function SettingsView({
           />
         </div>
       </div>
+
+      {onAirPlayAutoOpenChange && (
+        <div className="settings-group">
+          <div className="settings-row">
+            <div>
+              <div className="settings-row-label">Open AirPlay Automatically</div>
+              <div className="settings-row-sublabel">
+                Switch to AirPlay when a phone or Mac starts sending, and back when it stops.
+                Each display has its own choice: turn it off where the sound shouldn't play too.
+              </div>
+            </div>
+            <Toggle checked={airplayAutoOpen} onChange={onAirPlayAutoOpenChange} />
+          </div>
+        </div>
+      )}
 
       <h2 className="settings-section-title" style={{ marginTop: 32 }}>Kid Display</h2>
       <p className="settings-section-desc">

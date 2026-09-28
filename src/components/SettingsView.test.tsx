@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, within } from '@testing-library/react';
 import type { BeaconSettings } from '../hooks/useSettings';
 import type { FamilyMember } from '../types/family';
 
@@ -124,5 +124,26 @@ describe('SettingsView reset', () => {
       expect(await screen.findByRole('alert')).toHaveTextContent('Invalid choresSyncListByMember');
       expect(onImportSettings).toHaveBeenCalledWith('{"choresSyncListByMember":null}');
     });
+  });
+});
+
+describe('SettingsView AirPlay', () => {
+  const airPlayToggle = () =>
+    within(screen.getByText('Open AirPlay Automatically').closest<HTMLElement>('.settings-row')!).getByRole('checkbox');
+
+  it('leaves the AirPlay choice out without a receiver', () => {
+    renderSettings();
+    fireEvent.click(screen.getByText('Display'));
+    expect(screen.queryByText('Open AirPlay Automatically')).toBeNull();
+  });
+
+  it("changes only this display's choice", () => {
+    const onAirPlayAutoOpenChange = vi.fn();
+    const on = renderSettings({ airplayAutoOpen: true, onAirPlayAutoOpenChange });
+    fireEvent.click(screen.getByText('Display'));
+    expect(airPlayToggle()).toBeChecked();
+    fireEvent.click(airPlayToggle());
+    expect(onAirPlayAutoOpenChange).toHaveBeenCalledWith(false);
+    expect(on.onUpdateSettings).not.toHaveBeenCalled();
   });
 });

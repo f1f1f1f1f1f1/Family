@@ -23,6 +23,7 @@ import { CalendarSidebar } from './components/CalendarSidebar';
 import { useHaAuth } from './hooks/useHaAuth';
 import { useTheme } from './hooks/useTheme';
 import { useWakeLock } from './hooks/useWakeLock';
+import { isAirPlayStreaming, useAirPlayAutoOpen, useAirPlayAutoOpenSetting, useAirPlayStatus } from './hooks/useAirPlay';
 import { useLocalCalendar } from './hooks/useLocalCalendar';
 import { useDashboardTasks } from './hooks/useDashboardTasks';
 import { LazyBoundary } from './components/LazyBoundary';
@@ -49,6 +50,7 @@ const config = getConfig();
 const SettingsView = lazyNamed(() => import('./components/SettingsView'), 'SettingsView');
 const MusicView = lazyNamed(() => import('./components/MusicView'), 'MusicView');
 const PhotoFrame = lazyNamed(() => import('./components/PhotoFrame'), 'PhotoFrame');
+const AirPlayView = lazyNamed(() => import('./components/AirPlayView'), 'AirPlayView');
 const WeatherView = lazyNamed(() => import('./components/WeatherView'), 'WeatherView');
 const Timer = lazyNamed(() => import('./components/Timer'), 'Timer');
 const Leaderboard = lazyNamed(() => import('./components/Leaderboard'), 'Leaderboard');
@@ -240,9 +242,6 @@ function DashboardApp({ onEnterDisplay }: { onEnterDisplay?: (memberId: string) 
   // Apply theme at App level so it stays active regardless of which view is
   // shown, dark by night with Auto Dark Mode on.
   useTheme(settings.themeId, settings);
-
-  // Settings > Display > Always-On Display
-  useWakeLock(settings.alwaysOnDisplay);
 
   useEffect(() => {
     applyFontScale(settings.fontScale);
@@ -556,8 +555,19 @@ function DashboardApp({ onEnterDisplay }: { onEnterDisplay?: (memberId: string) 
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [handleChangeView]);
 
+  // AirPlay, where the add-on has a receiver: displays that want it switch
+  // to the AirPlay screen while a phone or Mac sends to it, and it stays
+  // on, without the screen saver, while showing that.
+  const airplay = useAirPlayStatus(fullAppShown);
+  const [airplayAutoOpen, setAirplayAutoOpen] = useAirPlayAutoOpenSetting();
+  useAirPlayAutoOpen(airplay.status, activeView, handleChangeView, airplayAutoOpen);
+  const airplayShowing = activeView === 'airplay' && isAirPlayStreaming(airplay.status);
+
+  // Settings > Display > Always-On Display
+  useWakeLock(settings.alwaysOnDisplay || airplayShowing);
+
   const sidebarPos = settings.sidebarPosition || 'left';
-  const showNowPlaying = activeView !== 'music' && activeView !== 'photos' && music.activePlayer?.state === 'playing';
+  const showNowPlaying = activeView !== 'music' && activeView !== 'photos' && activeView !== 'airplay' && music.activePlayer?.state === 'playing';
 
   // Show loading screen while checking stored credentials
   if (auth.state.loading) {
@@ -610,6 +620,7 @@ function DashboardApp({ onEnterDisplay }: { onEnterDisplay?: (memberId: string) 
         activeView={activeView}
         onChangeView={handleChangeView}
         position={sidebarPos}
+        showAirPlay={!!airplay.status?.enabled}
       />
 
       {/* Main content area */}
@@ -690,6 +701,8 @@ function DashboardApp({ onEnterDisplay }: { onEnterDisplay?: (memberId: string) 
               haUrl={config.ha_url}
               calendars={calendars}
               onEnterFocusMode={handleEnterFocusMode}
+              airplayAutoOpen={airplayAutoOpen}
+              onAirPlayAutoOpenChange={airplay.status?.enabled ? setAirplayAutoOpen : undefined}
             />
           </LazyBoundary>
         ) : activeView === 'grocery' ? (
@@ -717,6 +730,14 @@ function DashboardApp({ onEnterDisplay }: { onEnterDisplay?: (memberId: string) 
               onMusicPrevious={() => music.activePlayer && music.previous(music.activePlayer.entity_id)}
               onMusicSetVolume={(v) => music.activePlayer && music.setVolume(v, music.activePlayer.entity_id)}
               onMusicToggleMute={(m) => music.activePlayer && music.setMuted(m, music.activePlayer.entity_id)}
+              onBack={() => setActiveView('dashboard')}
+            />
+          </LazyBoundary>
+        ) : activeView === 'airplay' ? (
+          <LazyBoundary>
+            <AirPlayView
+              status={airplay.status}
+              onStatus={airplay.report}
               onBack={() => setActiveView('dashboard')}
             />
           </LazyBoundary>
@@ -808,7 +829,7 @@ function DashboardApp({ onEnterDisplay }: { onEnterDisplay?: (memberId: string) 
 
       {/* GroceryView is now rendered as a full view above */}
 
-      {/* Now Playing Bar — shows when music is playing, hidden in photo/music views */}
+      {/* Now Playing Bar — shows when music is playing, hidden in photo/music/AirPlay views */}
       {showNowPlaying && (
         <NowPlayingBar
           player={music.activePlayer}
@@ -826,7 +847,7 @@ function DashboardApp({ onEnterDisplay }: { onEnterDisplay?: (memberId: string) 
 
       {/* Screen saver / dim mode */}
       <ScreenSaver
-        enabled={settings.screenSaverEnabled}
+        enabled={settings.screenSaverEnabled && !airplayShowing}
         dimTimeoutMin={settings.dimTimeout}
         screenSaverTimeoutMin={settings.screenSaverTimeout}
         showPhotos={settings.screenSaverShowPhotos}

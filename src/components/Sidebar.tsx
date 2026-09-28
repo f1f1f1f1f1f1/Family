@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import {
+  Airplay,
   LayoutDashboard,
   Calendar,
   ListChecks,
@@ -15,12 +16,14 @@ import {
   X,
 } from 'lucide-react';
 
-export type SidebarView = 'dashboard' | 'calendar' | 'chores' | 'grocery' | 'tasks' | 'leaderboard' | 'music' | 'photos' | 'timer' | 'weather' | 'settings';
+export type SidebarView = 'dashboard' | 'calendar' | 'chores' | 'grocery' | 'tasks' | 'leaderboard' | 'music' | 'photos' | 'airplay' | 'timer' | 'weather' | 'settings';
 
 interface SidebarProps {
   activeView: SidebarView;
   onChangeView: (view: SidebarView) => void;
   position?: 'left' | 'right' | 'bottom';
+  /** The add-on has an AirPlay receiver turned on. */
+  showAirPlay?: boolean;
 }
 
 const ICON_SIZE = 24;
@@ -41,6 +44,7 @@ const NAV_ITEMS: NavItem[] = [
   { id: 'leaderboard', icon: <Trophy size={ICON_SIZE} strokeWidth={STROKE_WIDTH} />, label: 'Leaderboard' },
   { id: 'music', icon: <Music size={ICON_SIZE} strokeWidth={STROKE_WIDTH} />, label: 'Music' },
   { id: 'photos', icon: <Image size={ICON_SIZE} strokeWidth={STROKE_WIDTH} />, label: 'Photos' },
+  { id: 'airplay', icon: <Airplay size={ICON_SIZE} strokeWidth={STROKE_WIDTH} />, label: 'AirPlay' },
   { id: 'timer', icon: <TimerIcon size={ICON_SIZE} strokeWidth={STROKE_WIDTH} />, label: 'Timer' },
   { id: 'weather', icon: <CloudSun size={ICON_SIZE} strokeWidth={STROKE_WIDTH} />, label: 'Weather' },
 ];
@@ -52,11 +56,13 @@ export function Sidebar({
   activeView,
   onChangeView,
   position = 'left',
+  showAirPlay = false,
 }: SidebarProps) {
   const [mobileMoreOpen, setMobileMoreOpen] = useState(false);
 
-  const mobileTabItems = NAV_ITEMS.filter((item) => MOBILE_TAB_IDS.includes(item.id));
-  const mobileOverflowItems = NAV_ITEMS.filter((item) => !MOBILE_TAB_IDS.includes(item.id));
+  const navItems = showAirPlay ? NAV_ITEMS : NAV_ITEMS.filter((item) => item.id !== 'airplay');
+  const mobileTabItems = navItems.filter((item) => MOBILE_TAB_IDS.includes(item.id));
+  const mobileOverflowItems = navItems.filter((item) => !MOBILE_TAB_IDS.includes(item.id));
 
   const handleMobileNav = (view: SidebarView) => {
     onChangeView(view);
@@ -73,7 +79,7 @@ export function Sidebar({
       >
         {/* Main nav icons */}
         <div className="sidebar-nav-group">
-          {NAV_ITEMS.map((item) => (
+          {navItems.map((item) => (
             <button
               key={item.id}
               type="button"
