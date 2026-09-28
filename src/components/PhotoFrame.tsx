@@ -67,7 +67,6 @@ export function PhotoFrame({
     upcomingPhoto,
     nextPhoto,
     previousPhoto,
-    isActive,
     setActive,
     reportLoadError,
     photoCount,
@@ -78,20 +77,24 @@ export function PhotoFrame({
 
   const [showControls, setShowControls] = useState(false);
   const [showDiagnostics, setShowDiagnostics] = useState(false);
+  // Paused with the pause button, rather than just while something's open.
+  const [userPaused, setUserPaused] = useState(false);
   const [testPattern, setTestPattern] = useState(false);
   const [photoSize, setPhotoSize] = useState<{ w: number; h: number }>();
 
-  // Test pattern uses the current photo's shape; the slideshow pauses
-  // while diagnostics are open so the readout stays on one photo.
+  // Test pattern uses the current photo's shape.
   useEffect(() => {
     if (!showDiagnostics || !currentPhoto?.url) return;
     const img = new Image();
     img.onload = () => setPhotoSize({ w: img.naturalWidth, h: img.naturalHeight });
     img.src = currentPhoto.url;
   }, [showDiagnostics, currentPhoto?.url]);
+  // The slideshow holds while the controls are up, and while diagnostics
+  // are open so the readout stays on one photo. Once they're closed it goes
+  // on unless paused with the button: any tap used to stop it for good.
   useEffect(() => {
-    if (showDiagnostics) setActive(false);
-  }, [showDiagnostics, setActive]);
+    setActive(!userPaused && !showControls && !showDiagnostics);
+  }, [userPaused, showControls, showDiagnostics, setActive]);
   const frameRef = useRef<HTMLDivElement>(null);
   // On the minute, in Settings' time format (it followed the browser's).
   const now = useClock();
@@ -120,15 +123,14 @@ export function PhotoFrame({
       if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
     } else {
       setShowControls(true);
-      setActive(false); // pause slideshow when controls shown
       scheduleHide();
     }
-  }, [showControls, setActive, scheduleHide]);
+  }, [showControls, scheduleHide]);
 
   const handlePauseToggle = useCallback(() => {
-    setActive(!isActive);
+    setUserPaused((paused) => !paused);
     scheduleHide();
-  }, [isActive, setActive, scheduleHide]);
+  }, [scheduleHide]);
 
   useEffect(() => {
     return () => {
@@ -203,9 +205,9 @@ export function PhotoFrame({
           type="button"
           className="photo-frame-control-btn photo-frame-control-btn--play"
           onClick={(e) => { e.stopPropagation(); handlePauseToggle(); }}
-          aria-label={isActive ? 'Pause slideshow' : 'Resume slideshow'}
+          aria-label={userPaused ? 'Resume slideshow' : 'Pause slideshow'}
         >
-          {isActive ? <Pause size={32} /> : <Play size={32} />}
+          {userPaused ? <Play size={32} /> : <Pause size={32} />}
         </button>
         <button
           type="button"
