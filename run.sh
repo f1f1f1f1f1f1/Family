@@ -71,13 +71,11 @@ export BEACON_PORT
 echo "${BEACON_PORT}" > /tmp/beacon-port
 
 # The AirPlay receiver (airplay.cjs runs UxPlay; the dbus and avahi services
-# advertise it and wait for this decision). It needs two things this add-on
-# doesn't have, each of which changes what it runs or where, so they're
-# left for whoever maintains it to decide on (docs/airplay.md):
-# - UxPlay, a separate GPL-3.0 program, in the image (the Dockerfile
-#   doesn't build it: nothing to say, then);
-# - the host's network (host_network in config.yaml), since iPhones, iPads
-#   and Macs find receivers by mDNS on the local network.
+# advertise it and wait for this decision), on unless the airplay option is
+# off. It needs UxPlay, which the Dockerfile builds into the image, and the
+# host's network (host_network in config.yaml), since iPhones, iPads and
+# Macs find receivers by mDNS on the local network. Without either, it stays
+# off (docs/airplay.md).
 AIRPLAY="off"
 if [ -n "${SUPERVISOR_TOKEN:-}" ] && command -v uxplay >/dev/null 2>&1 \
   && [ "$(bashio::config 'airplay' 2>/dev/null || echo true)" != "false" ]; then
