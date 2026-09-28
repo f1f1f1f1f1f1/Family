@@ -1,0 +1,12 @@
+#!/bin/sh
+# The system D-Bus, which Avahi and UxPlay talk to each other over. Only
+# while the AirPlay receiver is on: run.sh (the beacon service) decides.
+# Not with-contenv: nothing here needs the add-on's environment.
+until [ -s /run/family-airplay ]; do sleep 1; done
+if [ "$(cat /run/family-airplay)" != "on" ]; then
+  exec sleep 2147483647
+fi
+mkdir -p /run/dbus
+rm -f /run/dbus/system_bus_socket
+dbus-uuidgen --ensure
+exec dbus-daemon --system --nofork --nopidfile

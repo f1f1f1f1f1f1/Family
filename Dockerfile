@@ -20,13 +20,20 @@ WORKDIR /app
 
 COPY --from=builder /app/dist/ /app/dist/
 COPY --from=builder /app/node_modules/ws/ /app/node_modules/ws/
+# The dbus and avahi services only start their daemons while run.sh has the
+# AirPlay receiver on, which this image, without UxPlay, never does (see
+# docs/airplay.md).
+COPY rootfs/ /
 COPY run.sh /etc/services.d/beacon/run
 COPY server.js /app/server.js
 COPY server-guards.cjs /app/server-guards.cjs
 COPY chores-sync.cjs /app/chores-sync.cjs
-RUN chmod a+x /etc/services.d/beacon/run
+COPY airplay.cjs /app/airplay.cjs
+COPY airplay-relay.cjs /app/airplay-relay.cjs
+RUN chmod a+x /etc/services.d/beacon/run /etc/services.d/dbus/run /etc/services.d/avahi/run
 
 EXPOSE 3000
 
+# run.sh writes the port it serves on (the one ingress was given) there.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-  CMD wget -qO /dev/null http://127.0.0.1:3000/beacon-action/health || exit 1
+  CMD wget -qO /dev/null "http://127.0.0.1:$(cat /tmp/beacon-port 2>/dev/null || echo 3000)/beacon-action/health" || exit 1
