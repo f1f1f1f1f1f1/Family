@@ -10,7 +10,8 @@
  *   homeassistant.restart, lock.unlock, script.*) is refused.
  * - isProxyRequestAllowed: the /api/* paths the app reads (entity states,
  *   calendars), plus allowed service calls.
- * - isCrossOriginWrite: refuses writes sent by another website (CSRF).
+ * - isCrossOriginWrite: refuses writes sent by another website (CSRF);
+ *   isCrossOriginRequest makes the same check for any method.
  * - isTrustedIngressAddress: only the HA ingress proxy may reach the add-on.
  * - isServiceTargetAllowed: the optional entity blocklist applies to every
  *   service, including the server-side chores sync.
@@ -140,8 +141,15 @@ function normalizeHost(host) {
  * different port) and sibling subdomains, which count as "same site".
  */
 function isCrossOriginWrite(method, headers) {
-  if (SAFE_METHODS.has(method)) return false;
+  return !SAFE_METHODS.has(method) && isCrossOriginRequest(headers);
+}
 
+/**
+ * isCrossOriginWrite's check for a request of any method. A WebSocket
+ * handshake is a GET, but what it opens (the AirPlay stream) mustn't reach
+ * another website's page.
+ */
+function isCrossOriginRequest(headers) {
   const fetchSite = headers['sec-fetch-site'];
   if (fetchSite) return fetchSite !== 'same-origin' && fetchSite !== 'none';
 
@@ -179,5 +187,6 @@ module.exports = {
   isEntityAllowed,
   isServiceTargetAllowed,
   isCrossOriginWrite,
+  isCrossOriginRequest,
   describeRequester,
 };

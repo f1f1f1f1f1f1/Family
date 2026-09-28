@@ -16,6 +16,10 @@
 !server.js
 !server-guards.cjs
 !chores-sync.cjs
+!airplay.cjs
+!airplay-relay.cjs
+!rootfs/
+!rootfs/**
 
 # Never send local credentials, repository history, or generated output,
 # including files placed inside src/ or public/.

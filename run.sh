@@ -50,6 +50,75 @@ else
   bashio::log.info "Add-on slug resolved: ${ADDON_SLUG}"
 fi
 
+# The port Home Assistant's ingress proxy connects to: ingress_port in
+# config.yaml, or the free port the Supervisor picks when that's 0 (as it
+# should be for an add-on on the host's network, where 3000 may be taken).
+valid_port() {
+  [[ "$1" =~ ^[0-9]{1,5}$ ]] && (( 10#$1 >= 1 && 10#$1 <= 65535 ))
+}
+if [ -n "${SUPERVISOR_TOKEN:-}" ]; then
+  BEACON_PORT="$(echo "${ADDON_SELF_BODY:-}" | jq -r '.data.ingress_port // empty' 2>/dev/null || true)"
+  if ! valid_port "${BEACON_PORT}"; then
+    bashio::log.warning "Could not read the ingress port from the Supervisor; using 3000."
+    BEACON_PORT=3000
+  fi
+elif ! valid_port "${BEACON_PORT:-}"; then
+  BEACON_PORT=3000
+fi
+BEACON_PORT="$((10#${BEACON_PORT}))"
+export BEACON_PORT
+# For the image's HEALTHCHECK.
+echo "${BEACON_PORT}" > /tmp/beacon-port
+
+# The AirPlay receiver (airplay.cjs runs UxPlay; the dbus and avahi services
+# advertise it and wait for this decision), on unless the airplay option is
+# off. It needs UxPlay, which the Dockerfile builds into the image, and the
+# host's network (host_network in config.yaml), since iPhones, iPads and
+# Macs find receivers by mDNS on the local network. Without either, it stays
+# off (docs/airplay.md).
+AIRPLAY="off"
+if [ -n "${SUPERVISOR_TOKEN:-}" ] && command -v uxplay >/dev/null 2>&1 \
+  && [ "$(bashio::config 'airplay' 2>/dev/null || echo true)" != "false" ]; then
+  if [ "$(echo "${ADDON_SELF_BODY:-}" | jq -r '.data.host_network // false' 2>/dev/null)" = "true" ]; then
+    AIRPLAY="on"
+  else
+    bashio::log.info "AirPlay is off: devices can only find it with the add-on on the host's network (host_network in config.yaml)."
+  fi
+fi
+echo "${AIRPLAY}" > /run/family-airplay
+
+if [ "${AIRPLAY}" = "on" ]; then
+  export BEACON_AIRPLAY=1
+  BEACON_AIRPLAY_NAME="$(bashio::config 'airplay_name' 2>/dev/null || true)"
+  if [ -z "${BEACON_AIRPLAY_NAME}" ] || [ "${BEACON_AIRPLAY_NAME}" = "null" ]; then
+    BEACON_AIRPLAY_NAME="Family"
+  fi
+  export BEACON_AIRPLAY_NAME
+  BEACON_AIRPLAY_PASSWORD="$(bashio::config 'airplay_password' 2>/dev/null || true)"
+  if [ "${BEACON_AIRPLAY_PASSWORD}" = "null" ]; then
+    BEACON_AIRPLAY_PASSWORD=""
+  fi
+  export BEACON_AIRPLAY_PASSWORD
+  # UxPlay runs as the image's airplay user, since it handles whatever any
+  # device on the network sends it. Nothing that user can read may tell it
+  # the Supervisor token (s6's copy of the environment), the add-on's
+  # options (options.json, bashio's cache) or the family's data.
+  BEACON_AIRPLAY_UID="$(id -u airplay 2>/dev/null || true)"
+  BEACON_AIRPLAY_GID="$(id -g airplay 2>/dev/null || true)"
+  export BEACON_AIRPLAY_UID BEACON_AIRPLAY_GID
+  umask 077
+  chmod 0700 /run/s6/container_environment /tmp/.bashio 2>/dev/null || true
+  chmod 0711 /data
+  find /data -mindepth 1 -maxdepth 1 ! -name airplay -exec chmod go-rwx {} +
+  if [ -n "${BEACON_AIRPLAY_PASSWORD}" ]; then
+    bashio::log.info "AirPlay receiver \"${BEACON_AIRPLAY_NAME}\" is on; devices need its password."
+  else
+    bashio::log.info "AirPlay receiver \"${BEACON_AIRPLAY_NAME}\" is on, open to every device on the network (airplay_password sets a password)."
+  fi
+else
+  unset BEACON_AIRPLAY BEACON_AIRPLAY_NAME BEACON_AIRPLAY_PASSWORD BEACON_AIRPLAY_UID BEACON_AIRPLAY_GID
+fi
+
 # The server reaches Home Assistant with the Supervisor token (the browser
 # never holds one; see server.js).
 if [ -n "${SUPERVISOR_TOKEN:-}" ]; then
@@ -98,5 +167,5 @@ if ! grep -q 'runtime-config.js' "${INDEX_HTML}"; then
   sed -i 's|</head>|<script src="./runtime-config.js"></script></head>|' "${INDEX_HTML}"
 fi
 
-bashio::log.info "Starting Family server on port 3000..."
+bashio::log.info "Starting Family server on port ${BEACON_PORT}..."
 exec node /app/server.js

@@ -92,9 +92,12 @@ photo_interval: 30
 screen_saver_timeout: 5
 parent_pin: ""
 blocked_entities: ""
+airplay: true
+airplay_name: "Family"
+airplay_password: ""
 ```
 
-3. Both new options default to blank and may be left that way. Optionally set `parent_pin` to a private 6–8 digit code to require parent unlock, and `blocked_entities` to comma-separated exact HA IDs (for example `switch.garage,todo.private`) to deny those entities. Blank blocks none. Find IDs in **Developer Tools > States**. Older `allowed_entities` values are ignored; remove that obsolete option from an existing configuration when upgrading.
+3. Both new options default to blank and may be left that way. Optionally set `parent_pin` to a private 6–8 digit code to require parent unlock, and `blocked_entities` to comma-separated exact HA IDs (for example `switch.garage,todo.private`) to deny those entities. Blank blocks none. Find IDs in **Developer Tools > States**. Older `allowed_entities` values are ignored; remove that obsolete option from an existing configuration when upgrading. The `airplay` options are for the [AirPlay](/docs/features/airplay/) receiver: `airplay_password` sets a password devices must give, and `airplay: false` turns it off.
 4. Click **Save**
 
 No HA URL or token needs to be configured in the add-on: its server uses the Supervisor token, and `runtime-config.js` contains no HA token.
@@ -108,7 +111,7 @@ No HA URL or token needs to be configured in the add-on: its server uses the Sup
 
 > **What you should see**: The Beacon dashboard with a large clock, the current date, a personalized greeting, and (if weather is configured) the current temperature. If you have not connected any calendars yet, the calendar view will be empty.
 
-The add-on is **ingress-only**: use an authenticated Home Assistant session, not a direct `:3000` URL or a reverse proxy to the add-on's internal port.
+The add-on is **ingress-only**: use an authenticated Home Assistant session, not a direct URL to the add-on's port or a reverse proxy to it.
 With a blank `parent_pin`, HA-authenticated ingress users receive parent access automatically and can exit Kid Display without a PIN. If a PIN is configured, parent unlock lasts **10 minutes from entry** even if the dashboard keeps polling; enter it again when controls relock. A Kid Display session renews during normal session polling for a sliding 24-hour period.
 
 ### Step 5: Enable auto-start (optional)

@@ -1,0 +1,12 @@
+#!/bin/sh
+# Avahi tells iPhones, iPads and Macs on the network about the AirPlay
+# receiver (UxPlay registers it over D-Bus). Only while the receiver is on:
+# run.sh (the beacon service) decides.
+# Not with-contenv: nothing here needs the add-on's environment.
+until [ -s /run/family-airplay ]; do sleep 1; done
+if [ "$(cat /run/family-airplay)" != "on" ]; then
+  exec sleep 2147483647
+fi
+until [ -S /run/dbus/system_bus_socket ]; do sleep 1; done
+rm -f /run/avahi-daemon/pid
+exec avahi-daemon --no-chroot --no-rlimits

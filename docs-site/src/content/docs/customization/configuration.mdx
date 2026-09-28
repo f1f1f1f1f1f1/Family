@@ -22,6 +22,9 @@ Install **Family** from `https://github.com/f1f1f1f1f1f1/Family`, then edit **Se
 | `photo_interval` | `30` | Seconds between photos |
 | `screen_saver_timeout` | `5` | Minutes before dimming (clock screensaver follows later) |
 | `blocked_entities` | Blank (blocks none) | Optional CSV of exact HA entity IDs to deny, e.g. `switch.garage,todo.private` |
+| `airplay` | `true` | The [AirPlay](/docs/features/airplay/) receiver; `false` turns it off |
+| `airplay_name` | `Family` | The name iPhones, iPads and Macs show for it |
+| `airplay_password` | Blank (optional) | A password devices must give to send to it (at least 4 characters); blank lets any device on the network |
 
 Example options:
 
@@ -34,6 +37,9 @@ photo_directory: "/media/beacon/photos"
 photo_interval: 30
 screen_saver_timeout: 5
 blocked_entities: ""
+airplay: true
+airplay_name: "Family"
+airplay_password: ""
 ```
 
 Both settings can stay blank. To require an additional parent unlock, set `parent_pin` to 6–8 digits. To deny specific entities, set `blocked_entities` to their exact IDs from **Developer Tools > States**; wildcards and area/device targeting are not accepted. An empty blocklist denies no valid entity IDs, though the server still limits HA API paths and services. On existing installs, the former `allowed_entities` option is accepted for upgrade compatibility but **ignored**; remove it when editing the configuration and use `blocked_entities` if needed. Save and restart the add-on after changing options. Open it through **authenticated Home Assistant ingress**, not a direct exposed port. The server receives `SUPERVISOR_TOKEN` from Supervisor, uses it to proxy supported HA API requests, and does not include it in `runtime-config.js`.
@@ -125,7 +131,7 @@ window.__BEACON_CONFIG__ = {
 
 In add-on and Docker mode, requests for HA data go to the **same-origin server**, which attaches its token server-side. `ha_available` is a Boolean indicator, not an HA credential or a readiness probe; `/beacon-action/health` performs the local-only readiness check. Browser code must not use `SUPERVISOR_TOKEN`, `HA_TOKEN`, or a value from `runtime-config.js` to authenticate to HA. Direct development/native onboarding is a separate browser-login path.
 
-The root `config.yaml` defines **Family** (`slug: family`, `ingress: true`, `ingress_port: 3000`, `homeassistant_api: true`) and links to this fork. `homeassistant_api: true` permits the server's Core API proxy; `hassio_api` and `auth_api` are **not** requested. The base Supervisor token is sufficient for `/addons/self/info`. The manifest has no `image:` field, so Supervisor builds from the repository root. Its version is set by semantic-release; do not bump it by hand. Standalone GHCR images are separately published from the release tag by GitHub Actions.
+The root `config.yaml` defines **Family** (`slug: family`, `ingress: true`, `ingress_port: 0`, `host_network: true`, `homeassistant_api: true`) and links to this fork. The add-on is on the host's network so iPhones, iPads and Macs can find its AirPlay receiver; there, port 3000 may be taken, so `ingress_port: 0` has the Supervisor pick a free port, which `run.sh` reads from `/addons/self/info` and serves on. The server still accepts only Home Assistant's ingress proxy. `homeassistant_api: true` permits the server's Core API proxy; `hassio_api` and `auth_api` are **not** requested. The base Supervisor token is sufficient for `/addons/self/info`. The manifest has no `image:` field, so Supervisor builds from the repository root. Its version is set by semantic-release; do not bump it by hand. Standalone GHCR images are separately published from the release tag by GitHub Actions.
 
 ## Troubleshooting
 

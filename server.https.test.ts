@@ -73,6 +73,8 @@ it('proxies REST and WebSocket to an HTTPS Home Assistant without sending its to
     copyFileSync(join(repo, 'server.js'), join(temp, 'server.cjs'));
     copyFileSync(join(repo, 'server-guards.cjs'), join(temp, 'server-guards.cjs'));
     copyFileSync(join(repo, 'chores-sync.cjs'), join(temp, 'chores-sync.cjs'));
+    copyFileSync(join(repo, 'airplay.cjs'), join(temp, 'airplay.cjs'));
+    copyFileSync(join(repo, 'airplay-relay.cjs'), join(temp, 'airplay-relay.cjs'));
     mkdirSync(join(temp, 'dist'));
     writeFileSync(join(temp, 'dist', 'index.html'), '<!doctype html><div id="root"></div>');
     let output = '';
