@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render } from '@testing-library/react';
+import { render, fireEvent } from '@testing-library/react';
 import { WeekCalendar } from './WeekCalendar';
 
 describe('WeekCalendar', () => {
@@ -210,7 +210,55 @@ describe('WeekCalendar', () => {
 
     it('keeps timed events of a day or longer as bars', () => {
       const container = renderWith('2026-09-23T09:00:00', '2026-09-25T17:00:00');
-      expect(container.querySelectorAll('.event-block--multiday')).toHaveLength(1);
+      const bars = container.querySelectorAll<HTMLElement>('.event-block--multiday');
+      expect(bars).toHaveLength(1);
+      // Wednesday through Friday: the bar used to stop on Thursday.
+      expect(bars[0].style.left).toBe('calc(42.8571% + 2px)');
+      expect(bars[0].style.width).toBe('calc(42.8571% - 4px)');
     });
+  });
+
+  it('ends an all-day bar on the day before its end date', () => {
+    vi.setSystemTime(new Date(2026, 8, 23, 10, 0));
+    const container = render(
+      <WeekCalendar
+        events={[{
+          id: 'ev-camp', title: 'Camp', start: '2026-09-23', end: '2026-09-25', allDay: true,
+          calendarId: 'calendar.family', calendarName: 'Family', color: '#22c55e',
+        }]}
+        hiddenCalendars={new Set()}
+        onEventClick={vi.fn()}
+        onSlotClick={vi.fn()}
+      />,
+    ).container;
+    const [bar] = container.querySelectorAll<HTMLElement>('.event-block--multiday');
+    expect(bar.style.left).toBe('calc(42.8571% + 2px)'); // Wednesday
+    expect(bar.style.width).toBe('calc(28.5714% - 4px)'); // and Thursday
+  });
+
+  // The phone layout shows three days at a time. It stayed on the ones it
+  // opened on: left running from Tuesday it still showed Sun–Tue on
+  // Wednesday, and "Today" from another week came back to Sun–Tue too.
+  it('keeps today in view on the phone layout', () => {
+    vi.stubGlobal('matchMedia', (query: string) => ({
+      matches: true,
+      media: query,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+    }));
+    vi.setSystemTime(new Date(2026, 8, 29, 22, 0)); // Tue 29 Sep 2026
+    const props = { events: [], hiddenCalendars: new Set<string>(), onEventClick: vi.fn(), onSlotClick: vi.fn() };
+    const { container, rerender, getByLabelText } = render(<WeekCalendar {...props} />);
+    const shownDays = () => [...container.querySelectorAll('.week-header-day-number')].map((d) => d.textContent);
+    expect(shownDays()).toEqual(['27', '28', '29']);
+
+    vi.setSystemTime(new Date(2026, 8, 30, 7, 0)); // Wed 30 Sep
+    rerender(<WeekCalendar {...props} />);
+    expect(shownDays()).toEqual(['30', '1', '2']);
+
+    fireEvent.click(getByLabelText('Next week'));
+    expect(shownDays()).toEqual(['4', '5', '6']);
+    fireEvent.click(getByLabelText('Jump to current week'));
+    expect(shownDays()).toEqual(['30', '1', '2']);
   });
 });

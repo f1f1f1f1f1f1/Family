@@ -141,10 +141,12 @@ export function WeekCalendar({ events, hiddenCalendars, onEventClick, onSlotClic
   const initialGroup = Math.min(Math.floor(todayDayIndex / MOBILE_DAYS), Math.floor(6 / MOBILE_DAYS));
   const [mobileGroupIndex, setMobileGroupIndex] = useState(initialGroup);
 
-  // When jumping to a different week, reset to the first mobile day-group
+  // Another week opens on its first days, this week on today's: on coming
+  // back with "Today", and as the date moves on, so a display left running
+  // doesn't stay on days that are over (it kept the group it opened on).
   useEffect(() => {
-    if (weekOffset !== 0) setMobileGroupIndex(0);
-  }, [weekOffset]);
+    setMobileGroupIndex(weekOffset === 0 ? initialGroup : 0);
+  }, [weekOffset, initialGroup, todayWeekStartMs]);
 
   // Swipe state
   const touchStartRef = useRef<{ x: number; y: number } | null>(null);
@@ -275,7 +277,11 @@ export function WeekCalendar({ events, hiddenCalendars, onEventClick, onSlotClic
       const visEnd = eventEnd > weekEndDate ? weekEndDate : eventEnd;
 
       const startCol = Math.max(0, differenceInCalendarDays(visStart, weekStartDate));
-      const endCol = Math.min(7, differenceInCalendarDays(visEnd, weekStartDate));
+      // Ends are exclusive, so the last day is the one the event's final
+      // moment falls on: a Wed 9am–Fri 5pm event reaches Friday (it stopped
+      // on Thursday), while an all-day one ending Friday 00:00 stops on
+      // Thursday.
+      const endCol = Math.min(7, differenceInCalendarDays(new Date(visEnd.getTime() - 1), weekStartDate) + 1);
       const span = endCol - startCol;
 
       if (span <= 0) continue;
