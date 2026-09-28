@@ -1,3 +1,10 @@
+## [1.60.1](https://github.com/f1f1f1f1f1f1/Family/compare/v1.60.0...v1.60.1) (2026-09-28)
+
+
+### Bug Fixes
+
+* devices list the AirPlay receiver, as UxPlay now starts once Avahi runs ([d2ee498](https://github.com/f1f1f1f1f1f1/Family/commit/d2ee498ca7d3e170b8cbbeb0052f54832f4a3d56))
+
 # [1.60.0](https://github.com/f1f1f1f1f1f1/Family/compare/v1.59.6...v1.60.0) (2026-09-28)
 
 
