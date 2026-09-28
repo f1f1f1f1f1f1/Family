@@ -21,7 +21,7 @@ const escape = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const stages = dockerfile.split(/^(?=FROM )/m).slice(1);
 /** Lines, with those continued by a backslash joined. */
 const logicalLines = (text: string) => text.replace(/\s*\\\n\s*/g, ' ').split('\n');
-const { uxplayArgs } = createRequire(import.meta.url)('./airplay.cjs');
+const { uxplayArgs, LINE_BUFFER_LIBRARY } = createRequire(import.meta.url)('./airplay.cjs');
 
 /** The server's own modules: server.js and what it requires, transitively. */
 function serverModules(file = 'server.js', found = new Set<string>()): Set<string> {
@@ -81,7 +81,7 @@ describe('UxPlay in the add-on image', () => {
   const runtime = stages.at(-1) ?? '';
   const runtimeLines = logicalLines(runtime);
   const install = runtimeLines.find((line) => line.startsWith('RUN apk add --no-cache ')) ?? '';
-  const check = runtimeLines.find((line) => line.startsWith('RUN uxplay -v ')) ?? '';
+  const check = runtimeLines.find((line) => /^RUN \S.* uxplay -v /.test(line)) ?? '';
 
   it('is built from its release source, checked, on the add-on\'s own base', () => {
     const version = dockerfile.match(/^ARG UXPLAY_VERSION=(\d+)\.(\d+)\.(\d+)$/m)?.slice(1).map(Number) ?? [];
@@ -118,12 +118,17 @@ describe('UxPlay in the add-on image', () => {
     expect(packages).toEqual(expect.arrayContaining(['libcrypto3', 'libssl3', 'musl', 'build-base', 'openssl-dev']));
   });
 
-  it('puts only UxPlay, its licences and where its source is into the add-on', () => {
+  it('puts only UxPlay, its licences, where its source is and the library for its log into the add-on', () => {
     const copies = [...runtime.matchAll(/^COPY --from=uxplay (.*)$/gm)].map((match) => match[1]);
     expect(copies).toEqual([
       '/usr/local/bin/uxplay /usr/local/bin/uxplay',
       '/usr/share/licenses/uxplay/ /usr/share/licenses/uxplay/',
+      // coreutils' stdbuf library, which airplay.cjs preloads into UxPlay,
+      // without the rest of coreutils in place of BusyBox's commands.
+      `/usr/libexec/coreutils/libstdbuf.so ${LINE_BUFFER_LIBRARY}`,
     ]);
+    const buildInstall = logicalLines(uxplayStage).find((line) => line.startsWith('RUN apk add --no-cache ')) ?? '';
+    expect(buildInstall.split(/\s+/)).toContain('coreutils');
     // GPL-3.0 (UxPlay, and the playfair code in it) and MIT (llhttp).
     for (const licence of ['LICENSE', 'lib/playfair/LICENSE.md', 'lib/llhttp/LICENSE-MIT']) {
       expect(uxplayStage, licence).toMatch(new RegExp(`install -D -m 644 ${escape(licence)} /usr/share/licenses/uxplay/\\S+`));
@@ -155,9 +160,15 @@ describe('UxPlay in the add-on image', () => {
   });
 
   it("fails the build if UxPlay wouldn't start or GStreamer lacks an element it uses", () => {
-    // Running it needs every library it links.
-    expect(check).toMatch(/^RUN uxplay -v \| grep -F "UxPlay version \$\{UXPLAY_VERSION\};" && /);
-    expect(runtime.indexOf('RUN uxplay -v')).toBeGreaterThan(runtime.indexOf('COPY --from=uxplay /usr/local/bin/uxplay'));
+    // Running it needs every library it links, and it's run the way
+    // airplay.cjs runs it: with the library for its log preloaded.
+    expect(check).toMatch(new RegExp(
+      `^RUN LD_PRELOAD=${escape(LINE_BUFFER_LIBRARY)} _STDBUF_O=L uxplay -v \\| grep -F "UxPlay version \\$\\{UXPLAY_VERSION\\};" && `,
+    ));
+    expect(runtime.indexOf(' uxplay -v ')).toBeGreaterThan(runtime.indexOf('COPY --from=uxplay /usr/local/bin/uxplay'));
+    expect(runtime.indexOf(' uxplay -v ')).toBeGreaterThan(runtime.indexOf(`COPY --from=uxplay /usr/libexec/coreutils/libstdbuf.so ${LINE_BUFFER_LIBRARY}`));
+    // airplay.cjs asks Avahi with it whether it's running (it comes with dbus).
+    expect(check).toContain(' && command -v dbus-send > /dev/null && ');
     expect(check).toContain('gst-inspect-1.0 --exists "$element" || { echo "GStreamer element $element is missing" >&2; exit 1; }');
     const elements = check.match(/ for element in ([^;]+); do /)?.[1].trim().split(/\s+/) ?? [];
     // UxPlay won't start without the app, playback, autodetect, libav and

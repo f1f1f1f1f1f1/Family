@@ -494,10 +494,24 @@ describe('add-on server', () => {
   it('shows parent screens what the AirPlay receiver is doing, and nobody else', async () => {
     const port = await freePort();
     const airplayBase = `http://127.0.0.1:${port}`;
+    // A stand-in for dbus-send: Avahi, running, as dbus-send prints it.
+    const bin = join(dir, 'airplay-bin');
+    mkdirSync(bin, { recursive: true });
+    const reply = (value: string) => `printf 'method return time=1.5 sender=:1.4 -> destination=:1.9 serial=3 reply_serial=2\\n   %s\\n' '${value}'`;
+    writeFileSync(join(bin, 'dbus-send'), [
+      '#!/bin/sh',
+      `echo "$*" >> '${join(bin, 'calls')}'`,
+      'case "$*" in',
+      `  *.GetState) ${reply('int32 2')} ;;`,
+      `  *.GetHostNameFqdn) ${reply('string "family-airplay.local"')} ;;`,
+      '  *) exit 1 ;;',
+      'esac',
+      '',
+    ].join('\n'), { mode: 0o755 });
     const airplayServer = spawn(process.execPath, [join(dir, 'server.cjs')], {
       env: {
-        // Only node on the PATH, so UxPlay can't be found (and nothing starts advertising on the network).
-        PATH: dirname(process.execPath),
+        // Only node and dbus-send on the PATH, so UxPlay can't be found (and nothing starts advertising on the network).
+        PATH: `${bin}:${dirname(process.execPath)}`,
         TMPDIR: join(dir, 'airplay-tmp'),
         NODE_PATH: join(repo, 'node_modules'),
         BEACON_PORT: String(port),
@@ -552,6 +566,8 @@ describe('add-on server', () => {
         error: expect.stringMatching(/isn't installed/),
       });
       expect(startup).toContain("[airplay] UxPlay isn't installed");
+      // It was started once Avahi said it was running.
+      expect(readFileSync(join(bin, 'calls'), 'utf8')).toMatch(/\.GetState\n.*\.GetHostNameFqdn\n/);
       expect((await withCookie(parent, `${airplayBase}/beacon-action/airplay/cover?v=1`)).status).toBe(404);
       expect((await withCookie(displayCookie, `${airplayBase}/beacon-action/airplay`)).status).toBe(403);
 
