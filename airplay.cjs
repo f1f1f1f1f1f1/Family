@@ -21,6 +21,14 @@
  * screen being mirrored, or its music playing (with the track and cover
  * art UxPlay writes to files).
  *
+ * UxPlay advertises the receiver through Avahi's dns_sd library, which
+ * gives up when Avahi isn't on D-Bus yet, and, given the name while Avahi
+ * is still starting, advertises it only once the program has read Avahi's
+ * reply, which UxPlay never does. So UxPlay starts once Avahi is running
+ * (asked over D-Bus with dbus-send). What it registered goes when Avahi
+ * starts over, or takes another host name because another device has its
+ * own, so UxPlay starts again then, once no device is connected.
+ *
  * UxPlay handles whatever any device on the network sends it, so in the
  * add-on it runs as its own user (BEACON_AIRPLAY_UID/GID, set by run.sh),
  * never as root, and can write only its own two folders: one for the files
@@ -53,6 +61,20 @@ const FALLBACK_VIDEO_MS = 30_000;
 const MIN_COVER_BYTES = 128;
 const MAX_COVER_BYTES = 8 * 1024 * 1024;
 const MAX_METADATA_BYTES = 64 * 1024;
+
+/** Avahi's state once it has its host name and advertises what it's given (AVAHI_SERVER_RUNNING). */
+const AVAHI_RUNNING = 2;
+/** How often to ask while waiting for Avahi, and how long before the screens say so. */
+const AVAHI_POLL_MS = 1000;
+const AVAHI_SLOW_MS = 15_000;
+/** How often to check that Avahi is still the one UxPlay registered with, as it was. */
+const AVAHI_WATCH_MS = 10_000;
+const AVAHI_CALL = ['--system', '--print-reply', '--reply-timeout=3000', '--dest=org.freedesktop.Avahi', '/'];
+/**
+ * coreutils' stdbuf library (what `stdbuf -oL` preloads): with _STDBUF_O=L,
+ * UxPlay writes what it prints a line at a time, not a kilobyte at a time.
+ */
+const LINE_BUFFER_LIBRARY = '/usr/local/lib/uxplay/libstdbuf.so';
 
 const ESTABLISHED = '01';
 
@@ -191,6 +213,36 @@ function uxplayArgs({ name, password, filesDir, keyFile }) {
   return args;
 }
 
+/** Which D-Bus connection answered, and the int32 or string it answered with, from dbus-send --print-reply. */
+function parseDbusReply(output) {
+  const text = String(output || '');
+  const sender = /^method return\b.*?\bsender=(:\S+)/m.exec(text);
+  const value = /^\s+(?:int32 (-?\d+)|string "(.*)")\s*$/m.exec(text);
+  if (!sender || !value) return null;
+  return { sender: sender[1], value: value[1] !== undefined ? Number(value[1]) : value[2] };
+}
+
+function askAvahi(method) {
+  return new Promise((resolve) => {
+    childProcess.execFile('dbus-send', [...AVAHI_CALL, `org.freedesktop.Avahi.Server.${method}`], { timeout: 5000 },
+      (err, stdout) => resolve(err ? null : parseDbusReply(stdout)));
+  });
+}
+
+/**
+ * Which Avahi is on D-Bus (its connection, another each time it starts),
+ * its state and, once it's running, its host name; null when it didn't
+ * answer.
+ */
+async function readAvahiState() {
+  const state = await askAvahi('GetState');
+  if (!state || typeof state.value !== 'number') return null;
+  if (state.value !== AVAHI_RUNNING) return { instance: state.sender, state: state.value, host: null };
+  const host = await askAvahi('GetHostNameFqdn');
+  if (!host || host.sender !== state.sender || typeof host.value !== 'string') return null;
+  return { instance: state.sender, state: state.value, host: host.value };
+}
+
 const defaultIo = {
   spawn: childProcess.spawn,
   readFile: (path) => fsp.readFile(path),
@@ -202,6 +254,7 @@ const defaultIo = {
   chown: (path, uid, gid) => fsp.chown(path, uid, gid),
   stat: (path) => fsp.lstat(path),
   readConnections,
+  avahiState: readAvahiState,
   kill: (pid, signal) => process.kill(pid, signal),
 };
 
@@ -252,6 +305,15 @@ function createAirPlay({
   let heartbeatTimer = null;
   let pingTimer = null;
   let ticking = false;
+  let avahiTimer = null;
+  let waitingForAvahi = false;
+  let watchingAvahi = false;
+  /** The Avahi UxPlay registered with, and its host name then. */
+  let avahi = null;
+  /** Why what UxPlay registered is lost since then, if it is. */
+  let avahiChanged = null;
+  /** The UxPlay being stopped to start again for Avahi. */
+  let restarting = null;
 
   let session = null; // { startedAt, video }
   let previousConnections = new Set();
@@ -289,6 +351,10 @@ function createAirPlay({
   function setError(message) {
     error = message;
     publish();
+  }
+
+  function logFailure(err) {
+    log(`AirPlay: ${err && err.message}`);
   }
 
   /**
@@ -398,8 +464,81 @@ function createAirPlay({
     const delay = RESTART_DELAYS_MS[Math.min(failures, RESTART_DELAYS_MS.length) - 1];
     restartTimer = setTimeout(() => {
       restartTimer = null;
-      launch();
+      launchWhenAvahiRuns().catch(logFailure);
     }, delay);
+  }
+
+  /** Start UxPlay once Avahi is running (see the top of this file), however long that takes. */
+  async function launchWhenAvahiRuns() {
+    if (stopping || child || waitingForAvahi) return;
+    waitingForAvahi = true;
+    const since = now();
+    let said = false;
+    let slow = false;
+    let reply = null;
+    try {
+      for (;;) {
+        reply = await io.avahiState().catch(() => null);
+        if (stopping) return;
+        if (reply && reply.state === AVAHI_RUNNING) break;
+        if (!said) {
+          said = true;
+          log('Waiting for Avahi, which lets devices find the receiver, before starting UxPlay.');
+        }
+        if (!slow && now() - since >= AVAHI_SLOW_MS) {
+          slow = true;
+          setError("Avahi, which lets devices find the receiver, hasn't started yet, and UxPlay waits for it.");
+          log(error);
+        }
+        await sleep(AVAHI_POLL_MS);
+        if (stopping) return;
+      }
+    } finally {
+      waitingForAvahi = false;
+    }
+    avahi = { instance: reply.instance, host: reply.host };
+    avahiChanged = null;
+    launch();
+  }
+
+  /**
+   * What UxPlay registered went with the Avahi it registered with, or
+   * still names Avahi's old host name: start it again to register again,
+   * once no device is connected (a connected device doesn't need to find it).
+   */
+  async function watchAvahi() {
+    const proc = child;
+    if (!proc || watchingAvahi || restarting) return;
+    watchingAvahi = true;
+    let reply;
+    try {
+      reply = await io.avahiState().catch(() => null);
+    } finally {
+      watchingAvahi = false;
+    }
+    if (child !== proc || restarting || stopping) return;
+    // No answer is no news: Avahi may just be busy.
+    if (reply && !avahiChanged) {
+      if (reply.instance !== avahi?.instance) {
+        avahiChanged = 'Avahi started over and lost the receiver, so UxPlay is starting again.';
+      } else if (reply.state !== AVAHI_RUNNING || reply.host !== avahi?.host) {
+        avahiChanged = 'Avahi changed its host name, so UxPlay is starting again under the new one.';
+      }
+    }
+    if (!avahiChanged || state !== 'idle') return;
+    restarting = proc;
+    log(avahiChanged);
+    await terminate(proc);
+  }
+
+  /** SIGTERM, then SIGKILL if it's still running 3 seconds later. */
+  async function terminate(proc) {
+    let timer;
+    const exited = new Promise((resolve) => proc.once('exit', resolve));
+    const timeout = new Promise((resolve) => { timer = setTimeout(resolve, 3000, 'timeout'); });
+    proc.kill('SIGTERM');
+    if (await Promise.race([exited, timeout]) === 'timeout') proc.kill('SIGKILL');
+    clearTimeout(timer);
   }
 
   function launch() {
@@ -410,7 +549,14 @@ function createAirPlay({
       proc = io.spawn(binary, args, {
         stdio: ['ignore', 'pipe', 'pipe', 'pipe', 'pipe'],
         // Nothing of the add-on's: UxPlay handles what devices on the network send.
-        env: { PATH: process.env.PATH || '/usr/local/bin:/usr/bin:/bin', HOME: filesDir, LANG: 'C.UTF-8' },
+        env: {
+          PATH: process.env.PATH || '/usr/local/bin:/usr/bin:/bin',
+          HOME: filesDir,
+          LANG: 'C.UTF-8',
+          // Its log as it happens (where the library isn't, it's left out).
+          LD_PRELOAD: LINE_BUFFER_LIBRARY,
+          _STDBUF_O: 'L',
+        },
         ...(user || {}),
       });
     } catch (err) {
@@ -430,10 +576,17 @@ function createAirPlay({
     const end = (message, retry) => {
       if (ended) return;
       ended = true;
+      const planned = restarting === proc;
+      if (planned) restarting = null;
       if (child === proc) child = null;
       io.unlink(paths.pid).catch(() => {});
       if (session) forgetSession();
       if (stopping) return;
+      if (planned) {
+        publish();
+        launchWhenAvahiRuns().catch(logFailure);
+        return;
+      }
       failures = now() - launchedAt >= STEADY_RUN_MS ? 1 : failures + 1;
       setError(message);
       log(message);
@@ -518,10 +671,12 @@ function createAirPlay({
       log(error);
       return;
     }
-    launch();
+    if (stopping) return;
     tickTimer = setInterval(() => { tick().catch((err) => log(`AirPlay status: ${err.message}`)); }, TICK_MS);
     heartbeatTimer = setInterval(() => publish(true), STATUS_HEARTBEAT_MS);
     pingTimer = setInterval(pingScreens, PING_MS);
+    avahiTimer = setInterval(() => { watchAvahi().catch(logFailure); }, AVAHI_WATCH_MS);
+    await launchWhenAvahiRuns();
   }
 
   async function stop() {
@@ -530,16 +685,9 @@ function createAirPlay({
     clearInterval(tickTimer);
     clearInterval(heartbeatTimer);
     clearInterval(pingTimer);
-    restartTimer = tickTimer = heartbeatTimer = pingTimer = null;
-    const proc = child;
-    if (proc) {
-      let timer;
-      const exited = new Promise((resolve) => proc.once('exit', resolve));
-      const timeout = new Promise((resolve) => { timer = setTimeout(resolve, 3000, 'timeout'); });
-      proc.kill('SIGTERM');
-      if (await Promise.race([exited, timeout]) === 'timeout') proc.kill('SIGKILL');
-      clearTimeout(timer);
-    }
+    clearInterval(avahiTimer);
+    restartTimer = tickTimer = heartbeatTimer = pingTimer = avahiTimer = null;
+    if (child) await terminate(child);
     for (const screen of screens.keys()) {
       try { screen.terminate(); } catch { /* gone */ }
     }
@@ -600,4 +748,7 @@ module.exports = {
   receiverName,
   readConnections,
   readUntrustedFile,
+  parseDbusReply,
+  readAvahiState,
+  LINE_BUFFER_LIBRARY,
 };

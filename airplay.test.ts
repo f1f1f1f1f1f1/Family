@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { execFileSync } from 'node:child_process';
 import { EventEmitter } from 'node:events';
-import { mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -22,11 +22,75 @@ const {
   airplayOptionsError,
   receiverName,
   readUntrustedFile,
+  parseDbusReply,
+  readAvahiState,
+  LINE_BUFFER_LIBRARY,
 } = createRequire(import.meta.url)('./airplay.cjs');
 
 const RUN_DIR = '/tmp/airplay';
 /** UxPlay's own folder: the files it writes, and its HOME. */
 const FILES_DIR = `${RUN_DIR}/uxplay`;
+
+/**
+ * What Avahi says about itself: its connection to D-Bus (another each time
+ * it starts), its state (2 once it's running) and then its host name.
+ */
+interface AvahiReply { instance: string; state: number; host: string | null }
+const AVAHI_RUNNING: AvahiReply = { instance: ':1.4', state: 2, host: 'family-airplay.local' };
+
+describe('parseDbusReply', () => {
+  it("reads who answered, and what, from dbus-send's reply", () => {
+    expect(parseDbusReply(
+      'method return time=1727560000.123456 sender=:1.4 -> destination=:1.9 serial=21 reply_serial=2\n   int32 2\n',
+    )).toEqual({ sender: ':1.4', value: 2 });
+    expect(parseDbusReply('method return sender=:1.12 -> destination=:1.30 serial=5 reply_serial=2\n   string "family-airplay-2.local"\n'))
+      .toEqual({ sender: ':1.12', value: 'family-airplay-2.local' });
+  });
+
+  it('has nothing without both', () => {
+    expect(parseDbusReply('')).toBeNull();
+    expect(parseDbusReply('method return sender=:1.4 -> destination=:1.9 serial=21 reply_serial=2\n')).toBeNull();
+    expect(parseDbusReply('   int32 2\n')).toBeNull();
+  });
+});
+
+describe('readAvahiState', () => {
+  it("asks Avahi on the system bus with dbus-send, and has nothing while Avahi isn't on it", async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'family-dbus-'));
+    const calls = join(dir, 'calls');
+    /** A dbus-send that notes what it's asked, and answers as `answers` says. */
+    const script = (answers: string) => {
+      writeFileSync(calls, '');
+      writeFileSync(join(dir, 'dbus-send'), `#!/bin/sh\necho "$*" >> '${calls}'\ncase "$*" in\n${answers}\nesac\n`);
+      chmodSync(join(dir, 'dbus-send'), 0o755);
+    };
+    const reply = (sender: string, value: string) =>
+      `echo 'method return time=1.5 sender=${sender} -> destination=:1.9 serial=21 reply_serial=2'; echo '   ${value}'`;
+    const ask = (method: string) =>
+      `--system --print-reply --reply-timeout=3000 --dest=org.freedesktop.Avahi / org.freedesktop.Avahi.Server.${method}`;
+    vi.stubEnv('PATH', `${dir}:${process.env.PATH}`);
+    try {
+      script(`*.GetState) ${reply(':1.4', 'int32 2')} ;;\n*.GetHostNameFqdn) ${reply(':1.4', 'string "family-airplay.local"')} ;;`);
+      expect(await readAvahiState()).toEqual({ instance: ':1.4', state: 2, host: 'family-airplay.local' });
+      expect(readFileSync(calls, 'utf8').trim().split('\n')).toEqual([ask('GetState'), ask('GetHostNameFqdn')]);
+
+      // Still claiming its host name: which one doesn't matter yet.
+      script(`*.GetState) ${reply(':1.4', 'int32 1')} ;;`);
+      expect(await readAvahiState()).toEqual({ instance: ':1.4', state: 1, host: null });
+      expect(readFileSync(calls, 'utf8').trim().split('\n')).toEqual([ask('GetState')]);
+
+      // Another Avahi answered the second question.
+      script(`*.GetState) ${reply(':1.4', 'int32 2')} ;;\n*.GetHostNameFqdn) ${reply(':1.7', 'string "family-airplay.local"')} ;;`);
+      expect(await readAvahiState()).toBeNull();
+
+      script("*) echo 'Error org.freedesktop.DBus.Error.ServiceUnknown: The name org.freedesktop.Avahi was not provided by any .service files' >&2; exit 1 ;;");
+      expect(await readAvahiState()).toBeNull();
+    } finally {
+      vi.unstubAllEnvs();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
 
 describe('parseEstablishedInodes', () => {
   it('lists the inodes of established TCP connections', () => {
@@ -165,6 +229,7 @@ function fakeIo() {
   const alive = new Set<number>();
   let connections: Set<string> | null = new Set();
   let spawnError: (Error & { code?: string }) | null = null;
+  let avahi: AvahiReply | null = AVAHI_RUNNING;
   const io = {
     spawn: vi.fn((_command: string, _args: string[], _options: unknown) => {
       const child = new FakeChild(1000 + children.length);
@@ -204,6 +269,7 @@ function fakeIo() {
       return { size: file.data.length, mtimeMs: file.version, isFile: () => !file.link };
     },
     readConnections: async () => connections,
+    avahiState: vi.fn(async () => avahi),
     kill: (pid: number, signal: string | number) => {
       if (!alive.has(pid)) throw Object.assign(new Error('ESRCH'), { code: 'ESRCH' });
       killed.push([pid, signal]);
@@ -220,6 +286,8 @@ function fakeIo() {
     /** A link UxPlay put where it should have written a file. */
     link: (path: string) => { files.set(path, { data: Buffer.from('/data/options.json'), version: ++version, link: true }); },
     setConnections: (value: Set<string> | null) => { connections = value; },
+    /** What Avahi answers now (null: it isn't on D-Bus, or didn't answer). */
+    setAvahi: (value: AvahiReply | null) => { avahi = value; },
     failSpawn: (error: (Error & { code?: string }) | null) => { spawnError = error; },
     write: (path: string, data: string | Buffer) => io.writeFile(path, data),
   };
@@ -322,6 +390,17 @@ describe('createAirPlay', () => {
     }
   });
 
+  it('has UxPlay write its log a line at a time, as it happens', async () => {
+    // UxPlay doesn't flush what it prints: down a pipe, it would reach the
+    // add-on's log a kilobyte at a time, or only once UxPlay stops.
+    const airplay = make();
+    await airplay.start();
+    const { env } = fake.io.spawn.mock.calls[0][2] as { env: Record<string, string> };
+    expect(LINE_BUFFER_LIBRARY).toBe('/usr/local/lib/uxplay/libstdbuf.so');
+    expect(env).toMatchObject({ LD_PRELOAD: LINE_BUFFER_LIBRARY, _STDBUF_O: 'L' });
+    await airplay.stop();
+  });
+
   it('runs UxPlay as its own user, which can write only its own folders', async () => {
     const airplay = make({ uid: 101, gid: 102, root: true, keyFile: '/data/airplay/uxplay.pem' });
     await airplay.start();
@@ -377,6 +456,124 @@ describe('createAirPlay', () => {
     await tick(1000);
     expect(fake.io.spawn).toHaveBeenCalledTimes(3);
     await airplay.stop();
+  });
+
+  it("starts UxPlay once Avahi is running: a name it registers before then is never advertised", async () => {
+    // Avahi's dns_sd library holds a registration made while Avahi is
+    // still starting until Avahi is ready, and then needs UxPlay to read
+    // its reply to go ahead, which UxPlay never does.
+    fake.setAvahi(null); // not on D-Bus yet
+    const airplay = make();
+    const starting = airplay.start();
+    await tick(0);
+    expect(fake.io.spawn).not.toHaveBeenCalled();
+    expect(logs).toContainEqual(expect.stringMatching(/^Waiting for Avahi/));
+    fake.setAvahi({ instance: ':1.4', state: 1, host: null }); // on D-Bus, still claiming its host name
+    await tick(1000);
+    await tick(1000);
+    expect(fake.io.spawn).not.toHaveBeenCalled();
+    expect(airplay.status()).toMatchObject({ available: false });
+    fake.setAvahi(AVAHI_RUNNING);
+    await tick(1000);
+    await starting;
+    expect(fake.io.spawn).toHaveBeenCalledTimes(1);
+    expect(airplay.status()).toMatchObject({ available: true });
+    expect(airplay.status().error).toBeUndefined();
+    await airplay.stop();
+  });
+
+  it("says so when Avahi doesn't start", async () => {
+    fake.setAvahi(null);
+    const airplay = make();
+    void airplay.start();
+    await tick(14_000);
+    expect(airplay.status()).toMatchObject({ available: false });
+    expect(airplay.status().error).toBeUndefined();
+    await tick(2000);
+    expect(airplay.status()).toMatchObject({ available: false, error: expect.stringMatching(/Avahi/) });
+    expect(logs).toContainEqual(airplay.status().error);
+    fake.setAvahi(AVAHI_RUNNING);
+    await tick(1000);
+    expect(fake.io.spawn).toHaveBeenCalledTimes(1);
+    expect(airplay.status()).toMatchObject({ available: true });
+    expect(airplay.status().error).toBeUndefined();
+    await airplay.stop();
+  });
+
+  it('starts UxPlay again when Avahi starts over or takes another host name, once no device is connected', async () => {
+    const airplay = make();
+    await airplay.start();
+    const screen = fakeScreen();
+    airplay.addScreen(screen);
+    await fake.write(`${FILES_DIR}/dacp`, 'ABC\n123\n'); // a device is connected
+    await tick();
+    expect(airplay.status().state).toBe('connected');
+
+    // Avahi restarted: what UxPlay registered went with it.
+    fake.setAvahi({ ...AVAHI_RUNNING, instance: ':1.20' });
+    await tick(20_000);
+    expect(fake.children[0].signals).toEqual([]); // the connected device doesn't need to find it
+    await fake.io.unlink(`${FILES_DIR}/dacp`);
+    await tick(10_000);
+    expect(fake.children[0].signals).toEqual(['SIGTERM']);
+    expect(fake.io.spawn).toHaveBeenCalledTimes(2);
+    expect(logs).toContainEqual(expect.stringMatching(/^Avahi started over/));
+    expect(logs.filter((line) => /UxPlay stopped/.test(line))).toEqual([]);
+    expect(airplay.status()).toMatchObject({ available: true });
+    expect(airplay.status().error).toBeUndefined();
+    expect(screen.texts.map((text) => JSON.parse(text).error).filter(Boolean)).toEqual([]);
+
+    // Another device has Avahi's host name: Avahi takes another, and what
+    // UxPlay registered still points at the old one.
+    fake.setAvahi({ instance: ':1.20', state: 3, host: null });
+    await tick(10_000);
+    expect(fake.children[1].signals).toEqual(['SIGTERM']);
+    expect(fake.io.spawn).toHaveBeenCalledTimes(2); // until Avahi's running again
+    fake.setAvahi({ instance: ':1.20', state: 2, host: 'family-airplay-2.local' });
+    await tick(1000);
+    expect(fake.io.spawn).toHaveBeenCalledTimes(3);
+    // The same, over between two looks.
+    fake.setAvahi({ instance: ':1.20', state: 2, host: 'family-airplay-3.local' });
+    await tick(10_000);
+    expect(fake.children[2].signals).toEqual(['SIGTERM']);
+    expect(fake.io.spawn).toHaveBeenCalledTimes(4);
+    expect(logs).toContainEqual(expect.stringMatching(/^Avahi changed its host name/));
+    await tick(30_000);
+    expect(fake.io.spawn).toHaveBeenCalledTimes(4);
+
+    // Starting again for Avahi isn't UxPlay failing: after a crash, it's started again a second later.
+    fake.children[3].emit('exit', 1, null);
+    await tick(1000);
+    expect(fake.io.spawn).toHaveBeenCalledTimes(5);
+    await airplay.stop();
+  });
+
+  it("leaves UxPlay running while Avahi doesn't answer", async () => {
+    const airplay = make();
+    await airplay.start();
+    fake.setAvahi(null); // dbus-send failed or timed out
+    await tick(30_000);
+    fake.setAvahi(AVAHI_RUNNING);
+    await tick(30_000);
+    expect(fake.children[0].signals).toEqual([]);
+    expect(fake.io.spawn).toHaveBeenCalledTimes(1);
+    expect(fake.io.avahiState.mock.calls.length).toBeGreaterThanOrEqual(6);
+    await airplay.stop();
+  });
+
+  it('stops waiting for Avahi when stopped', async () => {
+    fake.setAvahi(null);
+    const airplay = make();
+    const starting = airplay.start();
+    await tick(3000);
+    await airplay.stop();
+    await tick(1000);
+    await starting;
+    const asked = fake.io.avahiState.mock.calls.length;
+    fake.setAvahi(AVAHI_RUNNING);
+    await tick(60_000);
+    expect(fake.io.spawn).not.toHaveBeenCalled();
+    expect(fake.io.avahiState.mock.calls.length).toBe(asked);
   });
 
   it('stops a UxPlay left running by an earlier server, but nothing else', async () => {

@@ -22,7 +22,8 @@ RUN npm run build
 # links against the libraries the runtime stage installs. NO_MARCH_NATIVE:
 # on x86 it would otherwise be built for the building machine's own CPU,
 # which a machine a backup is restored onto may lack. Only the program, its
-# licences and where its source is reach the add-on.
+# licences, where its source is and coreutils' stdbuf library (see below)
+# reach the add-on.
 FROM ${BUILD_FROM} AS uxplay
 ARG UXPLAY_VERSION
 ARG UXPLAY_SHA512
@@ -30,7 +31,8 @@ ARG UXPLAY_SHA512
 # openssl-dev and musl-dev need Alpine's current ones: naming them replaces
 # those pins here (the add-on itself keeps the base's).
 RUN apk add --no-cache libcrypto3 libssl3 musl \
-    build-base cmake pkgconf openssl-dev libplist-dev avahi-dev gstreamer-dev gst-plugins-base-dev
+    build-base cmake pkgconf openssl-dev libplist-dev avahi-dev gstreamer-dev gst-plugins-base-dev \
+    coreutils
 WORKDIR /src
 RUN curl -fsSL -o uxplay.tar.gz "https://github.com/FDH2/UxPlay/archive/refs/tags/v${UXPLAY_VERSION}.tar.gz" \
   && echo "${UXPLAY_SHA512}  uxplay.tar.gz" | sha512sum -c - \
@@ -63,12 +65,19 @@ RUN apk add --no-cache nodejs \
 
 COPY --from=uxplay /usr/local/bin/uxplay /usr/local/bin/uxplay
 COPY --from=uxplay /usr/share/licenses/uxplay/ /usr/share/licenses/uxplay/
+# UxPlay doesn't flush what it prints, so down a pipe its log would reach
+# the add-on's a kilobyte at a time: airplay.cjs preloads this library
+# (what `stdbuf -oL` does) to have it written a line at a time. Only the
+# library: the rest of coreutils would take the place of BusyBox's commands.
+COPY --from=uxplay /usr/libexec/coreutils/libstdbuf.so /usr/local/lib/uxplay/libstdbuf.so
 # Fails the build, rather than AirPlay on the device, if UxPlay can't start
-# (it needs every library it links) or GStreamer lacks something it uses:
-# the plugins it checks for (app, playback, autodetect, libav,
-# videoparsersbad) and the elements of its pipelines, with what airplay.cjs
-# adds to them.
-RUN uxplay -v | grep -F "UxPlay version ${UXPLAY_VERSION};" \
+# (it needs every library it links, and runs with that one preloaded),
+# airplay.cjs can't ask Avahi whether it's running (with dbus-send, from
+# dbus) or GStreamer lacks something UxPlay uses: the plugins it checks for
+# (app, playback, autodetect, libav, videoparsersbad) and the elements of
+# its pipelines, with what airplay.cjs adds to them.
+RUN LD_PRELOAD=/usr/local/lib/uxplay/libstdbuf.so _STDBUF_O=L uxplay -v | grep -F "UxPlay version ${UXPLAY_VERSION};" \
+  && command -v dbus-send > /dev/null \
   && for element in appsrc playbin autoaudiosink queue h264parse rtph264pay \
       avdec_aac avdec_alac audioconvert audioresample volume rtpL16pay rtpstreampay fdsink; do \
       GST_REGISTRY=/tmp/gst-registry.bin gst-inspect-1.0 --exists "$element" || { echo "GStreamer element $element is missing" >&2; exit 1; }; \

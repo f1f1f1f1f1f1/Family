@@ -30,7 +30,16 @@ flowchart LR
 - **airplay.cjs** runs UxPlay (again, after it stops, with a growing
   delay), and works out the status from what it writes: nobody connected,
   a device connected, its screen mirrored, or its music playing, with the
-  track and cover art.
+  track and cover art. It starts UxPlay once Avahi is running. UxPlay
+  registers the receiver through Avahi's `dns_sd` library. That library
+  gives up if Avahi isn't on D-Bus yet. If Avahi is still starting, it
+  advertises the name only once the program reads Avahi's reply, and
+  UxPlay never does, so the receiver would never appear. airplay.cjs asks
+  Avahi with `dbus-send` every second until it's running (the screen says
+  so after 15 s), and every 10 s after that. If Avahi has started over,
+  or changed its host name, what UxPlay registered is gone, so UxPlay
+  starts again once no device is connected. UxPlay's output reaches the
+  add-on's log a line at a time, as it's written.
 - **airplay-relay.cjs** turns the RTP into H.264 access units (SPS and PPS
   with every keyframe) and PCM (44.1 kHz, stereo, 16-bit big-endian), and
   sends them to every AirPlay screen. A screen that connects is sent the
@@ -67,9 +76,14 @@ flowchart LR
 
 The Dockerfile builds UxPlay from its release source in a stage of its
 own, on the add-on's base image (Alpine 3.20), and copies only the
-`uxplay` program and its licences into the add-on. The Supervisor builds
-this add-on on each Home Assistant machine (it doesn't use a published
-image), so UxPlay compiles there, on install and on updates.
+`uxplay` program and its licences into the add-on, with coreutils'
+`libstdbuf.so`. UxPlay doesn't flush what it prints, so down a pipe its
+log would arrive a kilobyte at a time; airplay.cjs preloads that library
+into it (what `stdbuf -oL` does) to have it written a line at a time.
+The rest of coreutils stays out, as it would take the place of BusyBox's
+commands. The Supervisor builds this add-on on each Home Assistant
+machine (it doesn't use a published image), so UxPlay compiles there, on
+install and on updates.
 
 - **Version and source:** UxPlay 1.73.7, from
   `https://github.com/FDH2/UxPlay/archive/refs/tags/v1.73.7.tar.gz`. The
@@ -88,16 +102,17 @@ image), so UxPlay compiles there, on install and on updates.
   have since moved past, so the stage updates those three first. The
   add-on keeps the base's, and UxPlay runs with them: they're only
   bug-fix releases apart, which keep the same interface.
-- **In the add-on:** D-Bus, Avahi and its `dns_sd` compatibility library,
-  libplist, and GStreamer with its base, good, bad and libav plugins.
+- **In the add-on:** D-Bus (airplay.cjs asks Avahi things with its
+  `dbus-send`), Avahi and its `dns_sd` compatibility library, libplist,
+  and GStreamer with its base, good, bad and libav plugins.
   Avahi's own SSH and SFTP service files are removed: it would otherwise
   advertise them, and the add-on has neither. UxPlay runs as the
   `airplay` user, whose IDs (1500:1500) are the same in every build, so
   its key in `/data/airplay` stays its own after an update.
 - **Checked while building:** the build fails, rather than AirPlay on the
-  device, if `uxplay -v` doesn't run (it needs every library it links) or
-  GStreamer lacks an element UxPlay or airplay.cjs's `-vrtp`/`-artp`
-  pipelines use.
+  device, if `uxplay -v` doesn't run with `libstdbuf.so` preloaded (it
+  needs every library it links), `dbus-send` is missing, or GStreamer
+  lacks an element UxPlay or airplay.cjs's `-vrtp`/`-artp` pipelines use.
 - **Licence:** UxPlay is GPL-3.0. The image has its licences, and where
   its source is (the archive above, unmodified, with its SHA-512), in
   `/usr/share/licenses/uxplay/`; so does the standalone image the release
@@ -152,6 +167,20 @@ screen. The add-on stays on the host's network, which is part of its
 `config.yaml`; with `host_network` taken out of that, run.sh keeps the
 receiver off by itself.
 
+### If a device doesn't list it
+
+- The device has to be on the same network as the Home Assistant
+  machine. mDNS doesn't cross into another network, VLAN or guest Wi-Fi
+  unless the router passes it on.
+- In the add-on's Log tab, after it starts, Avahi says
+  `Server startup complete. Host name is family-airplay.local.`, and
+  UxPlay's lines (prefixed `[airplay]`) follow, with no `DNS-SD` error.
+  If `Waiting for Avahi` isn't followed by UxPlay's lines, Avahi didn't
+  start. Avahi also warns about another mDNS stack on the host: that's
+  Home Assistant's own, and expected.
+- Home Assistant may offer to add the receiver as an Apple TV (its Apple
+  TV integration finds AirPlay receivers). Ignore it.
+
 ## What protects it
 
 - UxPlay runs as the `airplay` user, never root, and can write only its
@@ -186,13 +215,16 @@ receiver off by itself.
 
 ## Limitations
 
-- **Not tested on a Home Assistant machine, or with a real iPhone, iPad
-  or Mac**, on an Echo Show, or in the Home Assistant app. CI builds the
-  image with UxPlay for amd64 only; aarch64 and armv7 builds haven't been
-  tried, though Alpine compiles its own UxPlay package, unpatched, for
-  both. The browser side was checked once, in desktop Chrome, with an
-  H.264 stream made by the browser's own encoder; the catch-up playback
-  rate is covered only by unit tests.
+- **Not yet seen working with a real iPhone, iPad or Mac**, on an Echo
+  Show, or in the Home Assistant app. It has been installed on one Home
+  Assistant OS machine (x86-64), where devices didn't list it at first:
+  UxPlay registered the receiver while Avahi was still starting, which
+  airplay.cjs now waits for. CI builds the image with UxPlay for amd64
+  only; aarch64 and armv7 builds haven't been tried, though Alpine
+  compiles its own UxPlay package, unpatched, for both. The browser side
+  was checked once, in desktop Chrome, with an H.264 stream made by the
+  browser's own encoder; the catch-up playback rate is covered only by
+  unit tests.
 - UxPlay picks new ports each time it starts, so a firewall on the Home
   Assistant machine that only lets known ports through (possible on a
   Supervised install) blocks it.
