@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, act } from '@testing-library/react';
 import { WeatherView } from './WeatherView';
-import { getWeatherForecast } from '../api/ha-services';
+import { findWeatherEntity, getWeatherForecast } from '../api/ha-services';
 
 vi.mock('../api/ha-rest', () => ({ hasToken: () => true }));
 vi.mock('../utils/display-sleep', () => ({ refreshWhileAwake: () => () => {} }));
@@ -76,5 +76,24 @@ describe('WeatherView', () => {
     render(<WeatherView />);
     expect(await screen.findByText('Today')).toBeInTheDocument();
     expect(screen.getByText('Mon')).toBeInTheDocument();
+  });
+
+  it('keeps the newest reading when an older refresh finishes last', async () => {
+    const reading = (temperature: number) =>
+      ({ entity_id: 'weather.home', state: 'sunny', attributes: { temperature, temperature_unit: '°C' } }) as never;
+    let finishSlow: (value: never) => void = () => {};
+    render(<WeatherView />);
+    expect(await screen.findByText('18°')).toBeInTheDocument();
+
+    vi.mocked(findWeatherEntity)
+      .mockImplementationOnce(() => new Promise((resolve) => { finishSlow = resolve; }))
+      .mockImplementationOnce(async () => reading(25));
+    fireEvent.click(screen.getByRole('button', { name: 'Refresh weather' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Refresh weather' }));
+    expect(await screen.findByText('25°')).toBeInTheDocument();
+
+    await act(async () => finishSlow(reading(10)));
+    expect(screen.getByText('25°')).toBeInTheDocument();
+    expect(screen.queryByText('10°')).not.toBeInTheDocument();
   });
 });

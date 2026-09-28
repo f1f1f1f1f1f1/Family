@@ -584,6 +584,26 @@ describe('add-on server', () => {
     })).status).toBe(200);
   });
 
+  // Standalone mode counted every browser's bad PINs together, so five
+  // wrong PINs on one device (a child at the wall display) locked the
+  // parents out on every other device for 15 minutes.
+  it('counts bad PINs per browser in standalone mode', async () => {
+    const attempt = (pin: string, cookie?: string) => globalThis.fetch(`${base}/beacon-auth/parent`, {
+      method: 'POST',
+      headers: { Authorization: basicAuth, ...(cookie ? { Cookie: cookie } : {}) },
+      body: JSON.stringify({ pin }),
+    });
+    const first = await attempt('000000');
+    expect(first.status).toBe(401);
+    const device = first.headers.get('set-cookie')?.split(';')[0] ?? '';
+    expect(device).toMatch(/^beacon_device=[a-f0-9]{32}$/);
+    expect(first.headers.get('set-cookie')).toContain('HttpOnly');
+    for (let i = 0; i < 4; i++) expect((await attempt('000000', device)).status).toBe(401);
+    expect((await attempt('654321', device)).status).toBe(429);
+
+    expect((await attempt('654321')).status).toBe(200);
+  });
+
   it('enforces the 512-key quota under concurrent first writes', async () => {
     const existing = readdirSync(join(dir, 'data')).filter((name) => name.endsWith('.json')).length;
     const results: Response[] = [];

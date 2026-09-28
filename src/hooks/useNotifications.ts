@@ -17,7 +17,8 @@ export function useNotifications(
   enabled = true,
   minutesBefore = 10,
 ) {
-  // Track which event IDs we've already notified about to avoid duplicates
+  // Events already notified about, by id and start time, so an event that
+  // is moved gets a reminder for its new time.
   const notifiedRef = useRef<Set<string>>(new Set());
 
   // Request notification permission on mount
@@ -30,16 +31,18 @@ export function useNotifications(
 
   const checkUpcoming = useCallback(() => {
     const now = Date.now();
+    const reminderKey = (event: CalendarEvent) => `${event.id}@${new Date(event.start).getTime()}`;
 
     for (const event of events) {
       if (event.allDay) continue;
 
       const eventStart = new Date(event.start).getTime();
       const diff = eventStart - now;
+      const key = reminderKey(event);
 
       // Starts within `minutesBefore` and hasn't started yet, and we haven't notified
-      if (diff > 0 && diff <= minutesBefore * 60_000 && !notifiedRef.current.has(event.id)) {
-        notifiedRef.current.add(event.id);
+      if (diff > 0 && diff <= minutesBefore * 60_000 && !notifiedRef.current.has(key)) {
+        notifiedRef.current.add(key);
 
         const minutesUntil = Math.round(diff / 60_000);
         const body = minutesUntil <= 1
@@ -63,11 +66,11 @@ export function useNotifications(
       }
     }
 
-    // Prune old notification IDs for events that have already passed
-    const activeIds = new Set(events.map((e) => e.id));
-    for (const id of notifiedRef.current) {
-      if (!activeIds.has(id)) {
-        notifiedRef.current.delete(id);
+    // Forget events that are gone or have moved
+    const activeKeys = new Set(events.map(reminderKey));
+    for (const key of notifiedRef.current) {
+      if (!activeKeys.has(key)) {
+        notifiedRef.current.delete(key);
       }
     }
   }, [events, getClient, minutesBefore]);

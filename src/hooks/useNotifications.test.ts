@@ -37,4 +37,17 @@ describe('useNotifications', () => {
     renderHook(() => useNotifications(events, () => null, true, 10));
     expect(shown).toHaveLength(2);
   });
+
+  it('notifies once per event, and again after the event is moved', () => {
+    const { rerender } = renderHook(({ events }) => useNotifications(events, () => null, true, 10), {
+      initialProps: { events: [at('dentist', '2026-09-26T15:55:00')] },
+    });
+    rerender({ events: [at('dentist', '2026-09-26T15:55:00')] });
+    expect(shown).toEqual(['dentist']);
+
+    rerender({ events: [at('dentist', '2026-09-26T17:00:00')] });
+    vi.setSystemTime(new Date(2026, 8, 26, 16, 55));
+    rerender({ events: [at('dentist', '2026-09-26T17:00:00')] });
+    expect(shown).toEqual(['dentist', 'dentist']);
+  });
 });

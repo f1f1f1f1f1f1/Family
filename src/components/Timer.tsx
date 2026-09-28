@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { Play, Pause, RotateCcw, Flag, X, Plus, Volume2, BellOff, BellRing } from 'lucide-react';
+import { loadSavedStopwatch, loadSavedTimers, saveStopwatch, saveTimers, type SavedTimer } from '../utils/saved-timers';
 import '../styles/timer.css';
 
 const PRESETS = [
@@ -155,12 +156,58 @@ function formatTime(totalMs: number): string {
 
 let nextTimerId = 1;
 
+/**
+ * The timers saved before the page was reloaded, counted on to now. One
+ * that was ringing, or ran out meanwhile, rings on the first tick.
+ */
+function restoreTimers(): TimerInstance[] {
+  const now = performance.now();
+  return loadSavedTimers().map((saved) => {
+    const ranOn = saved.running ? Math.max(0, Date.now() - saved.savedAt) : 0;
+    const idNumber = /^t-(\d+)-/.exec(saved.id);
+    if (idNumber) nextTimerId = Math.max(nextTimerId, Number(idNumber[1]) + 1);
+    return {
+      id: saved.id,
+      name: saved.name,
+      totalMs: saved.totalMs,
+      startedAt: now,
+      pausedElapsed: saved.finished ? saved.totalMs : Math.min(saved.totalMs, saved.elapsedMs + ranOn),
+      running: saved.running || saved.finished,
+      finished: false,
+    };
+  });
+}
+
+function toSaved(t: TimerInstance): SavedTimer {
+  return {
+    id: t.id,
+    name: t.name,
+    totalMs: t.totalMs,
+    elapsedMs: t.running ? t.pausedElapsed + (performance.now() - t.startedAt) : t.pausedElapsed,
+    savedAt: Date.now(),
+    running: t.running,
+    finished: t.finished,
+  };
+}
+
+/** The stopwatch saved before the page was reloaded, counted on to now if it was running. */
+function restoreStopwatch() {
+  const saved = loadSavedStopwatch();
+  const ranOn = saved?.running ? Math.max(0, Date.now() - saved.savedAt) : 0;
+  return {
+    running: saved?.running ?? false,
+    elapsedMs: (saved?.elapsedMs ?? 0) + ranOn,
+    startedAt: performance.now(),
+    laps: saved?.laps ?? [],
+  };
+}
+
 export function Timer({ compact = false, shown = true, onShow }: TimerProps) {
   const [mode, setMode] = useState<TimerMode>('timers');
   const [sound, setSound] = useState<SoundName>(getStoredSound);
 
   // --- Multi-timer state ---
-  const [timers, setTimers] = useState<TimerInstance[]>([]);
+  const [timers, setTimers] = useState<TimerInstance[]>(restoreTimers);
   const [newName, setNewName] = useState('');
   const [selectedPreset, setSelectedPreset] = useState(300); // 5m default
   const beeped = useRef<Set<string>>(new Set());
@@ -194,6 +241,12 @@ export function Timer({ compact = false, shown = true, onShow }: TimerProps) {
     }
   }, []);
 
+  // Saved on every change, so a reload doesn't lose them (not on every
+  // tick: a running timer's progress is counted on from when it was saved).
+  useEffect(() => {
+    saveTimers(timers.map(toSaved));
+  }, [timers]);
+
   // Cleanup all loops on unmount
   useEffect(() => {
     const loopIntervals = loopIntervalsRef.current;
@@ -203,12 +256,13 @@ export function Timer({ compact = false, shown = true, onShow }: TimerProps) {
     };
   }, []);
 
-  // --- Stopwatch state ---
-  const [swRunning, setSwRunning] = useState(false);
-  const [swElapsed, setSwElapsed] = useState(0);
-  const [laps, setLaps] = useState<number[]>([]);
-  const swStartRef = useRef<number>(0);
-  const swBaseRef = useRef<number>(0);
+  // --- Stopwatch state (restored after a reload, like the timers) ---
+  const [restoredSw] = useState(restoreStopwatch);
+  const [swRunning, setSwRunning] = useState(restoredSw.running);
+  const [swElapsed, setSwElapsed] = useState(restoredSw.elapsedMs);
+  const [laps, setLaps] = useState<number[]>(restoredSw.laps);
+  const swStartRef = useRef<number>(restoredSw.startedAt);
+  const swBaseRef = useRef<number>(restoredSw.elapsedMs);
 
   // We need a ref for sound so the tick callback always sees the latest value
   const soundRef = useRef(sound);
@@ -316,6 +370,19 @@ export function Timer({ compact = false, shown = true, onShow }: TimerProps) {
     const interval = setInterval(redraw, 250);
     return () => clearInterval(interval);
   }, [swRunning, shown, swReading]);
+
+  // Saved on start, pause and lap, so a reload doesn't lose it (a running
+  // one's time is counted on from when it was saved). Reset, which always
+  // sets a new laps array, forgets it.
+  useEffect(() => {
+    const cleared = !swRunning && swBaseRef.current === 0 && laps.length === 0;
+    saveStopwatch(cleared ? null : {
+      elapsedMs: swRunning ? swReading() : swBaseRef.current,
+      savedAt: Date.now(),
+      running: swRunning,
+      laps,
+    });
+  }, [swRunning, laps, swReading]);
 
   const swStart = useCallback(() => {
     swStartRef.current = performance.now();

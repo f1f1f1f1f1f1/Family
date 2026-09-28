@@ -61,6 +61,10 @@ Tap a preset button to set the countdown duration. The active preset is highligh
 
 Tap the **Reset** button (rotate icon) to clear the timer and return to the preset selection screen.
 
+### After a reload
+
+Timers are kept in the browser, so reloading the page (an add-on update reloads it too) doesn't lose them: running ones keep counting, paused ones stay paused, and one that ran out in the meantime rings. The stopwatch is kept the same way, with its laps.
+
 ---
 
 ## Stopwatch mode
@@ -71,7 +75,7 @@ The stopwatch counts up from zero with no limit.
 
 Tap the **Stopwatch** tab at the top of the timer panel. The mode switcher shows two buttons: "Timer" and "Stopwatch".
 
-Switching modes resets the current timer.
+Switching modes doesn't stop or clear anything: the timers keep counting down (and ring) while the stopwatch shows, and the stopwatch keeps counting while the timers show.
 
 ### Using the stopwatch
 
@@ -90,7 +94,7 @@ While the stopwatch is running, a **Flag** button appears next to the Pause butt
    - Elapsed time at the moment the lap was recorded
 3. Laps are shown in chronological order
 
-Laps are cleared when the stopwatch is reset.
+Laps are cleared when the stopwatch is reset. Until then, the time and laps are kept over a page reload, and a running stopwatch keeps counting.
 
 ---
 
@@ -133,7 +137,3 @@ The display uses the `performance.now()` API for accurate timing, updating via `
 The timer uses `performance.now()` for high-resolution timing. If the display appears to skip or lag:
 1. The device may be under heavy load — close other apps/tabs
 2. The `requestAnimationFrame` updates at the display's refresh rate (usually 60fps), so the visual display updates every ~16ms
-
-### Switching modes resets the timer
-
-This is by design. Switching between countdown and stopwatch modes clears the current time, laps, and finished state.

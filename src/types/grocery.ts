@@ -7,15 +7,6 @@ export interface GroceryItem {
   added_by?: string;
 }
 
-export type MealType = 'breakfast' | 'lunch' | 'dinner';
-
-export interface MealPlanEntry {
-  date: string;
-  meal_type: MealType;
-  recipe_name: string;
-  notes?: string;
-}
-
 export interface GroceryList {
   id: string;
   name: string;

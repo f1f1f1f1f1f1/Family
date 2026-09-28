@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { format, parseISO, isSameDay } from 'date-fns';
 import { RefreshCw, Droplets, Wind, Thermometer, Gauge, Clock, CalendarDays } from 'lucide-react';
 import { weatherIcon, conditionLabel } from '../types/weather-icons';
@@ -76,19 +76,27 @@ export function WeatherView() {
   const [hourlyLoading, setHourlyLoading] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // Only the latest fetch may set state: Refresh or the 10-minute refresh
+  // can start one while another is in flight, and the older one must not
+  // overwrite the newer reading.
+  const requestId = useRef(0);
 
-  const fetchHourly = useCallback(async (entityId: string) => {
+  const fetchHourly = useCallback(async (entityId: string, isCurrent: () => boolean) => {
     try {
       setHourlyLoading(true);
-      setHourly(await getWeatherForecast<HourlyItem>(entityId, 'hourly'));
+      const items = await getWeatherForecast<HourlyItem>(entityId, 'hourly');
+      if (isCurrent()) setHourly(items);
     } catch {
-      setHourly([]);
+      if (isCurrent()) setHourly([]);
     } finally {
-      setHourlyLoading(false);
+      if (isCurrent()) setHourlyLoading(false);
     }
   }, []);
 
   const fetchData = useCallback(async () => {
+    const myRequest = ++requestId.current;
+    const isCurrent = () => myRequest === requestId.current;
+
     if (!hasToken()) {
       setError('Not connected to Home Assistant');
       setLoading(false);
@@ -100,6 +108,7 @@ export function WeatherView() {
       setError(null);
 
       const entity = await findWeatherEntity();
+      if (!isCurrent()) return;
       if (!entity) {
         setError('No weather entity found');
         setLoading(false);
@@ -124,18 +133,21 @@ export function WeatherView() {
 
       // Fetch daily forecast
       try {
-        setForecast((await getWeatherForecast<ForecastItem>(entityId, 'daily')).slice(0, 7));
+        const daily = await getWeatherForecast<ForecastItem>(entityId, 'daily');
+        if (!isCurrent()) return;
+        setForecast(daily.slice(0, 7));
       } catch {
+        if (!isCurrent()) return;
         // Forecast not available for this entity
         setForecast([]);
       }
 
       // Fetch hourly forecast
-      await fetchHourly(entityId);
+      await fetchHourly(entityId, isCurrent);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to fetch weather');
+      if (isCurrent()) setError(err instanceof Error ? err.message : 'Failed to fetch weather');
     } finally {
-      setLoading(false);
+      if (isCurrent()) setLoading(false);
     }
   }, [fetchHourly]);
 

@@ -131,6 +131,20 @@ describe('App: event reminders', () => {
   });
 });
 
+describe('App: timers after a reload', () => {
+  // The Timer screen isn't mounted until it's opened, so a timer saved
+  // before a reload wouldn't ring until someone opened it.
+  it('rings a saved timer that ran out, on the dashboard', async () => {
+    localStorage.setItem('beacon-timers', JSON.stringify([{
+      id: 't-1-1', name: 'Pasta', totalMs: 60_000, elapsedMs: 60_000, savedAt: Date.now(), running: false, finished: true,
+    }]));
+
+    render(<App />);
+
+    expect(await screen.findByText('Pasta is done', {}, { timeout: 3000 })).toBeInTheDocument();
+  });
+});
+
 describe('App: malformed stored settings', () => {
   it('renders when a chores sync import contains a null member-list map', async () => {
     localStorage.setItem('beacon-settings', JSON.stringify({

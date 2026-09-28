@@ -74,6 +74,9 @@ const DISPLAY_SESSION_MS = 24 * 60 * 60 * 1000;
 const PIN_LOCK_MS = 15 * 60 * 1000;
 const MAX_SESSIONS = 1024;
 const SESSION_COOKIE = 'beacon_session';
+const DEVICE_COOKIE = 'beacon_device';
+// Browsers cap a cookie's lifetime at 400 days.
+const DEVICE_COOKIE_MAX_AGE = 400 * 24 * 60 * 60;
 const parentPinDigest = PARENT_PIN ? createHash('sha256').update(PARENT_PIN).digest() : null;
 const passwordDigest = createHash('sha256').update(`beacon:${BEACON_PASSWORD}`).digest();
 const sessions = new Map();
@@ -114,6 +117,26 @@ function setSessionCookie(req, res, token, maxAge) {
   const secure = req.socket.encrypted || req.headers['x-forwarded-proto'] === 'https';
   res.setHeader('Set-Cookie',
     `${SESSION_COOKIE}=${token}; Path=${sessionPath(req)}; Max-Age=${maxAge}; HttpOnly; SameSite=Strict${secure ? '; Secure' : ''}`);
+}
+
+/**
+ * Standalone mode has no per-user identity (every browser uses the same
+ * password, usually through one reverse proxy, so they share an address
+ * too), so bad PINs are counted per browser, by a random cookie that the
+ * first bad PIN sets: a child trying PINs on the wall display mustn't lock
+ * the parents out on their phones. A browser that drops the cookie starts
+ * a fresh count, so deliberate guessing is bounded by the all-browsers
+ * limit, as it is across several HA users in the add-on.
+ */
+function pinDevice(req) {
+  const cookie = req.headers.cookie?.match(/(?:^|;\s*)beacon_device=([a-f0-9]{32})(?:;|$)/);
+  return cookie ? { id: cookie[1], isNew: false } : { id: randomBytes(16).toString('hex'), isNew: true };
+}
+
+function setDeviceCookie(req, res, id) {
+  const secure = req.socket.encrypted || req.headers['x-forwarded-proto'] === 'https';
+  res.setHeader('Set-Cookie',
+    `${DEVICE_COOKIE}=${id}; Path=/; Max-Age=${DEVICE_COOKIE_MAX_AGE}; HttpOnly; SameSite=Strict${secure ? '; Secure' : ''}`);
 }
 
 function readSession(req) {
@@ -1950,7 +1973,8 @@ async function handleAuthorization(req, res) {
       sendJson(res, 200, issueSession(req, res, 'parent'));
       return;
     }
-    const limiterIdentity = IS_ADDON ? (req.headers['x-remote-user-id'] || identity) : identity;
+    const device = IS_ADDON ? null : pinDevice(req);
+    const limiterIdentity = IS_ADDON ? (req.headers['x-remote-user-id'] || identity) : `device:${device.id}`;
     const attemptKey = `${limiterIdentity}:${url.pathname}`;
     const globalKey = `all:${url.pathname}`;
     if (pinIsRateLimited(attemptKey) || pinIsRateLimited(globalKey, 50)) {
@@ -1978,6 +2002,7 @@ async function handleAuthorization(req, res) {
     if (!valid) {
       failedPin(attemptKey);
       failedPin(globalKey);
+      if (device?.isNew) setDeviceCookie(req, res, device.id);
       sendJson(res, 401, { error: 'Invalid PIN' });
       return;
     }

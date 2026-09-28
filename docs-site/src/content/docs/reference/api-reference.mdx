@@ -267,53 +267,6 @@ Both methods require the HA token for authentication.
 
 ---
 
-## Grocery API (Grocy)
-
-**File**: `src/api/grocy.ts`
-
-The `GrocyClient` class communicates with Grocy through Home Assistant's REST API.
-
-### Get shopping list
-
-```typescript
-const list: GroceryList = await grocyClient.getShoppingList();
-```
-
-Reads `sensor.grocy_shopping_list` state and parses the `items` attribute.
-
-### Add item
-
-```typescript
-await grocyClient.addItem(name: string);
-```
-
-Calls `grocy.add_generic` service with `entity_type: 'shopping_list'`.
-
-### Check / uncheck item
-
-```typescript
-await grocyClient.checkItem(id: string);
-await grocyClient.uncheckItem(id: string);
-```
-
-### Get expiring products
-
-```typescript
-const items: GroceryItem[] = await grocyClient.getExpiringProducts(days: number);
-```
-
-Reads `sensor.grocy_expiring_products` state and filters to products expiring within `days` days.
-
-### Get meal plan
-
-```typescript
-const meals: MealPlanEntry[] = await grocyClient.getMealPlan(startDate, endDate);
-```
-
-Reads `sensor.grocy_meal_plan` state and filters to the date range.
-
----
-
 ## Grocery API (AnyList)
 
 **File**: `src/api/anylist.ts`

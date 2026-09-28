@@ -1,4 +1,4 @@
-import { useCallback, useMemo } from 'react';
+import { useCallback, useMemo, useRef } from 'react';
 import { getConfig } from '../config';
 import { useStoredData } from './useStoredData';
 import { DEFAULT_DARK_END, DEFAULT_DARK_START } from './useTheme';
@@ -33,7 +33,6 @@ export interface BeaconSettings {
 
   // Integrations
   weatherEntity: string;
-  grocyEnabled: boolean;
   anylistEnabled: boolean;
   defaultGroceryList: string;
   groceryListIds: string[];
@@ -98,7 +97,6 @@ function buildDefaults(): BeaconSettings {
     notificationMinutes: 10,
 
     weatherEntity: config.weather_entity,
-    grocyEnabled: false,
     anylistEnabled: false,
     defaultGroceryList: '',
     groceryListIds: [],
@@ -158,7 +156,7 @@ function withDefaults(stored: unknown): BeaconSettings {
   }
 
   const booleans = [
-    'autoDarkMode', 'grocyEnabled', 'anylistEnabled', 'hideLocalGroceryList',
+    'autoDarkMode', 'anylistEnabled', 'hideLocalGroceryList',
     'hideLocalTaskList', 'hideHaHeader', 'advancedDashboard',
     'screenSaverEnabled', 'screenSaverShowPhotos', 'alwaysOnDisplay',
     'showSeconds', 'kioskMode', 'choresEnabled', 'choresSyncEnabled',
@@ -211,7 +209,49 @@ function validPatch(patch: Partial<BeaconSettings>): Partial<BeaconSettings> {
   ) as Partial<BeaconSettings>;
 }
 
+const MAP_FIELDS = ['calendarColors', 'choresSyncListByMember'] as const;
+const LIST_FIELDS = ['permanentlyHiddenCalendars', 'groceryListIds'] as const;
+
+/**
+ * `patch` applied to `current`. A map or list in `patch` is the caller's
+ * whole new copy, made from `base` (the settings it was showing), so only
+ * the entries it changed from `base` are applied: entries another display
+ * changed meanwhile, which `current` may already have, are kept.
+ */
+function applyPatch(
+  current: BeaconSettings,
+  base: BeaconSettings,
+  patch: Partial<BeaconSettings>,
+): BeaconSettings {
+  const next = { ...current, ...patch };
+  for (const field of MAP_FIELDS) {
+    const changed = patch[field];
+    if (!changed) continue;
+    const was = new Map(Object.entries(base[field]));
+    const now = new Map(Object.entries(changed));
+    const entries = new Map(Object.entries(current[field]));
+    for (const [id, value] of now) {
+      if (was.get(id) !== value) entries.set(id, value);
+    }
+    for (const id of was.keys()) {
+      if (!now.has(id)) entries.delete(id);
+    }
+    next[field] = Object.fromEntries(entries);
+  }
+  for (const field of LIST_FIELDS) {
+    const changed = patch[field];
+    if (!changed) continue;
+    const removed = base[field].filter((id) => !changed.includes(id));
+    const added = changed.filter((id) => !base[field].includes(id) && !current[field].includes(id));
+    next[field] = [...current[field].filter((id) => !removed.includes(id)), ...added];
+  }
+  return next;
+}
+
 const NO_STORED_SETTINGS = {} as BeaconSettings;
+
+/** Settings earlier versions had, and exported, that are now dropped on import. */
+const RETIRED_FIELDS = ['grocyEnabled'];
 
 // ---------------------------------------------------------------------------
 // Hook
@@ -224,6 +264,9 @@ export function useSettings() {
     NO_STORED_SETTINGS,
     withDefaults,
   );
+  // What callers were showing when they made a change (see applyPatch).
+  const shown = useRef(settings);
+  shown.current = settings;
 
   /**
    * Update one or more settings fields. Changes apply immediately. Only the
@@ -233,7 +276,10 @@ export function useSettings() {
   const updateSettings = useCallback(
     (patch: Partial<BeaconSettings>) => {
       const clean = validPatch(patch);
-      if (Object.keys(clean).length) setSettings((prev) => ({ ...prev, ...clean }), true, clean);
+      const fields = Object.keys(clean) as (keyof BeaconSettings)[];
+      if (!fields.length) return;
+      const base = shown.current;
+      setSettings((current) => applyPatch(current, base, clean), true, fields);
     },
     [setSettings],
   );
@@ -261,6 +307,7 @@ export function useSettings() {
       window.alert("Couldn't import settings: expected a JSON object. No changes were made.");
       return;
     }
+    for (const field of RETIRED_FIELDS) delete parsed[field];
 
     const sanitized = withDefaults(parsed);
     // JSON imports are serializable: any field the normalizer changed (or

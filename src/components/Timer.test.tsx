@@ -78,3 +78,111 @@ describe('Timer on other screens', () => {
     expect(screen.getByText('00:05')).toBeInTheDocument();
   });
 });
+
+describe('Timer after a reload', () => {
+  // Timers only lived in the page, so reloading it (an add-on update does)
+  // lost them, and they never rang.
+  it('keeps counting a running timer', () => {
+    const { unmount } = render(<Timer shown />);
+    startTimer('Pasta', '1m');
+    advance(20_000);
+    unmount();
+
+    advance(5_000);
+    render(<Timer shown />);
+
+    expect(screen.getByText('Pasta')).toBeInTheDocument();
+    expect(screen.getByText('00:35')).toBeInTheDocument();
+  });
+
+  it('rings for a timer that ran out meanwhile', () => {
+    const { unmount } = render(<Timer shown />);
+    startTimer('Pasta', '1m');
+    unmount();
+
+    advance(120_000);
+    render(<Timer shown={false} />);
+    advance(250);
+
+    expect(screen.getByRole('alert')).toHaveTextContent('Pasta is done');
+  });
+
+  it('keeps a paused timer paused', () => {
+    const { unmount } = render(<Timer shown />);
+    startTimer('Pasta', '1m');
+    advance(10_000);
+    fireEvent.click(screen.getByTitle('Pause'));
+    unmount();
+
+    advance(120_000);
+    render(<Timer shown />);
+    advance(1_000);
+
+    expect(screen.getByText('00:50')).toBeInTheDocument();
+    expect(screen.getByTitle('Resume')).toBeInTheDocument();
+  });
+
+  it('forgets a removed timer', () => {
+    const { unmount } = render(<Timer shown />);
+    startTimer('Pasta', '1m');
+    fireEvent.click(screen.getByRole('button', { name: 'Remove Pasta' }));
+    unmount();
+
+    render(<Timer shown />);
+
+    expect(screen.queryByText('Pasta')).not.toBeInTheDocument();
+  });
+
+  // The stopwatch wasn't kept at all, so a reload set it back to zero.
+  it('keeps the stopwatch running, with its laps', () => {
+    const { unmount } = render(<Timer shown />);
+    fireEvent.click(screen.getByRole('button', { name: 'Stopwatch' }));
+    fireEvent.click(screen.getByTitle('Start'));
+    advance(3_000);
+    fireEvent.click(screen.getByTitle('Lap'));
+    advance(2_000);
+    unmount();
+
+    advance(5_000);
+    render(<Timer shown />);
+    fireEvent.click(screen.getByRole('button', { name: 'Stopwatch' }));
+
+    expect(screen.getByText('00:10')).toBeInTheDocument();
+    expect(screen.getByText('Lap 1')).toBeInTheDocument();
+    expect(screen.getByTitle('Pause')).toBeInTheDocument();
+  });
+
+  it('keeps a paused stopwatch paused', () => {
+    const { unmount } = render(<Timer shown />);
+    fireEvent.click(screen.getByRole('button', { name: 'Stopwatch' }));
+    fireEvent.click(screen.getByTitle('Start'));
+    advance(4_000);
+    fireEvent.click(screen.getByTitle('Pause'));
+    unmount();
+
+    advance(60_000);
+    render(<Timer shown />);
+    fireEvent.click(screen.getByRole('button', { name: 'Stopwatch' }));
+    advance(1_000);
+
+    expect(screen.getByText('00:04')).toBeInTheDocument();
+    expect(screen.getByTitle('Start')).toBeInTheDocument();
+  });
+
+  // Without laps too: reset sets a new, empty laps array, which saves it as reset.
+  it('forgets a stopwatch that was reset', () => {
+    const { unmount } = render(<Timer shown />);
+    fireEvent.click(screen.getByRole('button', { name: 'Stopwatch' }));
+    fireEvent.click(screen.getByTitle('Start'));
+    advance(2_000);
+    fireEvent.click(screen.getByTitle('Pause'));
+    fireEvent.click(screen.getByTitle('Reset'));
+    unmount();
+
+    render(<Timer shown />);
+    fireEvent.click(screen.getByRole('button', { name: 'Stopwatch' }));
+
+    expect(screen.getByText('00:00')).toBeInTheDocument();
+    expect(localStorage.getItem('beacon-stopwatch')).toBeNull();
+  });
+});
