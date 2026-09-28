@@ -59,7 +59,7 @@ The built files land in the `dist/` directory.
 
 ```
 src/
-  api/           # External API integrations (HA, Grocy, AnyList)
+  api/           # External API integrations (HA, AnyList)
   components/    # React components
   hooks/         # Custom React hooks
   styles/        # CSS and theme definitions
