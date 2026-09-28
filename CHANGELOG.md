@@ -1,3 +1,12 @@
+# [1.60.0](https://github.com/f1f1f1f1f1f1/Family/compare/v1.59.6...v1.60.0) (2026-09-28)
+
+
+### Features
+
+* AirPlay is on, with the add-on on the host's network ([1615c9a](https://github.com/f1f1f1f1f1f1/Family/commit/1615c9a80d6e29f0fa78d0256c7ae8aaf3d8d9d1))
+* an AirPlay screen shows what a phone or Mac sends to the add-on ([5438b13](https://github.com/f1f1f1f1f1f1/Family/commit/5438b13e3c82b78a5e5a6023da45e3f2d7b8fe5e))
+* the add-on server can run UxPlay and relay its AirPlay stream to the screen ([1516e82](https://github.com/f1f1f1f1f1f1/Family/commit/1516e823413223ad8e3e32f41ed72e810c5a93f2))
+
 ## [1.59.6](https://github.com/f1f1f1f1f1f1/Family/compare/v1.59.5...v1.59.6) (2026-09-28)
 
 
