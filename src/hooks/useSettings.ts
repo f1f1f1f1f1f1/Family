@@ -33,7 +33,6 @@ export interface BeaconSettings {
 
   // Integrations
   weatherEntity: string;
-  grocyEnabled: boolean;
   anylistEnabled: boolean;
   defaultGroceryList: string;
   groceryListIds: string[];
@@ -98,7 +97,6 @@ function buildDefaults(): BeaconSettings {
     notificationMinutes: 10,
 
     weatherEntity: config.weather_entity,
-    grocyEnabled: false,
     anylistEnabled: false,
     defaultGroceryList: '',
     groceryListIds: [],
@@ -158,7 +156,7 @@ function withDefaults(stored: unknown): BeaconSettings {
   }
 
   const booleans = [
-    'autoDarkMode', 'grocyEnabled', 'anylistEnabled', 'hideLocalGroceryList',
+    'autoDarkMode', 'anylistEnabled', 'hideLocalGroceryList',
     'hideLocalTaskList', 'hideHaHeader', 'advancedDashboard',
     'screenSaverEnabled', 'screenSaverShowPhotos', 'alwaysOnDisplay',
     'showSeconds', 'kioskMode', 'choresEnabled', 'choresSyncEnabled',
@@ -252,6 +250,9 @@ function applyPatch(
 
 const NO_STORED_SETTINGS = {} as BeaconSettings;
 
+/** Settings earlier versions had, and exported, that are now dropped on import. */
+const RETIRED_FIELDS = ['grocyEnabled'];
+
 // ---------------------------------------------------------------------------
 // Hook
 // ---------------------------------------------------------------------------
@@ -306,6 +307,7 @@ export function useSettings() {
       window.alert("Couldn't import settings: expected a JSON object. No changes were made.");
       return;
     }
+    for (const field of RETIRED_FIELDS) delete parsed[field];
 
     const sanitized = withDefaults(parsed);
     // JSON imports are serializable: any field the normalizer changed (or

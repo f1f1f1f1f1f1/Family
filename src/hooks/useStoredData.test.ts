@@ -390,6 +390,27 @@ describe('useSettings', () => {
     expect(alert).not.toHaveBeenCalled();
   });
 
+  // Grocy support was removed; its switch never did anything.
+  it('has no Grocy setting', () => {
+    const { result } = renderHook(() => useSettings());
+    expect(result.current.defaults).not.toHaveProperty('grocyEnabled');
+    expect(JSON.parse(result.current.exportSettings())).not.toHaveProperty('grocyEnabled');
+  });
+
+  it('imports a backup made while there was a Grocy setting', async () => {
+    server.addOn = true;
+    const { result } = renderHook(() => useSettings());
+    const alert = vi.spyOn(window, 'alert').mockImplementation(() => {});
+    const backup = { ...result.current.settings, grocyEnabled: true, timeFormat: '24h' };
+
+    act(() => { result.current.importSettings(JSON.stringify(backup)); });
+
+    expect(alert).not.toHaveBeenCalled();
+    expect(result.current.settings.timeFormat).toBe('24h');
+    await waitFor(() => expect(server.saves).toHaveLength(1));
+    expect(server.saves[0].value).not.toHaveProperty('grocyEnabled');
+  });
+
   it('reports invalid JSON/shape but still normalizes malformed legacy settings on read', async () => {
     server.data.set('beacon-settings', { choresSyncEnabled: true, choresSyncListByMember: null });
     localStorage.setItem('beacon-settings', JSON.stringify({ choresSyncEnabled: true, choresSyncListByMember: null }));
