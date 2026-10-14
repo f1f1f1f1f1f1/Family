@@ -27,6 +27,13 @@ describe('AnyListClient', () => {
     expect(callHaService).toHaveBeenCalledWith('todo', 'update_item', { entity_id: 'todo.chores', item: 'a2', status: 'completed' });
   });
 
+  it('deletes the item with that uid, saying why for the add-on log', async () => {
+    await new AnyListClient().removeItem('todo.chores', { uid: 'a2', summary: 'Take out trash' }, 'deleted on the Tasks screen');
+    expect(callHaService).toHaveBeenCalledWith(
+      'todo', 'remove_item', { entity_id: 'todo.chores', item: 'a2' }, false, 'deleted on the Tasks screen',
+    );
+  });
+
   // Failures were logged and swallowed, so a screen showed the tick anyway.
   it('lets a failed change through to the screen', async () => {
     vi.mocked(callHaService).mockRejectedValue(new Error('Service call 500'));

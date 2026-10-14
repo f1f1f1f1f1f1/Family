@@ -5,6 +5,7 @@ import type { Chore, ChoreCompletion, FamilyMember } from '../types/family';
 
 const mocks = vi.hoisted(() => ({
   addChore: vi.fn(),
+  removeChore: vi.fn(),
   uncompleteChore: vi.fn(),
   settings: { currencySymbol: '$' },
   chores: [] as Chore[],
@@ -20,7 +21,7 @@ vi.mock('../hooks/useChores', () => ({
     chores: mocks.chores,
     addChore: mocks.addChore,
     updateChore: vi.fn(),
-    removeChore: vi.fn(),
+    removeChore: mocks.removeChore,
     completeChore: vi.fn(),
     uncompleteChore: mocks.uncompleteChore,
     currentCompletions: mocks.completions,
@@ -141,5 +142,28 @@ describe('ChoresView open chores', () => {
     expect(screen.queryByRole('button', { name: 'Complete' })).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Undo Feed the cat for Sam' }));
     expect(mocks.uncompleteChore).toHaveBeenCalledWith('c2', 'sam');
+  });
+});
+
+describe('ChoresView edit form', () => {
+  afterEach(() => {
+    mocks.chores = [];
+    mocks.removeChore.mockReset();
+  });
+
+  // Its Delete took the chore (and its Google tasks) on one tap; the chore
+  // cards and the event form ask first.
+  it('asks before deleting the chore', async () => {
+    const user = userEvent.setup();
+    mocks.chores = [{ id: 'c1', name: 'Walk the dog', assigned_to: [], frequency: 'daily', value_cents: 0 }];
+    render(<ChoresView />);
+    await user.click(screen.getByRole('button', { name: 'Edit Walk the dog' }));
+    const form = within(document.querySelector<HTMLElement>('.modal')!);
+
+    await user.click(form.getByRole('button', { name: 'Delete' }));
+    expect(mocks.removeChore).not.toHaveBeenCalled();
+
+    await user.click(form.getByRole('button', { name: 'Tap again to delete' }));
+    expect(mocks.removeChore).toHaveBeenCalledWith('c1');
   });
 });

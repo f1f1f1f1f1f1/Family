@@ -108,6 +108,18 @@ export class AnyListClient {
     });
   }
 
+  /**
+   * Deletes the item from the list, in the service behind it too (Google
+   * Tasks, say). `reason` goes in the add-on's log, which records every
+   * to-do delete.
+   */
+  async removeItem(listId: string, item: TodoItemRef, reason: string): Promise<void> {
+    await callHaService('todo', 'remove_item', {
+      entity_id: listId,
+      item: todoItemRef(item),
+    }, false, reason);
+  }
+
   /** No-op now that entity discovery isn't cached — kept for API compatibility. */
   resetEntities(): void {}
 }

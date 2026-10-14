@@ -2,7 +2,7 @@ import { useState, useRef, useCallback, useEffect } from 'react';
 import { Plus } from 'lucide-react';
 import { DashboardCardProps } from '../../types/dashboard-cards';
 import { AnyListClient } from '../../api/anylist';
-import { getTodoItems } from '../../api/ha-services';
+import { getTodoItems, refreshTodoList } from '../../api/ha-services';
 import { refreshWhileAwake } from '../../utils/display-sleep';
 
 interface TodoItem {
@@ -25,7 +25,8 @@ export function ShoppingCard({ config, context }: DashboardCardProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const anylistRef = useRef(new AnyListClient());
 
-  // Load items from HA entity
+  // Load items from HA entity, then (about once a minute) have HA fetch the
+  // list from Google Tasks and show what changed there
   const loadItems = useCallback(async () => {
     if (!shoppingEntity) return;
     setLoading(true);
@@ -37,6 +38,14 @@ export function ShoppingCard({ config, context }: DashboardCardProps) {
       setItems([]);
     } finally {
       setLoading(false);
+    }
+
+    if (await refreshTodoList(shoppingEntity)) {
+      try {
+        setItems((await getTodoItems(shoppingEntity)) ?? []);
+      } catch (err) {
+        console.warn('ShoppingCard: Failed to load items', err);
+      }
     }
   }, [shoppingEntity]);
 

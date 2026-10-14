@@ -49,6 +49,35 @@ export async function getTodoItems(
   return Array.isArray(response?.items) ? response.items : null;
 }
 
+/** A little under a minute, so a screen refreshing every minute isn't skipped by timer drift. */
+const TODO_REFRESH_MIN_MS = 50_000;
+const todoRefreshedAt = new Map<string, number>();
+
+/**
+ * Asks HA to fetch a to-do list from the service behind it now. HA's Google
+ * Tasks integration otherwise looks only every half hour or so, so a task
+ * ticked, added or deleted in Google Tasks took that long to show here. Asks
+ * at most about once a minute per list, however many screens show it.
+ * Resolves true when HA did refresh it (so it's worth reading again); a
+ * failure leaves HA's copy as it was.
+ */
+export async function refreshTodoList(entityId: string): Promise<boolean> {
+  const last = todoRefreshedAt.get(entityId);
+  if (last !== undefined && Date.now() - last < TODO_REFRESH_MIN_MS) return false;
+  todoRefreshedAt.set(entityId, Date.now());
+  try {
+    await callHaService('homeassistant', 'update_entity', { entity_id: entityId });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** For tests. */
+export function resetTodoRefreshes(): void {
+  todoRefreshedAt.clear();
+}
+
 // --- Weather ---
 
 export interface HaState {

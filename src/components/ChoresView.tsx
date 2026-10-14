@@ -275,6 +275,15 @@ export function ChoresView() {
 
   const isEditing = editingChoreId !== null;
 
+  // The form's Delete asks first, as the event form's does: it used to
+  // delete the chore (and its Google tasks) on one tap.
+  const [confirmingFormDelete, setConfirmingFormDelete] = useState(false);
+  useEffect(() => {
+    if (!confirmingFormDelete) return;
+    const timer = setTimeout(() => setConfirmingFormDelete(false), 4000);
+    return () => clearTimeout(timer);
+  }, [confirmingFormDelete]);
+
   const openAddForm = (presetMemberId?: string) => {
     setNewChore({
       ...EMPTY_CHORE_FORM,
@@ -297,6 +306,7 @@ export function ChoresView() {
   };
 
   const handleCloseForm = () => {
+    setConfirmingFormDelete(false);
     setShowForm(false);
     setEditingChoreId(null);
     setNewChore({ ...EMPTY_CHORE_FORM });
@@ -616,9 +626,12 @@ export function ChoresView() {
                 <button
                   type="button"
                   className="btn btn--danger"
-                  onClick={() => handleDeleteChore(editingChoreId)}
+                  onClick={() => {
+                    if (confirmingFormDelete) handleDeleteChore(editingChoreId);
+                    else setConfirmingFormDelete(true);
+                  }}
                 >
-                  Delete
+                  {confirmingFormDelete ? 'Tap again to delete' : 'Delete'}
                 </button>
               )}
               <div className="modal-footer-right">

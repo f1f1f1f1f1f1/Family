@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { hasToken, callHaService, fetchAllStates, ENTITY_LIST_MAX_AGE_MS } from '../api/ha-rest';
-import { getTodoItems } from '../api/ha-services';
+import { getTodoItems, refreshTodoList } from '../api/ha-services';
 import { isGroceryListName } from '../utils/grocery';
 import { localDayKey } from '../api/date-keys';
 import { useLocalTasks } from './useLocalTasks';
@@ -52,7 +52,8 @@ export function useDashboardTasks(
         });
 
         // Fetch items from up to 3 task lists, at the same time
-        const lists = await Promise.all(todoEntities.slice(0, 3).map(async (entity) => {
+        const shown = todoEntities.slice(0, 3);
+        const readLists = async () => (await Promise.all(shown.map(async (entity) => {
           try {
             return ((await getTodoItems(entity.entity_id)) ?? []).map(item => ({
               uid: item.uid,
@@ -63,8 +64,13 @@ export function useDashboardTasks(
           } catch {
             return []; // skip failed lists
           }
-        }));
-        setHaItems(lists.flat());
+        }))).flat();
+        setHaItems(await readLists());
+
+        // Then have HA fetch them from Google Tasks (about once a minute) and
+        // show what changed there
+        const refreshed = await Promise.all(shown.map((entity) => refreshTodoList(entity.entity_id)));
+        if (refreshed.some(Boolean)) setHaItems(await readLists());
       } catch (err) {
         console.warn('Failed to fetch dashboard tasks:', err);
       }
