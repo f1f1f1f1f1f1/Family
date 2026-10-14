@@ -1,3 +1,18 @@
+# [1.61.0](https://github.com/f1f1f1f1f1f1/Family/compare/v1.60.1...v1.61.0) (2026-10-14)
+
+
+### Bug Fixes
+
+* the Edit Chore form asks before deleting a chore ([316e04c](https://github.com/f1f1f1f1f1f1/Family/commit/316e04c9fb0e370b426fc8168f7c020e22a17b17))
+* update Capacitor to 8.4.3 for a security fix in the iOS and Android apps ([24261bf](https://github.com/f1f1f1f1f1f1/Family/commit/24261bf9c89e7e4efc16be57ca6d47e3c77e7b4a))
+
+
+### Features
+
+* a task deleted in Google Tasks deletes its chore in Family ([4f83a61](https://github.com/f1f1f1f1f1f1/Family/commit/4f83a61b64e1874ee262e5e27ed5b8ef3a74b4de))
+* changes made in Google Tasks show on lists within about a minute ([6ab9ceb](https://github.com/f1f1f1f1f1f1/Family/commit/6ab9ceb0aa8c03bb659c4449ae3b3576261217c4))
+* delete open or completed items on the Tasks and Lists screens ([4b042fe](https://github.com/f1f1f1f1f1f1/Family/commit/4b042fe149c7befbf14c1f6f5cc4ef757d6e93d9))
+
 ## [1.60.1](https://github.com/f1f1f1f1f1f1/Family/compare/v1.60.0...v1.60.1) (2026-09-28)
 
 
