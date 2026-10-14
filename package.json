@@ -22,11 +22,11 @@
   },
   "dependencies": {
     "@aparajita/capacitor-secure-storage": "^8.0.1",
-    "@capacitor/android": "^8.3.0",
+    "@capacitor/android": "^8.4.3",
     "@capacitor/app": "^8.1.0",
-    "@capacitor/core": "^8.3.0",
+    "@capacitor/core": "^8.4.3",
     "@capacitor/haptics": "^8.0.2",
-    "@capacitor/ios": "^8.3.0",
+    "@capacitor/ios": "^8.4.3",
     "@capacitor/keyboard": "^8.0.2",
     "@capacitor/preferences": "^8.0.1",
     "@capacitor/splash-screen": "^8.0.1",
@@ -43,7 +43,7 @@
     "ws": "^8.21.3"
   },
   "devDependencies": {
-    "@capacitor/cli": "^8.3.0",
+    "@capacitor/cli": "^8.4.3",
     "@eslint/js": "^10.0.1",
     "@semantic-release/changelog": "^6.0.3",
     "@semantic-release/exec": "^7.1.0",
