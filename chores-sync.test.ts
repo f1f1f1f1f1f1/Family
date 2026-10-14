@@ -304,19 +304,70 @@ describe('chores sync (add-on)', () => {
     expect(chores()).toHaveLength(0); // not imported back
   });
 
-  // Dropping the link made the next pass create the task again.
-  it('leaves a task deleted in Google Tasks deleted, until the chore is reassigned', async () => {
+  // A chore whose task was deleted in Google Tasks used to stay in Family,
+  // with its task never made again.
+  it('deletes the chore in Family once its task has stayed deleted in Google Tasks for a minute', async () => {
     const { chore, run, task } = await setup();
     task().splice(0, 1);
     await run();
-    await run();
-    expect(task()).toHaveLength(0);
+    expect(chores()).toHaveLength(1); // not on one answer alone
 
-    await store.update('beacon_chores', chore.id, { assigned_to: [] });
+    clock = new Date(clock.getTime() + 61_000);
     await run();
-    await store.update('beacon_chores', chore.id, { assigned_to: ['kai'] });
+    expect(chores().find((c) => c.id === chore.id)).toBeUndefined();
+    expect(coll(LINKS)).toHaveLength(0);
+
     await run();
-    expect(task().map((t) => t.summary)).toEqual(['Vacuum']);
+    expect(task()).toHaveLength(0); // and its task isn't made again
+  });
+
+  it('takes a shared chore off only the person whose task was deleted', async () => {
+    coll('beacon_family_members').push({ id: 'sam', name: 'Sam', avatar: '', color: '#000', role: 'child' });
+    settings = { choresSyncEnabled: true, choresSyncListByMember: { kai: 'todo.kai', sam: 'todo.sam' } };
+    const chore = await addChore('Dishes', ['kai', 'sam']);
+    const sync = makeSync();
+    const run = () => sync.runNow({ verbose: true });
+    await run();
+
+    ha.lists.get('todo.kai')!.splice(0, 1);
+    await run();
+    clock = new Date(clock.getTime() + 61_000);
+    await run();
+
+    expect(chores().find((c) => c.id === chore.id)).toMatchObject({ assigned_to: ['sam'] });
+    expect(ha.lists.get('todo.sam')!.map((t) => t.summary)).toEqual(['Dishes']);
+    expect(ha.lists.get('todo.kai')).toEqual([]);
+  });
+
+  // A list that comes back empty is more likely broken than cleaned out.
+  it("doesn't delete chores when all of a list's tasks are gone at once", async () => {
+    await addChore('Vacuum');
+    await addChore('Dishes');
+    await addChore('Laundry');
+    const sync = makeSync();
+    const run = () => sync.runNow({ verbose: true });
+    await run();
+
+    ha.lists.set('todo.kai', []);
+    await run();
+    clock = new Date(clock.getTime() + 61_000);
+    await run();
+
+    expect(chores()).toHaveLength(3);
+    expect(sync.status().problems).toContain("None of Kai's chore tasks came back from Google Tasks, so no chores were deleted");
+  });
+
+  // Chores kept by earlier builds when their task was deleted stay as they were.
+  it('leaves a chore an earlier build kept after its task was deleted', async () => {
+    const { chore, run, task } = await setup();
+    task().splice(0, 1);
+    const [link] = coll(LINKS);
+    await store.update(LINKS, link.id, { deleted_in_google: true });
+    clock = new Date(clock.getTime() + 61_000);
+    await run();
+    await run();
+    expect(chores().find((c) => c.id === chore.id)).toBeDefined();
+    expect(task()).toHaveLength(0);
   });
 
   it('syncs a task again when it comes back in Google Tasks', async () => {
@@ -325,8 +376,10 @@ describe('chores sync (add-on)', () => {
     await run();
     task().push(deleted);
     await complete(chore.id);
+    clock = new Date(clock.getTime() + 61_000);
     await run();
     expect(task()[0].status).toBe('completed');
+    expect(chores()).toHaveLength(1); // back before it counted as deleted
   });
 
   // One task HA wouldn't update failed the whole pass, every minute, and no

@@ -111,3 +111,13 @@ throw `SaveFailedError` (and report it, for the "Couldn't save" notice) when
 the server doesn't take a write. Don't fall back to writing localStorage:
 the next read replaces that cache with the server's copy. Hooks wrap writes
 in `saveThen()` (src/utils/save-errors.ts), which refreshes either way.
+
+## Learnings - 2026-10-14
+
+### Deletes Sync Both Ways, Carefully
+A task deleted in Google Tasks deletes its chore in Family (just that
+person, for a shared chore), but only once it has been missing on passes at
+least a minute apart (`missing_since` on the link). A list that comes back
+without any of its 3+ chore tasks counts as broken, not emptied: nothing is
+deleted and the sync reports a problem. Links an earlier build marked
+`deleted_in_google` are left alone.

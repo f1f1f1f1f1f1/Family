@@ -33,6 +33,12 @@
  * New tasks added directly in someone's Google Tasks app are imported as
  * chores assigned to that member.
  *
+ * Deleting goes both ways: a chore deleted in Family has its tasks deleted,
+ * and a task deleted in Google Tasks deletes the chore for that member (the
+ * whole chore, if it was only theirs) once it has stayed gone for a minute.
+ * A list that comes back without any of its chores' tasks counts as broken,
+ * not emptied: nothing is deleted from it (see listsMissingAll).
+ *
  * Tasks carry nothing in their notes: they're matched by uid through the
  * link records below. If a link is lost, an unlinked task with the chore's
  * title in that member's list is adopted rather than imported as a new
@@ -57,6 +63,16 @@ const COLLECTIONS = {
 
 /** Tag earlier builds wrote into task notes; no longer written. */
 const LEGACY_MARKER_PREFIX = '[beacon-sync]';
+
+/**
+ * How long a linked task must stay gone from its list before its chore is
+ * deleted in Family: a later pass has to see it gone too, so one odd answer
+ * from Home Assistant can't delete anything.
+ */
+const DELETE_CONFIRM_MS = 60_000;
+
+/** A list with at least this many chore tasks, all gone at once, counts as broken rather than emptied. */
+const MASS_MISSING_MIN = 3;
 
 /**
  * The day before a "YYYY-MM-DD" key, by the calendar. Now minus 24 hours
@@ -488,8 +504,27 @@ function createChoresSync({
       }
     }
 
+    // A list that came back without any of its chores' tasks (at least
+    // MASS_MISSING_MIN of them) is more likely broken than emptied in
+    // Google: none of its tasks count as deleted this pass.
+    const listsMissingAll = new Set();
+    for (const entityId of entityIds) {
+      const items = itemsByEntity.get(entityId);
+      if (!items) continue;
+      const uids = new Set(items.map((it) => it.uid));
+      const listLinks = [...linksByKey.values()].filter((l) =>
+        l.entity_id === entityId && listByMember[l.member_id] === entityId && !l.deleted_in_google);
+      if (listLinks.length >= MASS_MISSING_MIN && listLinks.every((l) => !uids.has(l.uid))) {
+        listsMissingAll.add(entityId);
+        warn(`${entityId}: none of its ${listLinks.length} chore tasks came back, so no chores were deleted`);
+        for (const m of activeMembers.filter((am) => listByMember[am.id] === entityId)) {
+          problem(`None of ${m.name}'s chore tasks came back from Google Tasks, so no chores were deleted`);
+        }
+      }
+    }
+
     /** Push/pull one (task-in-a-list) pair against its sync link. */
-    const reconcileLink = async (entityId, link, beaconStatus, itemsByUid, onPull) => {
+    const reconcileLink = async (entityId, link, beaconStatus, itemsByUid, onPull, onDeletedInGoogle) => {
       const task = itemsByUid.get(link.uid);
       if (!task) {
         if (link.entity_id !== entityId) {
@@ -499,18 +534,32 @@ function createChoresSync({
           await store.remove(COLLECTIONS.links, link.id);
           return { changed: false, action: `Google task ${link.uid} isn't in ${entityId}, link dropped` };
         }
-        // Deleted in Google Tasks: keep the link, marked, so the task isn't
-        // made again. (Dropping it had the next pass create the task again
-        // within a minute.) Unassigning the chore from this member removes
-        // the link; reassigning makes a new task.
-        if (link.deleted_in_google) return { changed: false, quiet: true, action: 'deleted in Google Tasks, left deleted' };
-        await store.update(COLLECTIONS.links, link.id, { deleted_in_google: true });
-        return { changed: false, action: `Google task ${link.uid} was deleted in Google Tasks; not making it again until the chore is reassigned` };
+        // Marked by builds that kept a chore whose task was deleted in
+        // Google Tasks: those chores stay, without a task, as they were.
+        if (link.deleted_in_google) return { changed: false, quiet: true, action: 'deleted in Google Tasks by an earlier build, left as it was' };
+        if (listsMissingAll.has(entityId)) {
+          return { changed: false, quiet: true, action: 'missing along with every other chore task in the list, not deleted' };
+        }
+        // Deleted in Google Tasks: once it has stayed gone a minute (see
+        // DELETE_CONFIRM_MS), the chore is deleted in Family as well. It
+        // used to be kept, with the link marked so the task wasn't made again.
+        const missingSince = Date.parse(link.missing_since ?? '');
+        if (Number.isNaN(missingSince)) {
+          await store.update(COLLECTIONS.links, link.id, { missing_since: now().toISOString() });
+          return { changed: false, action: `Google task ${link.uid} is gone; deleting the chore if it's still gone in a minute` };
+        }
+        if (now().getTime() - missingSince < DELETE_CONFIRM_MS) {
+          return { changed: false, quiet: true, action: 'still gone, waiting to be sure before deleting the chore' };
+        }
+        await onDeletedInGoogle();
+        await store.remove(COLLECTIONS.links, link.id);
+        return { changed: true, action: 'deleted in Google Tasks, so deleted in Family' };
       }
-      if (link.entity_id !== entityId || link.deleted_in_google) {
+      if (link.entity_id !== entityId || link.deleted_in_google || link.missing_since) {
         // Record which list the task is in (links from earlier builds
-        // don't say), and sync a task that's back (restored in Google Tasks).
-        await store.update(COLLECTIONS.links, link.id, { entity_id: entityId, deleted_in_google: false });
+        // don't say), and sync a task that's back (restored in Google Tasks,
+        // or missing from one answer only).
+        await store.update(COLLECTIONS.links, link.id, { entity_id: entityId, deleted_in_google: false, missing_since: null });
       }
 
       const setGoogleStatus = (status) => callService('todo', 'update_item', { entity_id: entityId, item: link.uid, status });
@@ -634,6 +683,15 @@ function createChoresSync({
         async (status) => {
           if (status === 'completed') await completeChore(chore, memberId);
           else await uncompleteChore(chore, memberId);
+        },
+        // Deleted in this member's Google Tasks: the chore is no longer
+        // theirs, and it goes altogether if no one else has it.
+        async () => {
+          const current = (await store.list(COLLECTIONS.chores)).find((c) => c.id === chore.id);
+          if (!current) return;
+          const others = (current.assigned_to ?? []).filter((id) => id !== memberId);
+          if (others.length) await store.update(COLLECTIONS.chores, chore.id, { assigned_to: others });
+          else await store.remove(COLLECTIONS.chores, chore.id);
         },
       );
       const line = `${label}: family=${beaconStatus} google=${googleStatus} lastAgreed=${link.last_synced_status} -> ${action}`;

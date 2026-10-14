@@ -1795,7 +1795,7 @@ export function SettingsView({
               <div>
                 <div className="settings-row-label">Sync with Google Tasks</div>
                 <div className="settings-row-sublabel">
-                  Create and check off chores from the Google Tasks app. Each person's chores sync to their own list. Routines aren't synced. The add-on keeps it in sync, even when no screen is open.
+                  Create, check off and delete chores from the Google Tasks app. Each person's chores sync to their own list. Routines aren't synced. The add-on keeps it in sync, even when no screen is open.
                 </div>
               </div>
               <Toggle
