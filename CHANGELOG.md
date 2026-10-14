@@ -1,3 +1,10 @@
+# [1.62.0](https://github.com/f1f1f1f1f1f1/Family/compare/v1.61.0...v1.62.0) (2026-10-14)
+
+
+### Features
+
+* a Cameras screen with up to four Home Assistant cameras, live when tapped ([8884369](https://github.com/f1f1f1f1f1f1/Family/commit/8884369c1928b75c68e69a98035d5f961847f180))
+
 # [1.61.0](https://github.com/f1f1f1f1f1f1/Family/compare/v1.60.1...v1.61.0) (2026-10-14)
 
 
