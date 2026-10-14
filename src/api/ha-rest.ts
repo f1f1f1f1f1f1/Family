@@ -129,6 +129,30 @@ export async function getEntityState(entityId: string): Promise<{
   }
 }
 
+/**
+ * Fetch a binary HA resource, such as a camera snapshot, the way haFetch
+ * fetches JSON: through the Family server, or straight from HA with the
+ * device's token. Never from the browser's cache.
+ */
+export async function haFetchBlob(path: string, signal?: AbortSignal): Promise<Blob> {
+  const token = getHaToken();
+  const headers: Record<string, string> = {};
+  if (token && !isAddOn()) headers['Authorization'] = `Bearer ${token}`;
+
+  const res = await fetch(`${getBaseUrl()}${path}`, { headers, signal, cache: 'no-store' });
+  if (!res.ok) throw new Error(`HA API ${res.status}: ${res.statusText}`);
+  return res.blob();
+}
+
+/**
+ * The full address of a path on the Family server (or on HA, without
+ * one), for a player that fetches it by itself, such as a camera's live
+ * stream.
+ */
+export function haResourceUrl(path: string): string {
+  return `${getBaseUrl()}${path}`;
+}
+
 export interface HaStateObject {
   entity_id: string;
   state: string;

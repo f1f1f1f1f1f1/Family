@@ -24,6 +24,8 @@ const WebSocket = require('ws');
 const {
   isServiceAllowed,
   isProxyRequestAllowed,
+  hlsUpstreamPath,
+  hlsPlaylistForBrowser,
   isTrustedIngressAddress,
   parseBlockedEntities,
   isEntityAllowed,
@@ -371,9 +373,9 @@ function proxyToHA(req, res) {
 
   collectBody(req).then((body) => {
     const pathname = req.url.split('?')[0];
-    const entityPath = /^\/api\/(states|calendars)\/([a-z0-9_]+\.[a-z0-9_]+)$/.exec(pathname);
-    if (entityPath && !isEntityAllowed(entityPath[2], BLOCKED_ENTITIES,
-      entityPath[1] === 'calendars' ? 'calendar' : undefined)) {
+    const entityPath = /^\/api\/(states|calendars|camera_proxy)\/([a-z0-9_]+\.[a-z0-9_]+)$/.exec(pathname);
+    const entityDomain = { calendars: 'calendar', camera_proxy: 'camera' }[entityPath?.[1]];
+    if (entityPath && !isEntityAllowed(entityPath[2], BLOCKED_ENTITIES, entityDomain)) {
       sendJson(res, 403, { error: 'Entity not allowed' });
       return;
     }
@@ -759,6 +761,92 @@ function handleMediaSourceAction(req, res) {
       res.end(JSON.stringify({ error: err.message }));
     }
   });
+}
+
+/**
+ * Starts a camera's live stream in HA (camera/stream, WebSocket-only) and
+ * answers where the browser plays it: /beacon-hls/<token>/…, relative to
+ * the app, which proxyHls passes on to HA. Answers 502 with HA's error when
+ * the camera can't stream (it has no stream source, or HA's stream
+ * integration isn't set up).
+ * POST /beacon-action/camera-stream { entity_id }
+ */
+function handleCameraStreamAction(req, res) {
+  if (req.method !== 'POST') {
+    sendJson(res, 405, { error: 'Method not allowed' });
+    return;
+  }
+
+  collectBody(req).then(async (bodyBuf) => {
+    let entityId;
+    try {
+      entityId = JSON.parse((bodyBuf || '{}').toString('utf8')).entity_id;
+    } catch {
+      sendJson(res, 400, { error: 'Invalid request body' });
+      return;
+    }
+    if (!isEntityAllowed(entityId, BLOCKED_ENTITIES, 'camera')) {
+      sendJson(res, 403, { error: 'Camera not allowed' });
+      return;
+    }
+    try {
+      const result = await haWsCommand({ type: 'camera/stream', entity_id: entityId, format: 'hls' });
+      const url = hlsPlaylistForBrowser(result?.url);
+      if (!url) {
+        sendJson(res, 502, { error: 'Home Assistant answered with an unexpected stream address' });
+        return;
+      }
+      sendJson(res, 200, { url });
+    } catch (err) {
+      sendJson(res, 502, { error: err.message, code: err.code ?? null });
+    }
+  }).catch((err) => {
+    if (!res.headersSent) sendJson(res, 413, { error: err.message });
+  });
+}
+
+/**
+ * One file of a camera's live stream, from HA's HLS views. Passed through
+ * as it arrives; a request the player gives up on (it waits on HA for the
+ * next part of the stream) is ended at HA too.
+ * GET /beacon-hls/<token>/<file>
+ */
+function proxyHls(req, res) {
+  const upstreamPath = req.method === 'GET' ? hlsUpstreamPath(req.url) : null;
+  if (!upstreamPath) {
+    sendJson(res, 404, { error: 'Not a camera stream file' });
+    return;
+  }
+
+  const url = new URL(`${HA_API_BASE}${upstreamPath}`);
+  const proxyReq = haHttpClient(url).request({
+    hostname: url.hostname,
+    port: url.port || (url.protocol === 'https:' ? 443 : 80),
+    path: url.pathname + url.search,
+    method: 'GET',
+    headers: { 'Authorization': `Bearer ${SUPERVISOR_TOKEN}` },
+  }, (proxyRes) => {
+    res.writeHead(proxyRes.statusCode, {
+      'Content-Type': proxyRes.headers['content-type'] || 'application/octet-stream',
+      'Cache-Control': 'no-store',
+    });
+    proxyRes.pipe(res);
+  });
+  res.on('close', () => {
+    if (!res.writableFinished) proxyReq.destroy();
+  });
+  proxyReq.setTimeout(60_000, () => proxyReq.destroy(new Error('Home Assistant stream request timed out')));
+  proxyReq.on('error', (err) => {
+    if (res.headersSent) {
+      res.destroy();
+      return;
+    }
+    if (!res.destroyed) {
+      console.error('Camera stream proxy error:', err.message);
+      sendJson(res, 502, { error: 'Failed to reach Home Assistant' });
+    }
+  });
+  proxyReq.end();
 }
 
 /**
@@ -2134,6 +2222,7 @@ const server = http.createServer((req, res) => {
   const protectedPath = req.url.startsWith('/beacon-action/')
     || req.url.startsWith('/beacon-collection/')
     || req.url.startsWith('/beacon-data/')
+    || req.url.startsWith('/beacon-hls/')
     || req.url.startsWith('/api/');
   if (!protectedPath) {
     if (req.method !== 'GET' && req.method !== 'HEAD') {
@@ -2201,6 +2290,20 @@ const server = http.createServer((req, res) => {
   // Media source browse/resolve (WS-only commands — no REST equivalent)
   if (req.url === '/beacon-action/media-source') {
     handleMediaSourceAction(req, res);
+    return;
+  }
+
+  // A camera's live stream: started over HA's WebSocket, then its files
+  if (req.url === '/beacon-action/camera-stream') {
+    handleCameraStreamAction(req, res);
+    return;
+  }
+  if (req.url.startsWith('/beacon-hls/')) {
+    if (!SUPERVISOR_TOKEN) {
+      sendJson(res, 503, { error: 'No server-side Home Assistant token available' });
+      return;
+    }
+    proxyHls(req, res);
     return;
   }
 

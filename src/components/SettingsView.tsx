@@ -14,6 +14,7 @@ import {
   ChevronLeft,
 } from 'lucide-react';
 import { AnyListClient } from '../api/anylist';
+import { listCameras, type CameraInfo } from '../api/cameras';
 import { GroceryList } from '../types/grocery';
 import { themes } from '../styles/themes';
 import {
@@ -299,6 +300,13 @@ export function SettingsView({
     if (!connected) return;
     const client = new AnyListClient();
     client.getLists().then(setTodoLists).catch(() => {});
+  }, [connected]);
+
+  // ---- Cameras to pick from (null while loading) ----
+  const [cameraList, setCameraList] = useState<CameraInfo[] | null>(null);
+  useEffect(() => {
+    if (!connected) return;
+    listCameras().then(setCameraList).catch(() => setCameraList([]));
   }, [connected]);
 
   // ---- Family member handlers ----
@@ -1372,6 +1380,38 @@ export function SettingsView({
             placeholder="weather.home"
           />
         </div>
+      </div>
+
+      <div className="settings-group">
+        <div className="settings-group-title">Cameras</div>
+        <div className="settings-row">
+          <div className="settings-row-sublabel">
+            Pick up to four Home Assistant cameras for the Cameras screen, which appears in the sidebar once
+            one is chosen. Tap a camera there to watch it live.
+            {cameraList?.length === 0 && ' No cameras were found in Home Assistant.'}
+          </div>
+        </div>
+        {settings.cameraEntities.map((cameraId, slot) => (
+          <div className="settings-row" key={slot}>
+            <div className="settings-row-label">Camera {slot + 1}</div>
+            <select
+              className="settings-input"
+              aria-label={`Camera ${slot + 1}`}
+              value={cameraId}
+              onChange={(e) => onUpdateSettings({
+                cameraEntities: settings.cameraEntities.map((other, i) => (i === slot ? e.target.value : other)),
+              })}
+            >
+              <option value="">None</option>
+              {cameraId && !cameraList?.some((camera) => camera.entityId === cameraId) && (
+                <option value={cameraId}>{cameraId}</option>
+              )}
+              {cameraList?.map((camera) => (
+                <option key={camera.entityId} value={camera.entityId}>{camera.name}</option>
+              ))}
+            </select>
+          </div>
+        ))}
       </div>
 
       <div className="settings-group">

@@ -7,7 +7,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import WebSocket from 'ws';
+import WebSocket, { WebSocketServer } from 'ws';
 
 /*
  * Starts the real add-on server (server.js) with no Home Assistant behind
@@ -48,6 +48,8 @@ function withCookie(cookie: string, input: string, init?: RequestInit): Promise<
  */
 let fakeHa: Server;
 const haCalls: string[] = [];
+const snapshot = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 1, 2, 3, 0xff, 0xd9]);
+const streamToken = 'ab12'.repeat(16);
 function startFakeHa(): Promise<string> {
   const states = [
     { entity_id: 'todo.grocery', state: '1', attributes: { friendly_name: 'Grocery' } },
@@ -77,7 +79,34 @@ function startFakeHa(): Promise<string> {
         if (query.includes('return_response')) return json(400, { message: 'Service does not support responses. Remove return_response from request.' });
         return json(200, []);
       }
+      if (path === '/api/camera_proxy/camera.front') {
+        res.writeHead(200, { 'Content-Type': 'image/jpeg' });
+        return res.end(snapshot);
+      }
+      if (path === `/api/hls/${streamToken}/master_playlist.m3u8`) {
+        res.writeHead(200, { 'Content-Type': 'application/vnd.apple.mpegurl' });
+        return res.end('#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=1000000\nplaylist.m3u8\n');
+      }
+      if (path === `/api/hls/${streamToken}/part/1.0.m4s`) {
+        res.writeHead(200, { 'Content-Type': 'video/iso.segment' });
+        return res.end(Buffer.from([0, 0, 0, 8, 1, 2, 3, 4]));
+      }
       json(404, { message: 'Not found' });
+    });
+  });
+  // HA's WebSocket API, for camera/stream: camera.front streams, and
+  // camera.still has no stream source.
+  new WebSocketServer({ server: fakeHa, path: '/api/websocket' }).on('connection', (socket) => {
+    socket.send(JSON.stringify({ type: 'auth_required' }));
+    socket.on('message', (raw) => {
+      const msg = JSON.parse(raw.toString());
+      if (msg.type === 'auth') {
+        socket.send(JSON.stringify({ type: msg.access_token === haToken ? 'auth_ok' : 'auth_invalid' }));
+      } else if (msg.type === 'camera/stream' && msg.entity_id === 'camera.front' && msg.format === 'hls') {
+        socket.send(JSON.stringify({ id: msg.id, type: 'result', success: true, result: { url: `/api/hls/${streamToken}/master_playlist.m3u8` } }));
+      } else {
+        socket.send(JSON.stringify({ id: msg.id, type: 'result', success: false, error: { code: 'home_assistant_error', message: `${msg.entity_id} does not support play stream service` } }));
+      }
     });
   });
   return new Promise((resolve) => fakeHa.listen(0, '127.0.0.1', () => resolve(`http://127.0.0.1:${(fakeHa.address() as { port: number }).port}`)));
@@ -134,7 +163,7 @@ beforeAll(async () => {
       HA_TOKEN: haToken,
       BEACON_PASSWORD: browserPassword,
       BEACON_PARENT_PIN: '654321',
-      BEACON_BLOCKED_ENTITIES: 'todo.private,calendar.private,switch.other',
+      BEACON_BLOCKED_ENTITIES: 'todo.private,calendar.private,switch.other,camera.private',
     },
   });
   server.stdout!.on('data', (chunk) => { output += chunk; });
@@ -601,6 +630,68 @@ describe('add-on server', () => {
     expect((await fetch(`${base}/beacon-action/calendar-event`, {
       method: 'POST', body: JSON.stringify({ op: 'delete', entity_id: 'calendar.private', uid: '1' }),
     })).status).toBe(403);
+  });
+
+  describe('cameras', () => {
+    it('passes a camera snapshot through as HA sent it', async () => {
+      const res = await fetch(`${base}/api/camera_proxy/camera.front`);
+      expect(res.status).toBe(200);
+      expect(res.headers.get('content-type')).toBe('image/jpeg');
+      expect(Buffer.from(await res.arrayBuffer())).toEqual(snapshot);
+    });
+
+    it('refuses snapshots of blocked cameras, and HA camera paths Family doesn\'t use', async () => {
+      expect((await fetch(`${base}/api/camera_proxy/camera.private`)).status).toBe(403);
+      expect((await fetch(`${base}/api/camera_proxy/light.kitchen`)).status).toBe(403);
+      expect((await fetch(`${base}/api/camera_proxy_stream/camera.front`)).status).toBe(403);
+    });
+
+    it('starts a live stream and plays its files through the server', async () => {
+      const started = await fetch(`${base}/beacon-action/camera-stream`, {
+        method: 'POST', body: JSON.stringify({ entity_id: 'camera.front' }),
+      });
+      expect(started.status).toBe(200);
+      const { url } = await started.json();
+      expect(url).toBe(`beacon-hls/${streamToken}/master_playlist.m3u8`);
+
+      const playlist = await fetch(`${base}/${url}`);
+      expect(playlist.headers.get('content-type')).toBe('application/vnd.apple.mpegurl');
+      expect(await playlist.text()).toContain('playlist.m3u8');
+
+      // A low-latency reload keeps its _HLS_ parameters, and nothing else.
+      const part = await fetch(`${base}/beacon-hls/${streamToken}/part/1.0.m4s?_HLS_msn=1&_HLS_part=0&other=x`);
+      expect(part.status).toBe(200);
+      expect(Buffer.from(await part.arrayBuffer())).toEqual(Buffer.from([0, 0, 0, 8, 1, 2, 3, 4]));
+      expect(haCalls).toContain(`GET /api/hls/${streamToken}/part/1.0.m4s?_HLS_msn=1&_HLS_part=0 `);
+    });
+
+    it("says why when a camera can't stream", async () => {
+      const res = await fetch(`${base}/beacon-action/camera-stream`, {
+        method: 'POST', body: JSON.stringify({ entity_id: 'camera.still' }),
+      });
+      expect(res.status).toBe(502);
+      expect(await res.json()).toEqual({ error: 'camera.still does not support play stream service', code: 'home_assistant_error' });
+    });
+
+    it('refuses streams of blocked cameras, and paths that are not stream files', async () => {
+      expect((await fetch(`${base}/beacon-action/camera-stream`, {
+        method: 'POST', body: JSON.stringify({ entity_id: 'camera.private' }),
+      })).status).toBe(403);
+      expect((await fetch(`${base}/beacon-action/camera-stream`, {
+        method: 'POST', body: JSON.stringify({ entity_id: 'light.kitchen' }),
+      })).status).toBe(403);
+      for (const path of [`${streamToken}/..%2f..%2fconfig`, `${streamToken}/segment/1.ts`, 'nothex/playlist.m3u8']) {
+        expect((await fetch(`${base}/beacon-hls/${path}`)).status).toBe(404);
+      }
+      expect(haCalls.some((call) => call.includes('/config '))).toBe(false);
+    });
+
+    it('needs a session for stream files', async () => {
+      const res = await globalThis.fetch(`${base}/beacon-hls/${streamToken}/master_playlist.m3u8`, {
+        headers: { Authorization: basicAuth },
+      });
+      expect(res.status).toBe(401);
+    });
   });
 
   it('hashes member PINs on disk and never returns or exposes them in general DTOs', async () => {

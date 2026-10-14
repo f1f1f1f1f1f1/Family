@@ -12,11 +12,12 @@ import {
   Settings,
   Timer as TimerIcon,
   CloudSun,
+  Cctv,
   MoreHorizontal,
   X,
 } from 'lucide-react';
 
-export type SidebarView = 'dashboard' | 'calendar' | 'chores' | 'grocery' | 'tasks' | 'leaderboard' | 'music' | 'photos' | 'airplay' | 'timer' | 'weather' | 'settings';
+export type SidebarView = 'dashboard' | 'calendar' | 'chores' | 'grocery' | 'tasks' | 'leaderboard' | 'music' | 'photos' | 'cameras' | 'airplay' | 'timer' | 'weather' | 'settings';
 
 interface SidebarProps {
   activeView: SidebarView;
@@ -24,6 +25,8 @@ interface SidebarProps {
   position?: 'left' | 'right' | 'bottom';
   /** The add-on has an AirPlay receiver turned on. */
   showAirPlay?: boolean;
+  /** Cameras are chosen for the Cameras screen in Settings. */
+  showCameras?: boolean;
 }
 
 const ICON_SIZE = 24;
@@ -44,6 +47,7 @@ const NAV_ITEMS: NavItem[] = [
   { id: 'leaderboard', icon: <Trophy size={ICON_SIZE} strokeWidth={STROKE_WIDTH} />, label: 'Leaderboard' },
   { id: 'music', icon: <Music size={ICON_SIZE} strokeWidth={STROKE_WIDTH} />, label: 'Music' },
   { id: 'photos', icon: <Image size={ICON_SIZE} strokeWidth={STROKE_WIDTH} />, label: 'Photos' },
+  { id: 'cameras', icon: <Cctv size={ICON_SIZE} strokeWidth={STROKE_WIDTH} />, label: 'Cameras' },
   { id: 'airplay', icon: <Airplay size={ICON_SIZE} strokeWidth={STROKE_WIDTH} />, label: 'AirPlay' },
   { id: 'timer', icon: <TimerIcon size={ICON_SIZE} strokeWidth={STROKE_WIDTH} />, label: 'Timer' },
   { id: 'weather', icon: <CloudSun size={ICON_SIZE} strokeWidth={STROKE_WIDTH} />, label: 'Weather' },
@@ -57,10 +61,12 @@ export function Sidebar({
   onChangeView,
   position = 'left',
   showAirPlay = false,
+  showCameras = false,
 }: SidebarProps) {
   const [mobileMoreOpen, setMobileMoreOpen] = useState(false);
 
-  const navItems = showAirPlay ? NAV_ITEMS : NAV_ITEMS.filter((item) => item.id !== 'airplay');
+  const navItems = NAV_ITEMS.filter((item) =>
+    (item.id !== 'airplay' || showAirPlay) && (item.id !== 'cameras' || showCameras));
   const mobileTabItems = navItems.filter((item) => MOBILE_TAB_IDS.includes(item.id));
   const mobileOverflowItems = navItems.filter((item) => !MOBILE_TAB_IDS.includes(item.id));
 

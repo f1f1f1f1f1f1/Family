@@ -65,14 +65,16 @@ const PROXY_READ_PATHS = [
   new RegExp(`^/api/states/${ENTITY_ID}$`),
   /^\/api\/calendars$/,
   new RegExp(`^/api/calendars/${ENTITY_ID}$`),
+  /^\/api\/camera_proxy\/camera\.[a-z0-9_]+$/,
 ];
 const PROXY_SERVICE_PATH = /^\/api\/services\/([a-z0-9_]+)\/([a-z0-9_]+)$/;
 
 /**
  * Whether the /api/* proxy may forward this request. The app only reads
- * states and calendars there (src/api/ha-rest.ts, useCalendarEvents.ts);
- * service calls normally go through /beacon-action/service, but an allowed
- * one sent to /api/services/<domain>/<service> is let through too.
+ * states, calendars and camera snapshots there (src/api/ha-rest.ts,
+ * useCalendarEvents.ts, src/api/cameras.ts); service calls normally go
+ * through /beacon-action/service, but an allowed one sent to
+ * /api/services/<domain>/<service> is let through too.
  */
 function isProxyRequestAllowed(method, url) {
   const pathname = url.split('?')[0];
@@ -82,6 +84,40 @@ function isProxyRequestAllowed(method, url) {
     return match !== null && isServiceAllowed(match[1], match[2]);
   }
   return false;
+}
+
+// The files of one camera's live stream, as HA's HLS views name them
+// (homeassistant/components/stream/hls.py): its playlists, init segment,
+// segments and low-latency parts, under the stream's access token.
+const HLS_FILE_PATH = /^\/beacon-hls\/([a-f0-9]{16,128})\/(master_playlist\.m3u8|playlist\.m3u8|init\.mp4|segment\/\d{1,10}\.m4s|part\/\d{1,10}\.\d{1,5}\.m4s)$/;
+const HLS_QUERY_PARAMS = new Set(['_HLS_msn', '_HLS_part', '_HLS_skip']);
+const HLS_STREAM_URL = /^\/api\/hls\/([a-f0-9]{16,128})\/master_playlist\.m3u8$/;
+
+/**
+ * The HA path a /beacon-hls/<token>/<file> request is for, or null when it
+ * isn't one of a live stream's files. Of the query, only the low-latency
+ * playlist reload parameters are passed on.
+ */
+function hlsUpstreamPath(url) {
+  const [pathname, query = ''] = url.split('?');
+  const match = HLS_FILE_PATH.exec(pathname);
+  if (!match) return null;
+  const params = new URLSearchParams();
+  for (const [key, value] of new URLSearchParams(query)) {
+    if (HLS_QUERY_PARAMS.has(key) && /^[A-Za-z0-9]{1,16}$/.test(value)) params.set(key, value);
+  }
+  const search = params.toString();
+  return `/api/hls/${match[1]}/${match[2]}${search ? `?${search}` : ''}`;
+}
+
+/**
+ * Where the browser plays the stream HA's camera/stream answered with
+ * ("/api/hls/<token>/master_playlist.m3u8"): the same file under
+ * /beacon-hls/, relative to the app. Null for anything else.
+ */
+function hlsPlaylistForBrowser(haUrl) {
+  const match = typeof haUrl === 'string' ? HLS_STREAM_URL.exec(haUrl) : null;
+  return match ? `beacon-hls/${match[1]}/master_playlist.m3u8` : null;
 }
 
 function isTrustedIngressAddress(address) {
@@ -182,6 +218,8 @@ module.exports = {
   TOGGLE_DOMAINS,
   isServiceAllowed,
   isProxyRequestAllowed,
+  hlsUpstreamPath,
+  hlsPlaylistForBrowser,
   isTrustedIngressAddress,
   parseBlockedEntities,
   isEntityAllowed,

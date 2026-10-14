@@ -10,7 +10,7 @@ import { WeekCalendar } from './components/WeekCalendar';
 import { DashboardView } from './components/DashboardView';
 import { AdvancedDashboard } from './components/lazy-advanced-dashboard';
 import { EventModal, EventFormData } from './components/EventModal';
-import { useSettings } from './hooks/useSettings';
+import { useSettings, chosenCameras } from './hooks/useSettings';
 import { ChoresView } from './components/ChoresView';
 import { Sidebar, SidebarView } from './components/Sidebar';
 import { NowPlayingBar } from './components/NowPlayingBar';
@@ -52,6 +52,7 @@ const MusicView = lazyNamed(() => import('./components/MusicView'), 'MusicView')
 const PhotoFrame = lazyNamed(() => import('./components/PhotoFrame'), 'PhotoFrame');
 const AirPlayView = lazyNamed(() => import('./components/AirPlayView'), 'AirPlayView');
 const WeatherView = lazyNamed(() => import('./components/WeatherView'), 'WeatherView');
+const CamerasView = lazyNamed(() => import('./components/CamerasView'), 'CamerasView');
 const Timer = lazyNamed(() => import('./components/Timer'), 'Timer');
 const Leaderboard = lazyNamed(() => import('./components/Leaderboard'), 'Leaderboard');
 const OnboardingView = lazyNamed(() => import('./components/OnboardingView'), 'default');
@@ -238,6 +239,10 @@ function DashboardApp({ onEnterDisplay }: { onEnterDisplay?: (memberId: string) 
   );
 
   const dashboardTasks = useDashboardTasks(connected, settings.groceryListIds, settings.hideLocalTaskList, choreSyncListIds, fullAppShown);
+
+  // The Cameras screen's feeds; its sidebar item shows once one is chosen.
+  const camerasKey = chosenCameras(settings).join(',');
+  const cameras = useMemo(() => (camerasKey ? camerasKey.split(',') : []), [camerasKey]);
 
   // Apply theme at App level so it stays active regardless of which view is
   // shown, dark by night with Auto Dark Mode on.
@@ -621,6 +626,7 @@ function DashboardApp({ onEnterDisplay }: { onEnterDisplay?: (memberId: string) 
         onChangeView={handleChangeView}
         position={sidebarPos}
         showAirPlay={!!airplay.status?.enabled}
+        showCameras={cameras.length > 0}
       />
 
       {/* Main content area */}
@@ -716,6 +722,10 @@ function DashboardApp({ onEnterDisplay }: { onEnterDisplay?: (memberId: string) 
         ) : activeView === 'weather' ? (
           <LazyBoundary>
             <WeatherView />
+          </LazyBoundary>
+        ) : activeView === 'cameras' ? (
+          <LazyBoundary>
+            <CamerasView cameras={cameras} getClient={client} />
           </LazyBoundary>
         ) : activeView === 'photos' ? (
           <LazyBoundary>
