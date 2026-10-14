@@ -128,3 +128,15 @@ so. Screens that show a to-do list show HA's copy first, then call
 `refreshTodoList()` (src/api/ha-services.ts: `homeassistant.update_entity`,
 at most once per ~50 s per list, shared by every screen on the page) and
 read again when it did refresh.
+
+### Cameras: Snapshots and HLS Through the Server
+The Supervisor only forwards /api/* to HA and holds each answer until it
+ends, so HA's MJPEG stream (camera_proxy_stream) can never reach the
+browser. The Cameras screen shows /api/camera_proxy snapshots (an allowed
+proxy path) every 2 s, and live video as HLS: /beacon-action/camera-stream
+runs HA's WebSocket camera/stream command, and /beacon-hls/<token>/<file>
+passes HA's HLS files on (hlsUpstreamPath in server-guards.cjs allows only
+those file names). hls.js is imported only by src/utils/hls-player.ts, so
+it stays out of the startup download. A full-screen layer opened from a
+screen needs createPortal: `.beacon-main > *` animates `transform`, which
+confines `position: fixed` to the main area.

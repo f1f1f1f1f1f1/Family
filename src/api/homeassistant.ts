@@ -430,6 +430,17 @@ export class HomeAssistantClient {
   }
 
   /**
+   * Starts a camera's live stream and returns its HLS playlist's path on
+   * HA ("/api/hls/<token>/master_playlist.m3u8"; the token in it is the
+   * only sign-in it needs). Rejects when the camera can't stream.
+   */
+  async getCameraStreamPath(entityId: string): Promise<string> {
+    const result = await this.sendMessage({ type: 'camera/stream', entity_id: entityId, format: 'hls' }) as { url?: unknown };
+    if (typeof result?.url !== 'string') throw new Error('Home Assistant sent no stream address');
+    return result.url;
+  }
+
+  /**
    * Calls a service; for `entityId`, or with no target when it's empty (a
    * service like notify.notify takes none — HA refuses an empty entity id,
    * so the event reminders sent that way never arrived).

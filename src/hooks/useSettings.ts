@@ -45,6 +45,8 @@ export interface BeaconSettings {
   photoDirectory: string;
   photoInterval: number;
   photoTransition: 'fade' | 'slide';
+  /** The Cameras screen's feeds, one HA camera per slot ('' for none) */
+  cameraEntities: string[];
 
   // Dashboard
   dashboardLayout: 'default' | 'classic' | 'compact';
@@ -72,6 +74,14 @@ export interface BeaconSettings {
 // ---------------------------------------------------------------------------
 
 const STORAGE_KEY = 'beacon-settings';
+
+/** How many feeds the Cameras screen shows. */
+export const CAMERA_SLOTS = 4;
+
+/** The cameras chosen for the Cameras screen, in slot order, each once. */
+export function chosenCameras(settings: Pick<BeaconSettings, 'cameraEntities'>): string[] {
+  return [...new Set(settings.cameraEntities.filter(Boolean))];
+}
 
 function buildDefaults(): BeaconSettings {
   const config = getConfig();
@@ -108,6 +118,7 @@ function buildDefaults(): BeaconSettings {
     photoDirectory: config.photo_directory,
     photoInterval: config.photo_interval,
     photoTransition: 'fade',
+    cameraEntities: Array<string>(CAMERA_SLOTS).fill(''),
 
     dashboardLayout: 'default',
     advancedDashboard: false,
@@ -173,6 +184,14 @@ function withDefaults(stored: unknown): BeaconSettings {
   for (const field of ['permanentlyHiddenCalendars', 'groceryListIds'] as const) {
     const value = stored[field];
     if (Array.isArray(value)) settings[field] = value.filter((item): item is string => typeof item === 'string');
+  }
+
+  const cameras = stored.cameraEntities;
+  if (Array.isArray(cameras)) {
+    settings.cameraEntities = settings.cameraEntities.map((_, slot) => {
+      const id = cameras[slot];
+      return typeof id === 'string' && /^camera\.[a-z0-9_]+$/.test(id) ? id : '';
+    });
   }
 
   for (const field of ['calendarColors', 'choresSyncListByMember'] as const) {
@@ -244,6 +263,12 @@ function applyPatch(
     const removed = base[field].filter((id) => !changed.includes(id));
     const added = changed.filter((id) => !base[field].includes(id) && !current[field].includes(id));
     next[field] = [...current[field].filter((id) => !removed.includes(id)), ...added];
+  }
+  // Camera slots likewise: only the slots changed from `base`.
+  const cameras = patch.cameraEntities;
+  if (cameras) {
+    next.cameraEntities = current.cameraEntities.map((id, slot) =>
+      cameras[slot] !== base.cameraEntities[slot] ? cameras[slot] : id);
   }
   return next;
 }

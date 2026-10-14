@@ -6,6 +6,13 @@ import type { FamilyMember } from '../types/family';
 vi.mock('../hooks/useRoutines', () => ({
   useRoutines: () => ({ routines: [], addRoutine: vi.fn(), updateRoutine: vi.fn(), removeRoutine: vi.fn() }),
 }));
+vi.mock('../api/anylist', () => ({ AnyListClient: class { getLists = async () => []; } }));
+vi.mock('../api/cameras', () => ({
+  listCameras: async () => [
+    { entityId: 'camera.garage', name: 'Garage', available: true, canStream: false },
+    { entityId: 'camera.porch', name: 'Porch', available: true, canStream: true },
+  ],
+}));
 
 import { SettingsView } from './SettingsView';
 
@@ -145,5 +152,26 @@ describe('SettingsView AirPlay', () => {
     fireEvent.click(airPlayToggle());
     expect(onAirPlayAutoOpenChange).toHaveBeenCalledWith(false);
     expect(on.onUpdateSettings).not.toHaveBeenCalled();
+  });
+});
+
+describe('SettingsView cameras', () => {
+  it("picks a camera for one of the Cameras screen's slots", async () => {
+    const on = renderSettings({
+      connected: true,
+      settings: {
+        permanentlyHiddenCalendars: [], calendarColors: {}, groceryListIds: [], choresSyncListByMember: {},
+        weatherEntity: '', defaultGroceryList: '', shoppingEntity: '',
+        cameraEntities: ['camera.gone', '', '', ''],
+      } as unknown as BeaconSettings,
+    });
+    fireEvent.click(screen.getByText('Integrations'));
+    const second = screen.getByRole('combobox', { name: 'Camera 2' });
+    await within(second).findByRole('option', { name: 'Porch' });
+
+    fireEvent.change(second, { target: { value: 'camera.porch' } });
+    expect(on.onUpdateSettings).toHaveBeenCalledWith({ cameraEntities: ['camera.gone', 'camera.porch', '', ''] });
+    // One no longer in HA stays chosen, by its id, until it's changed
+    expect(screen.getByRole('combobox', { name: 'Camera 1' })).toHaveValue('camera.gone');
   });
 });

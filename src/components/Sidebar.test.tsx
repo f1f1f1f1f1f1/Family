@@ -23,6 +23,18 @@ describe('Sidebar', () => {
     expect(onChangeView).toHaveBeenCalledWith('airplay');
   });
 
+  it('offers Cameras only once cameras are chosen, after Photos', () => {
+    const onChangeView = vi.fn();
+    const { rerender } = render(<Sidebar activeView="dashboard" onChangeView={onChangeView} />);
+    expect(desktop().queryByRole('button', { name: 'Cameras' })).toBeNull();
+
+    rerender(<Sidebar activeView="dashboard" onChangeView={onChangeView} showCameras />);
+    const labels = desktop().getAllByRole('button').map((button) => button.getAttribute('aria-label'));
+    expect(labels.indexOf('Cameras')).toBe(labels.indexOf('Photos') + 1);
+    fireEvent.click(desktop().getByRole('button', { name: 'Cameras' }));
+    expect(onChangeView).toHaveBeenCalledWith('cameras');
+  });
+
   it("puts AirPlay in the phone layout's More menu", () => {
     const onChangeView = vi.fn();
     render(<Sidebar activeView="dashboard" onChangeView={onChangeView} showAirPlay />);
