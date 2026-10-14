@@ -45,6 +45,10 @@ export function GroceryView({ defaultListId, mode = 'grocery', groceryListIds = 
   const [inputValue, setInputValue] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [completedCollapsed, setCompletedCollapsed] = useState(false);
+  /** The item whose delete was tapped once: it asks before deleting. */
+  const [confirmingDelete, setConfirmingDelete] = useState<string | null>(null);
+  /** Why the last delete didn't go through, shown for a few seconds. */
+  const [deleteError, setDeleteError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const anylistRef = useRef(new AnyListClient());
 
@@ -242,12 +246,61 @@ export function GroceryView({ defaultListId, mode = 'grocery', groceryListIds = 
     }
   }, [isLocal, selectedListId, localTasks, loadHaItems]);
 
-  // Delete local item (long-press or swipe equivalent)
-  const handleDelete = useCallback((item: TodoItem) => {
+  // Delete, open or done, on a second tap. Only Family's own lists could
+  // delete before; a Home Assistant list's item now goes from the service
+  // behind it too (Google Tasks, say), and that can't be undone.
+  const handleDelete = useCallback(async (item: TodoItem) => {
+    if (confirmingDelete !== item.uid) {
+      setConfirmingDelete(item.uid);
+      return;
+    }
+    setConfirmingDelete(null);
     if (isLocal) {
       localTasks.removeTask(item.uid);
+      return;
     }
-  }, [isLocal, localTasks]);
+
+    const listId = haListId;
+    setHaItems(prev => prev.filter(i => i.uid !== item.uid));
+    try {
+      await anylistRef.current.removeItem(
+        listId, item, `deleted on the ${mode === 'grocery' ? 'Lists' : 'Tasks'} screen`,
+      );
+      setTimeout(() => loadHaItems(listId), 500);
+    } catch (err) {
+      console.warn('GroceryView: Failed to delete item', err);
+      setDeleteError(`Couldn't delete “${item.summary}”. This list may not allow deleting items.`);
+      setHaItems(prev => (prev.some(i => i.uid === item.uid) ? prev : [...prev, item]));
+      void loadHaItems(listId);
+    }
+  }, [confirmingDelete, isLocal, localTasks, haListId, mode, loadHaItems]);
+
+  // The second tap has to come soon after the first.
+  useEffect(() => {
+    if (!confirmingDelete) return;
+    const timer = setTimeout(() => setConfirmingDelete(null), 3000);
+    return () => clearTimeout(timer);
+  }, [confirmingDelete]);
+
+  useEffect(() => {
+    if (!deleteError) return;
+    const timer = setTimeout(() => setDeleteError(null), 6000);
+    return () => clearTimeout(timer);
+  }, [deleteError]);
+
+  const deleteButton = (item: TodoItem) => {
+    const confirming = confirmingDelete === item.uid;
+    return (
+      <button
+        type="button"
+        className={`grocery-view-delete${confirming ? ' grocery-view-delete--confirm' : ''}`}
+        onClick={() => handleDelete(item)}
+        aria-label={confirming ? `Tap again to delete ${item.summary}` : `Delete ${item.summary}`}
+      >
+        {confirming ? <span className="chore-card-action-confirm">Sure?</span> : <Trash2 size={14} />}
+      </button>
+    );
+  };
 
   return (
     <div className="grocery-view" data-grocery-view>
@@ -293,6 +346,10 @@ export function GroceryView({ defaultListId, mode = 'grocery', groceryListIds = 
         </button>
       </form>
 
+      {deleteError && (
+        <div className="grocery-view-error" role="alert">{deleteError}</div>
+      )}
+
       {/* Items list */}
       <div className="grocery-view-list">
         {loading && items.length === 0 ? (
@@ -327,16 +384,7 @@ export function GroceryView({ defaultListId, mode = 'grocery', groceryListIds = 
                       <span className="grocery-view-checkbox" />
                       <span className="grocery-view-item-name">{item.summary}</span>
                     </button>
-                    {isLocal && (
-                      <button
-                        type="button"
-                        className="grocery-view-delete"
-                        onClick={() => handleDelete(item)}
-                        aria-label="Delete item"
-                      >
-                        <Trash2 size={14} />
-                      </button>
-                    )}
+                    {deleteButton(item)}
                   </div>
                 ))}
               </div>
@@ -373,16 +421,7 @@ export function GroceryView({ defaultListId, mode = 'grocery', groceryListIds = 
                       </span>
                       <span className="grocery-view-item-name">{item.summary}</span>
                     </button>
-                    {isLocal && (
-                      <button
-                        type="button"
-                        className="grocery-view-delete"
-                        onClick={() => handleDelete(item)}
-                        aria-label="Delete item"
-                      >
-                        <Trash2 size={14} />
-                      </button>
-                    )}
+                    {deleteButton(item)}
                   </div>
                 ))}
               </div>

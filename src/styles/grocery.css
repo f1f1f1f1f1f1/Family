@@ -265,6 +265,22 @@
   color: #e55;
 }
 
+/* First tap on delete: it asks "Sure?", as on a chore card. */
+.grocery-view-delete.grocery-view-delete--confirm {
+  width: auto;
+  padding: 0 6px;
+  opacity: 1;
+}
+
+.grocery-view-error {
+  margin: 0 0 12px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: rgba(238, 85, 85, 0.12);
+  color: #c33;
+  font-size: 0.85rem;
+}
+
 /* Empty state */
 .grocery-view-empty {
   display: flex;
