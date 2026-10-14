@@ -121,3 +121,10 @@ least a minute apart (`missing_since` on the link). A list that comes back
 without any of its 3+ chore tasks counts as broken, not emptied: nothing is
 deleted and the sync reports a problem. Links an earlier build marked
 `deleted_in_google` are left alone.
+
+### To-Do Lists Ask HA to Re-read Google About Once a Minute
+HA's Google Tasks integration fetches from Google only every half hour or
+so. Screens that show a to-do list show HA's copy first, then call
+`refreshTodoList()` (src/api/ha-services.ts: `homeassistant.update_entity`,
+at most once per ~50 s per list, shared by every screen on the page) and
+read again when it did refresh.

@@ -3,7 +3,8 @@ import { render, screen, waitFor } from '@testing-library/react';
 import type { DashboardCardContext } from '../../types/dashboard-cards';
 
 const getTodoItems = vi.hoisted(() => vi.fn());
-vi.mock('../../api/ha-services', () => ({ getTodoItems }));
+const refreshTodoList = vi.hoisted(() => vi.fn());
+vi.mock('../../api/ha-services', () => ({ getTodoItems, refreshTodoList }));
 vi.mock('../../api/anylist', () => ({ AnyListClient: class {} }));
 
 import { ShoppingCard } from './ShoppingCard';
@@ -13,6 +14,8 @@ const context = (defaultShoppingList: string) => ({ defaultShoppingList }) as Da
 beforeEach(() => {
   getTodoItems.mockReset();
   getTodoItems.mockResolvedValue([{ uid: '1', summary: 'Milk', status: 'needs_action' }]);
+  refreshTodoList.mockReset();
+  refreshTodoList.mockResolvedValue(false);
 });
 
 describe('ShoppingCard', () => {

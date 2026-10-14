@@ -3,7 +3,7 @@ import { ChevronDown, ChevronRight, Plus, Trash2 } from 'lucide-react';
 import { GroceryList } from '../types/grocery';
 import { AnyListClient } from '../api/anylist';
 import { hasToken } from '../api/ha-rest';
-import { getTodoItems } from '../api/ha-services';
+import { getTodoItems, refreshTodoList } from '../api/ha-services';
 import { isGroceryListName } from '../utils/grocery';
 import { useLocalTasks } from '../hooks/useLocalTasks';
 import { refreshWhileAwake } from '../utils/display-sleep';
@@ -152,18 +152,26 @@ export function GroceryView({ defaultListId, mode = 'grocery', groceryListIds = 
   // shown: a slow load (a refresh, or the reload after a tick) for the list
   // left behind used to land after the new list's, showing its items under
   // the new list's name, where ticking one failed. A failed load leaves the
-  // items as they were.
+  // items as they were. HA's copy shows at once; then, about once a minute,
+  // HA fetches the list from Google Tasks and changes made there show too.
   const loadHaItems = useCallback(async (entityId: string) => {
     if (!entityId) return;
     setLoading(true);
-
-    try {
+    const showItems = async () => {
       const items = (await getTodoItems(entityId)) ?? [];
       if (entityId === showingListRef.current) setHaItems(items);
+    };
+
+    try {
+      await showItems();
     } catch (err) {
       console.warn('GroceryView: Failed to load items', err);
     } finally {
       if (entityId === showingListRef.current) setLoading(false);
+    }
+
+    if (await refreshTodoList(entityId)) {
+      await showItems().catch((err) => console.warn('GroceryView: Failed to load items', err));
     }
   }, []);
 

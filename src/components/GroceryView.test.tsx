@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor, fireEvent, act } from '@testing-library/react';
 import { GroceryView } from './GroceryView';
-import { getTodoItems, type HaTodoItem } from '../api/ha-services';
+import { getTodoItems, refreshTodoList, type HaTodoItem } from '../api/ha-services';
 import { callHaService, fetchAllStates } from '../api/ha-rest';
 
 vi.mock('../api/ha-rest', () => ({
@@ -14,6 +14,7 @@ vi.mock('../api/ha-rest', () => ({
 
 vi.mock('../api/ha-services', () => ({
   getTodoItems: vi.fn(async () => [{ uid: 'c1', summary: 'Take out trash', status: 'needs_action' }]),
+  refreshTodoList: vi.fn(async () => false),
 }));
 
 const local = vi.hoisted(() => ({
@@ -56,6 +57,22 @@ describe('GroceryView', () => {
     render(<GroceryView mode="tasks" defaultListId="todo.chores" hideLocalList />);
     expect(await screen.findByText('Take out trash')).toBeInTheDocument();
     expect(getTodoItems).toHaveBeenCalledWith('todo.chores');
+  });
+
+  // HA fetches Google Tasks only every half hour or so by itself, so a task
+  // deleted there stayed on screen that long.
+  it('shows a change made in Google Tasks once HA has fetched the list again', async () => {
+    let refreshed!: (done: boolean) => void;
+    vi.mocked(refreshTodoList).mockReturnValueOnce(new Promise((resolve) => { refreshed = resolve; }));
+    vi.mocked(getTodoItems)
+      .mockResolvedValueOnce([{ uid: 'c1', summary: 'Take out trash', status: 'needs_action' }])
+      .mockResolvedValueOnce([]);
+    render(<GroceryView mode="tasks" defaultListId="todo.chores" hideLocalList />);
+    expect(await screen.findByText('Take out trash')).toBeInTheDocument(); // HA's copy, at once
+    expect(refreshTodoList).toHaveBeenCalledWith('todo.chores');
+
+    await act(async () => refreshed(true));
+    await waitFor(() => expect(screen.queryByText('Take out trash')).not.toBeInTheDocument());
   });
 });
 
